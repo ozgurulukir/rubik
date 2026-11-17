@@ -92,7 +92,9 @@ llm:
   default_max_output_tokens: 4096
 
   # Extra HTTP headers sent with every provider request (open map — e.g.
-  # HTTP-Referer / X-Title for OpenRouter attribution):
+  # HTTP-Referer / X-Title for OpenRouter attribution). For a dynamic
+  # per-conversation session header, see providers.<name>.session_header
+  # in the providers section below:
   headers: {}
 
   # HTTP transport resilience (batch requests). Transient 5xx/connect failures
@@ -186,6 +188,14 @@ providers:
     headers:
       HTTP-Referer: https://github.com/ozgurulukir/rubik
       X-Title: Rubik AI Coding Agent
+    # Dynamic per-conversation session header (opencode's Go gateway and
+    # similar session-attribution contracts): every request routed to this
+    # provider — root loop, subagents, repair — carries
+    # headers[x-opencode-session] = <UUID derived from the active session
+    # file, stable per conversation across !resume and restarts>. A
+    # same-named header in the static headers above (or in llm.headers)
+    # wins — explicit beats automatic.
+    # session_header: x-opencode-session
     models:
       - name: anthropic/claude-sonnet-5.5
         context_limit: 200000

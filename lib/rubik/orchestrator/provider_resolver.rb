@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../config/defaults"
+require_relative "../llm/session_header"
 require_relative "../storage/layout"
 
 module Rubik
@@ -77,6 +78,29 @@ module Rubik
           opts[key.to_sym] ||= llm_config(key, fallback)
         end
         opts
+      end
+
+      # Plan 90 completion (moved here from Loop's request path to keep
+      # loop.rb under its coordinator cap): the llm.thinking_budget_ratio /
+      # llm.reasoning_effort knobs reach the adapters only through this
+      # bridge. Both default to nil (never sent); the key must stay ABSENT
+      # when unset — openai_compatible's reasoning_model? tests
+      # opts.key?(:reasoning_effort), so even a nil value would flip every
+      # model onto the reasoning payload branch.
+      def apply_reasoning_knobs(opts)
+        ratio = llm_config("thinking_budget_ratio", nil)
+        opts[:thinking_budget_ratio] ||= ratio if ratio
+        effort = llm_config("reasoning_effort", nil)
+        opts[:reasoning_effort] ||= effort if effort
+        opts
+      end
+
+      # Per-provider session header (opencode-style hard-400 gateways): the
+      # lane supplies only the conversation identity; knob lookup, provider
+      # key and the explicit-beats-automatic rule live in SessionHeader. The
+      # :headers key stays ABSENT when the knob or the identity is unset.
+      def apply_session_header!(opts, session_key)
+        Rubik::LLM::SessionHeader.apply!(opts, provider_key: registry_key, config: @config, session_key: session_key)
       end
     end
   end

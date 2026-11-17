@@ -491,4 +491,140 @@ class TestLLMCustomHeadersAndConfigKnobs < Minitest::Test
     routed = shell.router.route(task_type: :auto, prompt: "test prompt")
     assert_equal 8192, routed[:max_output_tokens]
   end
+
+  # ── providers.<name>.session_header (dynamic per-conversation header) ──
+  # Gateways that mandate a per-conversation session header (opencode Go):
+  # with the knob set, every request carries a derived UUID.
+
+  def runtime_stub(session_file = "/t/s/session_abc.jsonl")
+    shell = Struct.new(:recorder).new(Struct.new(:session_file).new(session_file))
+    ctx = Object.new
+    ctx.define_singleton_method(:get) { |key| key == Rubik::Coeffects::SHELL ? shell : nil }
+    Struct.new(:context).new(ctx)
+  end
+
+  def test_loop_injects_session_header_when_knob_set
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("providers.internlm.session_header", "x-opencode-session")
+
+    provider = Object.new
+    def provider.name = "internlm"
+    mock_loop = build_knob_loop(cfg, provider)
+    mock_loop.instance_variable_set(:@runtime_manager, runtime_stub)
+    captured = nil
+    mock_loop.define_singleton_method(:execute_batch_request) { |opts| captured = opts }
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    assert_equal Rubik::LLM::SessionHeader.uuid_for("session_abc"),
+                 captured[:headers]["x-opencode-session"]
+  end
+
+  def test_loop_leaves_session_header_absent_when_knob_unset
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+
+    provider = Object.new
+    def provider.name = "internlm"
+    mock_loop = build_knob_loop(cfg, provider)
+    mock_loop.instance_variable_set(:@runtime_manager, runtime_stub)
+    captured = nil
+    mock_loop.define_singleton_method(:execute_batch_request) { |opts| captured = opts }
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    refute captured.key?(:headers), "key-absent discipline: unset knob stays off the wire"
+  end
+
+  def test_loop_session_header_skips_when_explicit_static_header_set
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("providers.internlm.session_header", "x-opencode-session")
+    cfg.set("providers.internlm.headers", { "x-opencode-session" => "manual" })
+
+    provider = Object.new
+    def provider.name = "internlm"
+    mock_loop = build_knob_loop(cfg, provider)
+    mock_loop.instance_variable_set(:@runtime_manager, runtime_stub)
+    captured = nil
+    mock_loop.define_singleton_method(:execute_batch_request) { |opts| captured = opts }
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    refute captured.key?(:headers), "explicit beats automatic: operator value goes via @headers"
+  end
+
+  def test_loop_session_header_follows_active_provider
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("providers.internlm.session_header", "x-opencode-session")
+
+    internlm = Object.new
+    def internlm.name = "internlm"
+    internlm_loop = build_knob_loop(cfg, internlm)
+    internlm_loop.instance_variable_set(:@runtime_manager, runtime_stub)
+    captured = { internlm: nil }
+    internlm_loop.define_singleton_method(:execute_batch_request) { |opts| captured[:internlm] = opts }
+    internlm_loop.send(:send_llm_request_with_recovery, {})
+
+    other = Object.new
+    def other.name = "otherprov"
+    other_loop = build_knob_loop(cfg, other)
+    other_loop.instance_variable_set(:@runtime_manager, runtime_stub)
+    other_loop.define_singleton_method(:execute_batch_request) { |opts| captured[:other] = opts }
+    other_loop.send(:send_llm_request_with_recovery, {})
+
+    assert captured[:internlm][:headers]["x-opencode-session"], "knob-configured provider carries the header"
+    refute captured[:other].key?(:headers), "other providers stay untouched"
+  end
+
+  def test_loop_session_header_absent_without_runtime_context
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("providers.internlm.session_header", "x-opencode-session")
+
+    provider = Object.new
+    def provider.name = "internlm"
+    mock_loop = build_knob_loop(cfg, provider) # @runtime_manager left nil (allocated loop)
+    captured = nil
+    mock_loop.define_singleton_method(:execute_batch_request) { |opts| captured = opts }
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    refute captured.key?(:headers), "no identity -> no injection (gateway 400 surfaces honestly)"
+  end
+
+  def test_loop_session_header_reaches_the_streaming_exit_too
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    cfg.set("providers.internlm.session_header", "x-opencode-session")
+
+    provider = Object.new
+    def provider.name = "internlm"
+    def provider.stream_chat(*_args) = []
+    mock_loop = build_knob_loop(cfg, provider)
+    mock_loop.instance_variable_set(:@runtime_manager, runtime_stub)
+    captured = nil
+    stream_mgr = mock_loop.instance_variable_get(:@stream_manager)
+    stream_mgr.define_singleton_method(:execute_streaming_request) { |opts| captured = opts }
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+
+    assert_equal Rubik::LLM::SessionHeader.uuid_for("session_abc"),
+                 captured[:headers]["x-opencode-session"]
+  end
+
+  def test_loop_session_header_reacts_to_live_config_set
+    cfg = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+
+    provider = Object.new
+    def provider.name = "internlm"
+    mock_loop = build_knob_loop(cfg, provider)
+    mock_loop.instance_variable_set(:@runtime_manager, runtime_stub)
+    captured = []
+    mock_loop.define_singleton_method(:execute_batch_request) { |opts| captured << opts }
+
+    mock_loop.send(:send_llm_request_with_recovery, {})
+    refute captured[0].key?(:headers)
+
+    cfg.set("providers.internlm.session_header", "x-opencode-session")
+    mock_loop.send(:send_llm_request_with_recovery, {})
+    assert_equal Rubik::LLM::SessionHeader.uuid_for("session_abc"),
+                 captured[1][:headers]["x-opencode-session"]
+  end
 end

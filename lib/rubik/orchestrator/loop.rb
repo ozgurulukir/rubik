@@ -10,6 +10,7 @@ require_relative "budget_manager"
 require_relative "stream_manager"
 require_relative "provider_resolver"
 require_relative "provider_recovery"
+require_relative "../llm/session_header"
 require_relative "continuation_manager"
 require_relative "goal_wait"
 require_relative "resume_window"
@@ -471,15 +472,13 @@ module Rubik
         effective_opts[:timeout] ||= effective_opts[:stream_timeout]
         # llm.* retry knobs join the timeout bridge above (per-call opts win).
         provider_resolver.apply_retry_defaults(effective_opts)
-        # Plan 90 completion: the llm.thinking_budget_ratio / llm.reasoning_effort
-        # knobs reach the adapters only through this bridge. Both default to nil
-        # (never sent); the key must stay ABSENT when unset — openai_compatible's
-        # reasoning_model? tests opts.key?(:reasoning_effort), so even a nil
-        # value would flip every model onto the reasoning payload branch.
-        ratio = provider_llm_config("thinking_budget_ratio", nil)
-        effective_opts[:thinking_budget_ratio] ||= ratio if ratio
-        effort = provider_llm_config("reasoning_effort", nil)
-        effective_opts[:reasoning_effort] ||= effort if effort
+        provider_resolver.apply_reasoning_knobs(effective_opts)
+        # Per-provider session header (opencode-style hard-400 gateways): one
+        # call before the stream/batch branch covers both wire exits; the
+        # identity is the shell coeffect (same anchor as the subagent lane).
+        provider_resolver.apply_session_header!(
+          effective_opts, Rubik::LLM::SessionHeader.session_key_from_context(@runtime_manager&.context)
+        )
 
         if streaming_enabled && @provider.respond_to?(:stream_chat)
           @stream_manager.execute_streaming_request(effective_opts)

@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "json"
-require_relative "../../config/defaults"
 require_relative "../../errors"
 require_relative "../../prompt"
 require_relative "../../platform"
@@ -9,6 +8,8 @@ require_relative "../../security/redactor"
 require_relative "../../tools/truncator"
 require_relative "../../uris"
 require_relative "../provider_recovery"
+require_relative "../provider_resolver"
+require_relative "../../llm/session_header"
 require_relative "../../storage/layout"
 require_relative "../auto_apply"
 require_relative "../tool_call_id"
@@ -114,12 +115,11 @@ module Rubik
           effective_opts[:open_timeout] ||= ProviderRecovery::DEFAULT_OPEN_TIMEOUT
           effective_opts[:context_limit] ||= @context_limit if @context_limit
           effective_opts[:max_tokens] ||= @max_output_tokens if @max_output_tokens&.positive?
-          # Same llm.* transport-resilience knobs as the root loop, so a
-          # subagent's HTTP retries obey operator config rather than only the
-          # post_json built-ins. An explicit per-call value still wins.
-          Rubik::Config::Defaults::LLM_RETRY_DEFAULTS.each do |key, fallback|
-            effective_opts[key.to_sym] ||= Rubik::Storage::Layout.config_get(@config, "llm.#{key}", fallback)
-          end
+          # The root loop's resolution seam: provider-scoped llm.* retry knobs plus
+          # the session header (identity: the shell coeffect — same conversation).
+          resolver = Rubik::Orchestrator::ProviderResolver.new(provider: @provider, config: @config)
+          resolver.apply_retry_defaults(effective_opts)
+          resolver.apply_session_header!(effective_opts, Rubik::LLM::SessionHeader.session_key_from_context(@context))
 
           # Operation telemetry (issue #126): the model wait is observable
           # while it lasts (status shows kind/name/elapsed) and its duration

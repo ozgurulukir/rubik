@@ -221,4 +221,60 @@ class TestRepairLoop < Minitest::Test
       assert_equal "puts 1", extracted, "expected fence tag #{tag.inspect} to be stripped"
     end
   end
+
+  # ── providers.<name>.session_header on the repair lane ────────────────
+  # Repair, geçit için aynı konuşmanın yardımcı trafiğidir; header düşerse
+  # konuşma ortasında 400 alır (üçüncü-taraf istemcilerin klasik hata modu).
+
+  def test_repair_injects_session_header_when_configured
+    seen = nil
+    provider = Object.new
+    provider.define_singleton_method(:name) { "opencode-go" }
+    provider.define_singleton_method(:complete) do |_messages, opts = {}|
+      seen = opts
+      Rubik::LLM::Response.new(text: "```ruby\ndef fixed; end\n```")
+    end
+    @adapter_registry.register("ruby", MockAdapter.new([{ ok: true }]))
+    config = { "providers" => { "opencode-go" => { "session_header" => "x-opencode-session" } } }
+
+    loop_engine = Rubik::Repair::Loop.new(
+      provider: provider,
+      buffer_manager: @buffer_manager,
+      snapshot_store: @snapshot_store,
+      adapter_registry: @adapter_registry,
+      config: config,
+      session_key: "session_r"
+    )
+    diags = [Rubik::Diagnostics::Entry.new(message: "syntax error", category: :syntax)]
+    res = loop_engine.repair(diags, "app.rb", :ruby)
+
+    assert res[:ok]
+    assert_equal Rubik::LLM::SessionHeader.uuid_for("session_r"),
+                 seen[:headers]["x-opencode-session"]
+  end
+
+  def test_repair_without_session_key_leaves_headers_absent
+    seen = nil
+    provider = Object.new
+    provider.define_singleton_method(:name) { "opencode-go" }
+    provider.define_singleton_method(:complete) do |_messages, opts = {}|
+      seen = opts
+      Rubik::LLM::Response.new(text: "```ruby\ndef fixed; end\n```")
+    end
+    @adapter_registry.register("ruby", MockAdapter.new([{ ok: true }]))
+    config = { "providers" => { "opencode-go" => { "session_header" => "x-opencode-session" } } }
+
+    loop_engine = Rubik::Repair::Loop.new(
+      provider: provider,
+      buffer_manager: @buffer_manager,
+      snapshot_store: @snapshot_store,
+      adapter_registry: @adapter_registry,
+      config: config
+    )
+    diags = [Rubik::Diagnostics::Entry.new(message: "syntax error", category: :syntax)]
+    res = loop_engine.repair(diags, "app.rb", :ruby)
+
+    assert res[:ok]
+    refute seen.key?(:headers), "session_key yokken header yok — mevcut davranış korunur"
+  end
 end

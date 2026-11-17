@@ -16,6 +16,14 @@ module Rubik
 
       attr_reader :session_file, :events
 
+      # The session identity spelled everywhere else (parent_session_id
+      # stamps, session listings, LLM session-header derivation): the file
+      # basename without extension. Single-homed so a filename-scheme
+      # change cannot silently fork downstream spellings.
+      def session_id
+        File.basename(@session_file.to_s, ".jsonl")
+      end
+
       def initialize(sessions_dir: nil, session_name: nil, root_dir: Dir.pwd, home_dir: ENV.fetch("HOME", nil)) # rubocop:disable Lint/UnusedMethodArgument -- arayüz kwarg'i korunuyor
         @sessions_dir = sessions_dir || File.join(root_dir, ".rubik", "sessions")
         begin
