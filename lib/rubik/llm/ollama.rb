@@ -47,7 +47,8 @@ module Rubik
           payload: payload,
           timeout: timeout,
           open_timeout: open_timeout,
-          on_retry: opts[:on_retry]
+          on_retry: opts[:on_retry],
+          **HTTPClient.retry_opts_from(opts)
         )
 
         msg_content = res_json.dig("message", "content") || ""

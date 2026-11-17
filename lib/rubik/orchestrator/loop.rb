@@ -460,17 +460,17 @@ module Rubik
       def send_llm_request_with_recovery(opts)
         streaming_enabled = opts.key?(:stream) ? (opts[:stream] == true) : (provider_llm_config("stream", true) != false)
 
-        # Plan 61 D-1/D-3: the wire request must share the compaction math's
-        # assumptions. Ollama needs context_limit (sent as num_ctx) or its
-        # server silently clips the prompt head to the model default; strict
-        # providers need max_tokens or output falls back to tiny defaults
-        # (e.g. Anthropic's 1024).
+        # Plan 61 D-1/D-3: share the compaction math with the wire request —
+        # Ollama needs context_limit (num_ctx) or it clips the prompt head;
+        # strict providers need max_tokens or output falls back to ~1024.
         effective_opts = opts.key?(:on_retry) ? opts.dup : opts.merge(on_retry: @stream_manager.llm_retry_notifier)
         effective_opts[:context_limit] = @context_limit if @context_limit
         effective_opts[:max_tokens] = @max_output_tokens if @max_output_tokens&.positive?
         effective_opts[:stream_timeout] ||= provider_llm_config("stream_timeout", ProviderRecovery::STREAM_REQUEST_TIMEOUT)
         effective_opts[:open_timeout] ||= provider_llm_config("open_timeout", ProviderRecovery::DEFAULT_OPEN_TIMEOUT)
         effective_opts[:timeout] ||= effective_opts[:stream_timeout]
+        # llm.* retry knobs join the timeout bridge above (per-call opts win).
+        provider_resolver.apply_retry_defaults(effective_opts)
         # Plan 90 completion: the llm.thinking_budget_ratio / llm.reasoning_effort
         # knobs reach the adapters only through this bridge. Both default to nil
         # (never sent); the key must stay ABSENT when unset — openai_compatible's

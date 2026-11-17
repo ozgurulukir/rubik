@@ -66,6 +66,21 @@ module Rubik
       # interactive agent turn indefinitely.
       RATE_LIMIT_MAX_DELAY_S = 60
 
+      # Retry knobs that may be supplied per call (resolved from llm.* config
+      # by the orchestrator seams) and forwarded to post_json. Only keys that
+      # are explicitly present are forwarded: passing nil would break the
+      # `retries < max_retries` comparisons in the retry loop.
+      RETRY_OPTION_KEYS = [
+        :max_retries, :max_429_retries, :backoff_base, :max_wall_clock, :rate_limit_max_delay
+      ].freeze
+
+      def self.retry_opts_from(opts)
+        RETRY_OPTION_KEYS.each_with_object({}) do |key, out|
+          value = opts[key]
+          out[key] = value unless value.nil?
+        end
+      end
+
       # Read a response header defensively: test doubles and exotic response
       # objects may not implement the Net::HTTPHeader interface.
       def self.header_value(res, name)
@@ -93,14 +108,14 @@ module Rubik
       # when present (honored exactly — the server knows its own window);
       # otherwise exponential backoff with ±20% jitter to de-synchronize
       # concurrent clients hammering the same endpoint. Both capped.
-      def self.retry_delay_after(res, retries, backoff_base)
+      def self.retry_delay_after(res, retries, backoff_base, max_delay: RATE_LIMIT_MAX_DELAY_S)
         hint = parse_retry_after(header_value(res, "Retry-After"))
         delay = hint
         unless delay
           delay = backoff_base * (2**(retries - 1))
           delay *= (0.8 + (0.4 * rand))
         end
-        delay.clamp(0, RATE_LIMIT_MAX_DELAY_S)
+        delay.clamp(0, max_delay)
       end
 
       # `retries` is nil on paths that never entered the retry loop (streaming)
@@ -151,10 +166,11 @@ module Rubik
       # a typed error when exhausted so callers can report "provider
       # throttled" distinctly. The generic 5xx budget is untouched, so
       # one 429 burst cannot exhaust the transport-failure budget.
-      def self.handle_429_retry(res, rate_limit_retries:, max_429_retries:, start_time:, backoff_base:, max_wall_clock:, on_retry:)
+      def self.handle_429_retry(res, rate_limit_retries:, max_429_retries:, start_time:, backoff_base:, max_wall_clock:, on_retry:,
+                                rate_limit_max_delay: RATE_LIMIT_MAX_DELAY_S)
         if rate_limit_retries < max_429_retries
           elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start_time
-          delay = retry_delay_after(res, rate_limit_retries + 1, backoff_base)
+          delay = retry_delay_after(res, rate_limit_retries + 1, backoff_base, max_delay: rate_limit_max_delay)
           if elapsed + delay <= max_wall_clock
             rate_limit_retries += 1
             on_retry&.call(rate_limit_retries, max_429_retries, "HTTP 429")
@@ -202,7 +218,7 @@ module Rubik
 
       def self.post_json(url_str, headers: {}, payload: {}, timeout: 30, open_timeout: 10,
                          max_retries: 2, max_429_retries: 5, backoff_base: 0.2, max_wall_clock: 120,
-                         on_retry: nil, http_factory: nil)
+                         rate_limit_max_delay: RATE_LIMIT_MAX_DELAY_S, on_retry: nil, http_factory: nil)
         uri = parse_and_validate_uri(url_str)
         start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         retries = 0
@@ -216,7 +232,7 @@ module Rubik
             rate_limit_retries = handle_429_retry(
               res, rate_limit_retries: rate_limit_retries, max_429_retries: max_429_retries,
                    start_time: start_time, backoff_base: backoff_base, max_wall_clock: max_wall_clock,
-                   on_retry: on_retry
+                   rate_limit_max_delay: rate_limit_max_delay, on_retry: on_retry
             )
             next
           end

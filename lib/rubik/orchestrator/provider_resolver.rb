@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../config/defaults"
 require_relative "../storage/layout"
 
 module Rubik
@@ -65,6 +66,17 @@ module Rubik
         Rubik::Storage::Layout.config_get(@config, "llm.#{key}", default)
       rescue StandardError
         default
+      end
+
+      # llm.* transport-resilience knobs (retry budgets, backoff, delay clamp)
+      # reach the provider opts through this same per-provider lookup. A value
+      # already set by the caller wins; unset keys fall back to the shared
+      # defaults in config/defaults.rb.
+      def apply_retry_defaults(opts)
+        Rubik::Config::Defaults::LLM_RETRY_DEFAULTS.each do |key, fallback|
+          opts[key.to_sym] ||= llm_config(key, fallback)
+        end
+        opts
       end
     end
   end
