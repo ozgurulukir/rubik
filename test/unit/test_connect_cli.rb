@@ -55,6 +55,7 @@ class TestConnectCli < Minitest::Test
     ui = scripted([
                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("OpenAI") } },
                     ->(_k, _q, _c, d) { d },
+                    ->(_k, _q, choices, _d) { choices.find { |c| c.include?("Hayır") } }, # session header: no
                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("API anahtarı") } },
                     ->(*_args) { "fake-cli-key" },
                     ->(_k, _q, choices, _d) { choices.first },
@@ -102,6 +103,7 @@ class TestConnectCli < Minitest::Test
     ui2 = ScriptedConnectPrompt.new([
                                       ->(_k, _q, choices, _d) { choices.find { |c| c.include?("OpenAI") } },
                                       ->(_k, _q, _c, d) { d },
+                                      ->(_k, _q, choices, _d) { choices.find { |c| c.include?("Hayır") } }, # session header: no
                                       ->(_k, _q, choices, _d) { choices.find { |c| c.include?("API anahtarı") } },
                                       ->(*_args) { "project-key" },
                                       ->(_k, _q, choices, _d) { choices.first },

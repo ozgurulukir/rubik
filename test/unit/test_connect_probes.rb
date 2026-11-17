@@ -67,6 +67,23 @@ class TestConnectProbes < Minitest::Test
     refute res[:auth_failed]
   end
 
+  # Issue #533: a 400 is a request-shape rejection, NOT an auth failure —
+  # e.g. opencode's Go gateway hard-400s requests missing x-opencode-session.
+  # The note must say so honestly (the observed 400 is on this GET; the
+  # session-header reading is a hint), so the wizard offers "save anyway"
+  # instead of "key rejected".
+  def test_openai_compatible_400_is_not_an_auth_failure
+    fetcher = fetcher_with(status: 400, body: { "type" => "error", "error" => { "type" => "MissingSessionID" } }.to_json)
+    res = Probes.openai_compatible("https://opencode.ai/inference/go/openai/v1", api_key: FAKE_KEY, fetcher: fetcher)
+
+    refute res[:ok]
+    refute res[:auth_failed]
+    assert res[:reachable]
+    assert_includes res[:note], "HTTP 400"
+    assert_includes res[:note], "session header"
+    assert_includes res[:note], "not an auth failure"
+  end
+
   def test_openai_compatible_bad_json
     fetcher = fetcher_with(status: 200, body: "<html>not json</html>")
     res = Probes.openai_compatible("https://api.openai.com/v1", api_key: FAKE_KEY, fetcher: fetcher)

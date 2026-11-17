@@ -86,6 +86,7 @@ class TestConnectWizard < Minitest::Test
     ui = ScriptedConnectPrompt.new([
                                      pick("OpenAI"), # provider
                                      accept_default,          # endpoint (catalog api accepted)
+                                     pick("Hayır"),           # session header: not required
                                      pick("API anahtarı"),    # auth: enter key
                                      literal("fake-key-value-1"), # secret
                                      pick("model-a"),         # model (live list)
@@ -166,6 +167,7 @@ class TestConnectWizard < Minitest::Test
                                      literal("My Gateway"),                        # provider name
                                      pick("openai_compatible"),                    # type
                                      literal("http://localhost:8000"),             # endpoint
+                                     pick("Hayır"),                                # session header: not required
                                      pick("Şimdilik atla"),                        # auth: skip
                                      pick("✎ Elle gir"),                           # manual model
                                      literal("llama3"),                            # model name
@@ -190,6 +192,7 @@ class TestConnectWizard < Minitest::Test
                                      pick("Tüm katalog"), # all-catalog submenu
                                      pick("Groq"),             # inside submenu
                                      accept_default,           # endpoint
+                                     pick("Hayır"),            # session header: not required
                                      pick("Şimdilik atla"),    # auth skip
                                      pick("llama-fast"),       # catalog model (context-annotated label)
                                      pick("Sadece default"),
@@ -211,6 +214,7 @@ class TestConnectWizard < Minitest::Test
     ui = ScriptedConnectPrompt.new([
                                      pick("OpenAI"),
                                      accept_default,
+                                     pick("Hayır"),
                                      pick("API anahtarı"),
                                      literal("wrong-key"),                          # first attempt
                                      pick("yeniden gir"),                           # failure menu: re-enter
@@ -230,6 +234,7 @@ class TestConnectWizard < Minitest::Test
     ui = ScriptedConnectPrompt.new([
                                      pick("OpenAI"),
                                      accept_default,
+                                     pick("Hayır"),
                                      pick("API anahtarı"),
                                      literal("offline-key"),
                                      pick("Yine de kaydet"),                        # save without validation
@@ -249,6 +254,7 @@ class TestConnectWizard < Minitest::Test
     ui = ScriptedConnectPrompt.new([
                                      pick("OpenAI"),
                                      accept_default,
+                                     pick("Hayır"),
                                      pick("API anahtarı"),
                                      literal(""),                                   # empty = defer
                                      pick("gpt-x"),                                 # catalog menu (no probe ran)
@@ -265,7 +271,7 @@ class TestConnectWizard < Minitest::Test
 
   def test_probe_attempts_exhausted_saves_last_key
     5.times { @probe.queue({ ok: false, auth_failed: true, reachable: true, models: [], note: "HTTP 401" }) }
-    answers = [pick("OpenAI"), accept_default, pick("API anahtarı")]
+    answers = [pick("OpenAI"), accept_default, pick("Hayır"), pick("API anahtarı")]
     5.times do
       answers << literal("retry-key")
       answers << pick("yeniden gir")
@@ -287,6 +293,7 @@ class TestConnectWizard < Minitest::Test
     ui = ScriptedConnectPrompt.new([
                                      pick("OpenAI"),
                                      accept_default,
+                                     pick("Hayır"),
                                      pick("API anahtarı"),
                                      literal(:cancelled) # Ctrl+C at the key prompt
                                    ])
@@ -318,6 +325,7 @@ class TestConnectWizard < Minitest::Test
     ui = ScriptedConnectPrompt.new([
                                      pick("OpenAI"),
                                      accept_default,
+                                     pick("Hayır"),
                                      pick("API anahtarı"),
                                      literal("plaintext-for-project"),
                                      pick("model-a"),
@@ -335,7 +343,7 @@ class TestConnectWizard < Minitest::Test
 
   def test_session_scope_is_not_used_by_wizard_but_global_is_default
     ui = ScriptedConnectPrompt.new([
-                                     pick("OpenAI"), accept_default, pick("API anahtarı"), literal("key-session"),
+                                     pick("OpenAI"), accept_default, pick("Hayır"), pick("API anahtarı"), literal("key-session"),
                                      pick("model-a"), pick("Sadece default"), literal(true)
                                    ])
     res = wizard(ui, scope: :global).run
@@ -349,6 +357,7 @@ class TestConnectWizard < Minitest::Test
     ui = ScriptedConnectPrompt.new([
                                      pick("OpenAI"), # pinned fallback base used (offline defaults)
                                      accept_default,          # endpoint
+                                     pick("Hayır"),           # session header: not required
                                      pick("Şimdilik atla"),   # auth skip
                                      pick("✎ Elle gir"),      # manual model
                                      literal("manual-model"),
@@ -375,7 +384,7 @@ class TestConnectWizard < Minitest::Test
 
   def test_manual_context_limit_accepts_k_and_m_suffixes
     ui = ScriptedConnectPrompt.new([
-                                     pick("OpenAI"), accept_default, pick("Şimdilik atla"),
+                                     pick("OpenAI"), accept_default, pick("Hayır"), pick("Şimdilik atla"),
                                      pick("✎ Elle gir"),
                                      literal("manual-model"), # name
                                      literal("200k"),         # context limit with suffix
@@ -386,5 +395,87 @@ class TestConnectWizard < Minitest::Test
 
     assert res[:ok]
     assert_equal 200_000, @config.provider_spec("openai")["models"].first["context_limit"]
+  end
+
+  # ── session header (issue #533) ─────────────────────────────────────
+
+  def test_session_header_collected_and_persisted_on_yes
+    io = StringIO.new
+    ui = ScriptedConnectPrompt.new([
+                                     pick("Özel uç nokta"),                                        # custom branch
+                                     literal("opencode"),                                          # provider name
+                                     pick("openai_compatible"),                                    # type
+                                     literal("https://opencode.ai/inference/go/openai/v1"),        # endpoint (Go gateway)
+                                     pick("Evet"),                                                 # session header: yes
+                                     literal("x-opencode-session"),                                # header name
+                                     pick("API anahtarı"),                                         # auth: enter key
+                                     literal("fake-opencode-key"),                                 # secret
+                                     pick("model-a"),                                              # model (live list)
+                                     pick("Sadece default"),                                       # roles
+                                     literal(true)                                                 # confirm
+                                   ])
+    res = wizard(ui, io: io).run
+
+    assert res[:ok], res.inspect
+    spec = @config.provider_spec("opencode")
+    refute_nil spec
+    assert_equal "x-opencode-session", spec["session_header"]
+    # The Go gateway base carries the /v1 tail, so the spec spells the
+    # POSTable /v1/chat/completions path.
+    assert_equal "https://opencode.ai/inference/go/openai/v1/chat/completions", spec["endpoint"]
+    # The confirm summary names the header before the user commits.
+    assert_includes io.string, "Oturum / Session header"
+    assert_includes io.string, "x-opencode-session"
+  end
+
+  def test_session_header_no_path_keeps_key_absent
+    ui = ScriptedConnectPrompt.new([
+                                     pick("OpenAI"),
+                                     accept_default,
+                                     pick("Hayır"), # session header: not required
+                                     pick("API anahtarı"),
+                                     literal("fake-no-header-key"),
+                                     pick("model-a"),
+                                     pick("Sadece default"),
+                                     literal(true)
+                                   ])
+    res = wizard(ui).run
+
+    assert res[:ok]
+    spec = @config.provider_spec("openai")
+    refute spec.key?("session_header"), "expected no session_header key, got #{spec.inspect}"
+  end
+
+  def test_session_header_name_invalid_then_valid
+    ui = ScriptedConnectPrompt.new([
+                                     pick("OpenAI"),
+                                     accept_default,
+                                     pick("Evet"),                       # session header: yes
+                                     literal("bad header!"),             # invalid: space + punctuation
+                                     literal("x-opencode-session"),      # valid retry
+                                     pick("API anahtarı"),
+                                     literal("fake-retry-key"),
+                                     pick("model-a"),
+                                     pick("Sadece default"),
+                                     literal(true)
+                                   ])
+    res = wizard(ui).run
+
+    assert res[:ok]
+    assert_equal "x-opencode-session", @config.provider_spec("openai")["session_header"]
+  end
+
+  def test_cancel_at_session_header_name_prompt_writes_nothing
+    ui = ScriptedConnectPrompt.new([
+                                     pick("OpenAI"),
+                                     accept_default,
+                                     pick("Evet"),       # session header: yes
+                                     literal(:cancelled) # Ctrl+C at the header-name prompt
+                                   ])
+    res = wizard(ui).run
+
+    refute res[:ok]
+    assert_equal :cancelled, res[:reason]
+    assert_nil @config.provider_spec("openai")
   end
 end

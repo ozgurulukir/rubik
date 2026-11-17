@@ -23,6 +23,7 @@ module Rubik
       S_PROVIDER = "Sağlayıcı seçin / Choose a provider:"
       S_ALL_CATALOG = "Tüm katalog / All catalog providers:"
       S_ENDPOINT = "Uç nokta / Endpoint:"
+      S_SESSION_HEADER = "Ağ geçidi oturum başlığı gerektiriyor mu? / Does the gateway require a session header? (e.g. x-opencode-session)"
       S_AUTH = "Kimlik doğrulama / Authentication:"
       S_MODEL = "Model seçin (önerilen üstte) / Pick a model (recommended first):"
       S_ROLES = "Roller / Roles:"
@@ -37,6 +38,9 @@ module Rubik
       AUTH_KEY = "API anahtarı gireceğim / I'll enter an API key"
       AUTH_ENV = "Ortam değişkeni kullanacağım / I'll use an environment variable"
       AUTH_SKIP = "Şimdilik atla / Skip for now"
+
+      SESSION_HEADER_NO = "Hayır — gerek yok / No — not required"
+      SESSION_HEADER_YES = "Evet — gireceğim / Yes — I'll enter one"
 
       def initialize(config:, ui:, io:, scope: :global, refresh: nil, catalog_loader: nil, probe: nil)
         @config = config
@@ -62,6 +66,7 @@ module Rubik
         load_catalog
         plan = select_provider
         plan = ask_endpoint(plan) if plan.is_a?(Hash)
+        plan = ask_session_header(plan) if plan.is_a?(Hash)
         plan = ask_credential(plan) if plan.is_a?(Hash)
         plan = ask_model(plan) if plan.is_a?(Hash)
         roles = ask_roles if plan.is_a?(Hash)
@@ -194,6 +199,40 @@ module Rubik
 
       def valid_endpoint?(answer)
         answer.to_s.start_with?("http://", "https://")
+      end
+
+      # ── Step 2b: session header ──────────────────────────────────────
+      # Gateways like opencode's Go endpoint hard-400 every POST without a
+      # session header (MissingSessionID) while the GET probe below passes —
+      # so the failure would otherwise surface only on the first real turn.
+      # The name lands in providers.<key>.session_header (LLM::SessionHeader
+      # injects a derived per-conversation id on every request). Only the
+      # openai_compatible family is asked: anthropic/ollama know no such knob.
+      def ask_session_header(plan)
+        return plan unless plan[:type] == "openai_compatible"
+
+        choice = @ui.select(S_SESSION_HEADER, [SESSION_HEADER_NO, SESSION_HEADER_YES], default: SESSION_HEADER_NO)
+        return :cancelled unless choice.is_a?(String)
+
+        return plan if choice == SESSION_HEADER_NO
+
+        until (name = request_session_header_name).is_a?(String) && valid_session_header_name?(name)
+          return :cancelled unless name.is_a?(String)
+
+          @ui.puts @ui.paint("⚠ Geçersiz başlık adı / Header name must contain only letters, digits or dashes", :error)
+        end
+
+        plan[:session_header] = name.strip
+        plan
+      end
+
+      def request_session_header_name
+        answer = @ui.ask("Oturum başlığı adı / Session header name:")
+        answer.is_a?(String) ? answer.strip : answer
+      end
+
+      def valid_session_header_name?(name)
+        name.to_s.match?(/\A[A-Za-z0-9-]+\z/)
       end
 
       # ── Step 3: credential + live validation ─────────────────────────
@@ -390,7 +429,10 @@ module Rubik
                    end
         summary = [
           "#{@ui.paint('Sağlayıcı / Provider', :bold)}  : #{plan[:id]} (#{plan[:type]})",
-          "#{@ui.paint('Uç nokta / Endpoint', :bold)}   : #{plan[:base_url]}",
+          "#{@ui.paint('Uç nokta / Endpoint', :bold)}   : #{plan[:base_url]}"
+        ]
+        summary << "#{@ui.paint('Oturum / Session header', :bold)} : #{plan[:session_header]}" if plan[:session_header]
+        summary += [
           "#{@ui.paint('Model', :bold)}            : #{plan[:model][:name]} (#{compact_ctx(plan[:model][:context_limit])} ctx)",
           "#{@ui.paint('Roller / Roles', :bold)}      : #{roles_desc}",
           "#{@ui.paint('Anahtar / Key', :bold)}       : #{key_desc}",
@@ -425,6 +467,7 @@ module Rubik
           "endpoint" => spec_endpoint(plan),
           "api_key" => plan[:api_key].to_s.empty? ? nil : plan[:api_key],
           "api_key_env" => plan[:api_key_env],
+          "session_header" => plan[:session_header],
           "default_model" => plan[:model][:name],
           "models" => [{ "name" => plan[:model][:name], "context_limit" => plan[:model][:context_limit] }]
         }.compact

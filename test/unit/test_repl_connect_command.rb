@@ -75,6 +75,46 @@ class TestReplConnectCommand < Minitest::Test
     assert_equal "qwen:7b", @config.fetch("models.default")["name"]
   end
 
+  def test_connect_openai_compatible_flow_answers_session_header_question
+    # Issue #533: the openai_compatible flow now carries a session-header
+    # step between endpoint and auth. The REPL entry point must script
+    # through it exactly like the CLI one does. Hermetic catalog: pre-warm
+    # the models.dev cache (same trick as the CLI tests).
+    path = Rubik::Connect::ModelsDev.cache_path(@temp_home)
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(path, JSON.generate({ "fetched_at" => Time.now.to_i,
+                                     "providers" => { "openai" => { "api" => "https://api.openai.com/v1",
+                                                                    "name" => "OpenAI",
+                                                                    "models" => { "gpt-x" => { "limit" => { "context" => 400_000 },
+                                                                                               "tool_call" => true } } } } }))
+    probe = Class.new do
+      def openai_compatible(_base, *_args, **_kwargs)
+        { ok: true, auth_failed: false, reachable: true, models: ["gpt-live"] }
+      end
+    end.new
+
+    ui = ScriptedConnectPrompt.new([
+                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("OpenAI") } },
+                                     ->(_k, _q, _c, d) { d },                                              # endpoint
+                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("Hayır") } }, # session header: no
+                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("API anahtarı") } },
+                                     ->(*_args) { "fake-repl-key" },
+                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("gpt-live") } },
+                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("Sadece default") } },
+                                     ->(_k, _q, _c, _d) { true }
+                                   ])
+
+    ctx = Rubik::REPL::CommandContext.new(@shell)
+    res = Rubik::REPL::Commands::Connect.invoke(ctx, :global, ui: ui, probe: probe)
+
+    assert res[:ok], res.inspect
+    spec = @config.provider_spec("openai")
+    refute_nil spec
+    refute spec.key?("session_header"), "No answer must keep the key absent, got #{spec.inspect}"
+    assert_equal "https://api.openai.com/v1/chat/completions", spec["endpoint"]
+    assert_equal "gpt-live", @config.fetch("models.default")["name"]
+  end
+
   def test_connect_flags_choose_scope
     # --global wins over the wizard's :global default; --project must reach
     # the wizard (its write would be refused for plaintext keys by
