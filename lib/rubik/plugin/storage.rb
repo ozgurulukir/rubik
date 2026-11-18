@@ -189,6 +189,9 @@ module Rubik
 
       def remove_plugin(name, scope: :project)
         target_dir = scope.to_sym == :global ? global_plugins_dir : project_plugins_dir
+
+        return { ok: false, error: "Invalid plugin name: #{name.to_s.inspect}." } unless safe_plugin_name?(name, target_dir)
+
         file_path = File.join(target_dir, "#{name}.rb")
         dir_path = File.join(target_dir, name.to_s)
 
@@ -218,6 +221,23 @@ module Rubik
       end
 
       private
+
+      # A plugin name must resolve to a single path component directly under
+      # target_dir. Reject separators, traversal components (`.`/`..`),
+      # absolute paths and NUL bytes before any rm_f/rm_rf so a caller-supplied
+      # name can never escape the plugins directory (issue #554). Any ordinary
+      # single-component name is allowed, so legitimate plugins keep working.
+      def safe_plugin_name?(name, target_dir)
+        component = name.to_s
+        return false if component.empty? || component == "." || component == ".."
+        return false if component.match?(%r{[/\\\0]})
+
+        base = File.expand_path(target_dir)
+        candidate = File.expand_path(component, base)
+        candidate.start_with?("#{base}#{File::SEPARATOR}") && File.dirname(candidate) == base
+      rescue ArgumentError
+        false
+      end
 
       # The package root for a path inside the plugins dir: plugins/<first
       # segment> when that segment is a DIRECTORY (directory plugin); nil for
