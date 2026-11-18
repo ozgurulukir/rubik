@@ -32,6 +32,12 @@ module Rubik
         end
       end
 
+      # Deadline for a single framed write. A server that stops draining
+      # stdin must not park the writer forever on @write_mutex — Client#stop
+      # sends shutdown through this mutex, so a stalled write would otherwise
+      # prevent the kill_tree that unblocks the pipe.
+      WRITE_TIMEOUT = 5.0
+
       attr_reader :mutex, :cv, :running
 
       def initialize(root_dir:, on_message:)
@@ -257,13 +263,11 @@ module Rubik
         header = "Content-Length: #{json.bytesize}\r\n\r\n"
         bytes = header + json
         @write_mutex.synchronize do
-          offset = 0
-          while offset < bytes.bytesize
-            written = @stdin.write(bytes.byteslice(offset, bytes.bytesize - offset))
-            raise IOError, "LSP transport made no write progress" unless written&.positive?
-
-            offset += written
-          end
+          # Deadline-bounded write: the old @stdin.write loop could park here
+          # forever while holding @write_mutex. Client#stop sends shutdown
+          # through this mutex, so a stalled write prevented it from ever
+          # reaching the kill_tree that unblocks the pipe.
+          Rubik::Platform.write_until(@stdin, bytes, timeout: write_timeout)
           @stdin.flush
         end
         true
@@ -276,6 +280,12 @@ module Rubik
           @cv.broadcast
         end
         false
+      end
+
+      # Single source for the write deadline; overridable in tests so a
+      # non-draining pipe can be exercised without waiting the full 5s.
+      def write_timeout
+        WRITE_TIMEOUT
       end
 
       # Correlate an incoming response with the pending-request registry.

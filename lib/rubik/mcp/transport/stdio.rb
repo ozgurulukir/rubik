@@ -16,6 +16,12 @@ module Rubik
         # #stderr_tail for diagnostics.
         STDERR_TAIL_LINES = 20
 
+        # Upper bound on a single stdin write. A server that stops draining
+        # stdin lets the OS pipe buffer fill; without a deadline the writer
+        # parks forever. Platform.write_until converts that stall into an
+        # Errno::EPIPE after this many seconds instead of a deadlock.
+        STDIN_WRITE_TIMEOUT = 5.0
+
         # Credential-shaped variable names stripped from the inherited host
         # environment when a server opts out with `inherit_env: false`. Only
         # the suffix shape is policy — the prefix is the provider's choice
@@ -43,6 +49,10 @@ module Rubik
           @stderr_mutex = Mutex.new
           @stderr_tail = []
           @mutex = Mutex.new
+          # Writes are serialized on their OWN mutex, never @mutex: @mutex is
+          # also taken by close/wait_for_response/the reader, so a stalled
+          # write holding it would wedge teardown and response delivery.
+          @write_mutex = Mutex.new
           @cv = ConditionVariable.new
           @responses = {}
           @closed = false
@@ -159,6 +169,9 @@ module Rubik
         end
 
         def close
+          # Never take @write_mutex here: a writer may be stalled in
+          # write_until, and killing the child (below) is precisely what
+          # unblocks it. Waiting for the write lock would deadlock teardown.
           child_died = false
           # Capture before @wait_thr is nil'd below: the child-died diagnostic
           # must still report WHICH server process failed to start.
@@ -301,15 +314,31 @@ module Rubik
 
         def write_message(msg_hash)
           json = JSON.dump(msg_hash)
-          @mutex.synchronize do
+          # Resolve/validate the pipe under @mutex, then write OUTSIDE it.
+          # @mutex is shared with close, wait_for_response and the reader;
+          # a large payload to a server not draining stdin would block inside
+          # puts while holding it — close could never reach kill_tree, timeouts
+          # could not start, and responses could not be stored (bidirectional
+          # deadlock). A dedicated write mutex keeps writes serialized while
+          # write_until bounds the stall with a deadline.
+          stdin = @mutex.synchronize do
             raise ConnectionError, "Process stdin is closed" if @stdin.nil? || @stdin.closed?
 
-            @stdin.puts(json)
-            @stdin.flush
+            @stdin
           end
-        rescue IOError, Errno::EPIPE => e
+          @write_mutex.synchronize do
+            Rubik::Platform.write_until(stdin, "#{json}\n", timeout: stdin_write_timeout)
+            stdin.flush
+          end
+        rescue IOError, Errno::EPIPE, Errno::EINTR => e
           close
           raise ConnectionError, "Failed to write to MCP server: #{e.message}"
+        end
+
+        # Single source for the write deadline; overridable in tests so a
+        # non-draining pipe can be exercised without waiting the full 5s.
+        def stdin_write_timeout
+          STDIN_WRITE_TIMEOUT
         end
 
         def wait_for_response(req_id, timeout: 10)
@@ -415,6 +444,15 @@ module Rubik
 
         def handle_incoming_message(msg)
           return unless msg.is_a?(Hash) && msg.key?("id")
+
+          # A server-initiated request/notification (e.g. a "ping" carrying an
+          # id) is NOT a reply to one of our pending requests. Mirror the LSP
+          # transport's dispatch guard: only id-bearing messages WITHOUT a
+          # method can be responses, and only ones carrying result/error can
+          # satisfy a waiter. Otherwise a colliding id stores a nil-result
+          # "response" and the real reply is later discarded as a late dup.
+          return if msg.key?("method")
+          return unless msg.key?("result") || msg.key?("error")
 
           @mutex.synchronize do
             return unless @pending_requests.include?(msg["id"])
