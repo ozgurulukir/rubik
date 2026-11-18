@@ -296,7 +296,7 @@ module Rubik
         @project_layer = filter_untrusted_project_config(@project_layer)
       end
 
-      @env_layer = EnvLoader.load_env(ENV, DEFAULT_CONFIG, @warnings)
+      @env_layer = validate_env_layer!(EnvLoader.load_env(ENV, DEFAULT_CONFIG, @warnings), @warnings)
       @session_layer = {}
 
       warn_plaintext_project_secrets

@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "../platform"
+require_relative "env_guard"
 
 module Rubik
   class Config
     module Defaults
+      include EnvGuard
+
       # llm.* transport-resilience fallbacks, reused by both orchestrator seams.
       LLM_RETRY_DEFAULTS = { "max_retries" => 2, "max_429_retries" => 5, "backoff_base" => 0.2,
                              "max_wall_clock" => 120, "rate_limit_max_delay" => 60 }.freeze
@@ -230,13 +233,6 @@ module Rubik
       }.freeze
 
       private
-
-      # Schema-backed keys must satisfy their spec wherever the merged tree is validated.
-      def validate_typed_value!(key, value)
-        return unless Schema::DEFINITIONS.key?(key.to_s)
-
-        Schema.validate_value!(key, value, strict: true)
-      end
 
       def validate_schema(config, schema = DEFAULT_CONFIG, prefix = "", strict: false)
         raise ArgumentError, "Configuration must be a Hash, got #{config.class}" unless config.is_a?(Hash)

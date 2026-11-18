@@ -120,9 +120,10 @@ module Rubik
       end
 
       # Keyring hygiene for Config#delete: a successfully persisted delete
-      # of an api_key path also drops its stored secret(s) — both scopes'
-      # names, so neither keyring entry outlives its reference. Best-effort
-      # — never masks res.
+      # of an api_key path also drops the stored secret for the scope being
+      # removed. The sibling scope's keyring entry is deliberately left
+      # intact — its config pointer still lives in the other layer and must
+      # keep resolving. Best-effort — never masks res.
       def cleanup_stored_secret(key, res, persist, old_val: nil)
         return unless res[:ok] && persisting?(persist)
 
@@ -133,9 +134,9 @@ module Rubik
                          else
                            []
                          end
+        scope = persist.to_s.downcase.to_sym == :project ? :project : :global
         keys_to_delete.each do |secret_path|
-          Rubik::Security::SecretStore.delete(secret_path)
-          Rubik::Security::SecretStore.delete("#{secret_path}.project")
+          Rubik::Security::SecretStore.delete(secret_name(secret_path, scope))
         end
       rescue Rubik::Security::SecretStore::Error
         nil
