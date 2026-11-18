@@ -12,6 +12,14 @@ module Rubik
     class Runner
       attr_reader :root_dir, :driver, :allowed_external_dirs, :config, :guard, :context
 
+      # Honest description of what sandboxing actually guarantees. The drivers
+      # restrict writes/network and strip credential-shaped env vars, but they
+      # are NOT a confidentiality boundary: bubblewrap still exposes the
+      # workspace and any explicitly allowed read-only binds, and the process
+      # driver runs on the host with only command-level guardrails.
+      INTEGRITY_ONLY_NOTE = "integrity only, NOT a secret-confinement boundary " \
+                            "(only credential-shaped env vars are stripped; allowed read-only binds can still expose host files)"
+
       def initialize(root_dir: Dir.pwd, allow_network: false, driver: nil, config: nil, allowed_external_dirs: [], guard: nil, context: nil)
         @root_dir = File.expand_path(root_dir)
         @config = config
@@ -219,7 +227,7 @@ module Rubik
       def isolation_disclosure
         if sandbox_enabled? && @driver
           net_status = allow_network? ? "allowed" : "none"
-          "🔍 Isolation: sandbox (#{@driver.name}, network=#{net_status}) — strong"
+          "🔍 Isolation: sandbox (#{@driver.name}, network=#{net_status}) — #{INTEGRITY_ONLY_NOTE}"
         else
           "🔍 Execution: direct (safe execution guardrails active; sandbox disabled)"
         end
