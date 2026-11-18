@@ -29,6 +29,13 @@ module Rubik
           "union_specifier" => :union
         }.freeze
 
+        # A typedef's kind follows its underlying type, not a hardcoded :struct.
+        TYPEDEF_KINDS = {
+          "struct_specifier" => :struct,
+          "union_specifier" => :union,
+          "enum_specifier" => :enum
+        }.freeze
+
         DECLARATOR_WRAPPERS = [
           "function_declarator", "pointer_declarator", "reference_declarator", "parenthesized_declarator"
         ].freeze
@@ -87,22 +94,23 @@ module Rubik
         end
 
         def walk_typedef(node, symbols, scope)
+          type_node = node.child_by_field_name("type")
           declarator = node.child_by_field_name("declarator")
           name = if declarator
                    text_for(declarator).strip
                  else
-                   type_node = node.child_by_field_name("type")
                    text_for(type_node&.child_by_field_name("name")).strip
                  end
           return if name.empty?
 
+          kind = TYPEDEF_KINDS.fetch(type_node&.kind, :type)
           qualified = qualify(scope, name)
           sig = clean_signature(node)
           symbols << build_symbol(
             name: qualified,
-            kind: :struct,
+            kind: kind,
             node: node,
-            signature: sig.empty? ? "typedef struct #{qualified}" : sig
+            signature: sig.empty? ? "typedef #{kind} #{qualified}" : sig
           )
         end
 

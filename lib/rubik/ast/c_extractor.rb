@@ -40,7 +40,7 @@ module Rubik
               signature: stripped
             )
           elsif (match = stripped.match(/^(?:typedef\s+)?(struct|union|enum)\s+([A-Za-z0-9_]+)?\s*\{?/))
-            name = match[2] || "anonymous_#{kind}_#{line_num}"
+            name = match[2] || "anonymous_#{match[1]}_#{line_num}"
             end_line = stripped.include?(";") && !stripped.include?("{") ? line_num : find_closing_brace(i)
             symbols << Symbol.new(
               name: name,

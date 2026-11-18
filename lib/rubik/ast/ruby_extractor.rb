@@ -121,6 +121,10 @@ module Rubik
             body_loader: body_loader_for(line_start, line_end)
           )
 
+          # Nested defs/classes live under the DefNode; without this walk the
+          # Prism path drops symbols the fallback scanner still finds.
+          node.compact_child_nodes.each { |child| walk_node(child, current_scope, symbols) }
+
         when Prism::CallNode
           name = node.name.to_s
           # PERF: Fast Set lookup avoids Array allocation on every CallNode
