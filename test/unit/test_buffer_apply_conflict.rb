@@ -14,14 +14,14 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_apply_detects_conflict_and_skips_by_default
     file_path = File.join(@temp_dir, "test.txt")
-    File.write(file_path, "initial content\n")
+    File.binwrite(file_path, "initial content\n")
 
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir, event_bus: @event_bus)
     manager.read("test.txt")
     manager.write("test.txt", "buffered content\n")
 
     # External process modifies the file on disk
-    File.write(file_path, "external modified content\n")
+    File.binwrite(file_path, "external modified content\n")
 
     applied = manager.apply!
 
@@ -34,7 +34,7 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_apply_conflict_with_overwrite_policy
     file_path = File.join(@temp_dir, "test.txt")
-    File.write(file_path, "initial content\n")
+    File.binwrite(file_path, "initial content\n")
 
     config = { "buffer" => { "on_external_modification" => "overwrite" } }
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir, config: config, event_bus: @event_bus)
@@ -42,7 +42,7 @@ class TestBufferApplyConflict < Minitest::Test
     manager.write("test.txt", "buffered content\n")
 
     # External modification
-    File.write(file_path, "external modified content\n")
+    File.binwrite(file_path, "external modified content\n")
 
     applied = manager.apply!
 
@@ -54,7 +54,7 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_apply_emits_buffer_apply_conflict_event
     file_path = File.join(@temp_dir, "conflict.txt")
-    File.write(file_path, "version 1\n")
+    File.binwrite(file_path, "version 1\n")
 
     conflict_events = []
     @event_bus.subscribe(:buffer_apply_conflict) do |payload|
@@ -66,7 +66,7 @@ class TestBufferApplyConflict < Minitest::Test
     manager.write("conflict.txt", "version buffer\n")
 
     # External modification
-    File.write(file_path, "version external\n")
+    File.binwrite(file_path, "version external\n")
 
     manager.apply!
 
@@ -82,7 +82,7 @@ class TestBufferApplyConflict < Minitest::Test
     manager.write("new_file.txt", "buffered new file\n")
 
     # External actor created the file before apply
-    File.write(File.join(@temp_dir, "new_file.txt"), "external unexpected file\n")
+    File.binwrite(File.join(@temp_dir, "new_file.txt"), "external unexpected file\n")
 
     applied = manager.apply!
 
@@ -93,7 +93,7 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_apply_clean_write_no_conflict
     file_path = File.join(@temp_dir, "clean.txt")
-    File.write(file_path, "clean baseline\n")
+    File.binwrite(file_path, "clean baseline\n")
 
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir, event_bus: @event_bus)
     manager.read("clean.txt")
@@ -109,8 +109,8 @@ class TestBufferApplyConflict < Minitest::Test
   def test_apply_partial_success_with_mixed_conflict_and_clean
     f1 = File.join(@temp_dir, "f1.txt")
     f2 = File.join(@temp_dir, "f2.txt")
-    File.write(f1, "f1 init\n")
-    File.write(f2, "f2 init\n")
+    File.binwrite(f1, "f1 init\n")
+    File.binwrite(f2, "f2 init\n")
 
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir, event_bus: @event_bus)
     manager.read("f1.txt")
@@ -119,7 +119,7 @@ class TestBufferApplyConflict < Minitest::Test
     manager.write("f2.txt", "f2 buffer\n")
 
     # Modify f1 on disk, leave f2 unchanged
-    File.write(f1, "f1 external\n")
+    File.binwrite(f1, "f1 external\n")
 
     applied = manager.apply!
 
@@ -131,12 +131,12 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_reset_clears_last_conflicts
     f1 = File.join(@temp_dir, "f1.txt")
-    File.write(f1, "init\n")
+    File.binwrite(f1, "init\n")
 
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir, event_bus: @event_bus)
     manager.read("f1.txt")
     manager.write("f1.txt", "buffer\n")
-    File.write(f1, "external\n")
+    File.binwrite(f1, "external\n")
 
     manager.apply!
     assert_equal ["f1.txt"], manager.last_conflicts
@@ -147,12 +147,12 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_apply_buffer_tool_output_includes_conflict_warning
     f1 = File.join(@temp_dir, "test.txt")
-    File.write(f1, "init\n")
+    File.binwrite(f1, "init\n")
 
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     manager.read("test.txt")
     manager.write("test.txt", "buffer mod\n")
-    File.write(f1, "ext mod\n")
+    File.binwrite(f1, "ext mod\n")
 
     tool = Rubik::Tools::ApplyBufferTool.new(manager)
     result = tool.execute
@@ -164,7 +164,7 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_read_file_tool_supports_reload_param
     file_path = File.join(@temp_dir, "test.txt")
-    File.write(file_path, "initial content\n")
+    File.binwrite(file_path, "initial content\n")
 
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     tool = Rubik::Tools::ReadFileTool.new(manager)
@@ -177,7 +177,7 @@ class TestBufferApplyConflict < Minitest::Test
     manager.write("test.txt", "dirty buffer content\n")
 
     # External modification
-    File.write(file_path, "fresh external content\n")
+    File.binwrite(file_path, "fresh external content\n")
 
     # Standard read_file returns dirty buffer
     buffered = tool.execute("path" => "test.txt")
@@ -198,13 +198,13 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_read_with_from_disk_inspects_disk_without_modifying_dirty_buffer
     file_path = File.join(@temp_dir, "from_disk_test.txt")
-    File.write(file_path, "original disk 1\n")
+    File.binwrite(file_path, "original disk 1\n")
 
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     manager.read("from_disk_test.txt")
     manager.write("from_disk_test.txt", "uncommitted edit\n")
 
-    File.write(file_path, "external disk 2\n")
+    File.binwrite(file_path, "external disk 2\n")
 
     # from_disk: true returns external disk content without touching buffer
     disk_val = manager.read("from_disk_test.txt", from_disk: true)
@@ -215,13 +215,13 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_read_with_reload_and_from_disk_clears_buffer_and_returns_disk
     file_path = File.join(@temp_dir, "combo_test.txt")
-    File.write(file_path, "original disk 1\n")
+    File.binwrite(file_path, "original disk 1\n")
 
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     manager.read("combo_test.txt")
     manager.write("combo_test.txt", "uncommitted edit\n")
 
-    File.write(file_path, "external disk 2\n")
+    File.binwrite(file_path, "external disk 2\n")
 
     # When both reload: true and from_disk: true are passed, reload clears dirty buffer
     val = manager.read("combo_test.txt", reload: true, from_disk: true)
@@ -231,12 +231,12 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_context_builder_renders_conflicts_in_buffer_xml
     file_path = File.join(@temp_dir, "conflict_file.rb")
-    File.write(file_path, "disk 1\n")
+    File.binwrite(file_path, "disk 1\n")
 
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     manager.read("conflict_file.rb")
     manager.write("conflict_file.rb", "buf 1\n")
-    File.write(file_path, "disk 2\n")
+    File.binwrite(file_path, "disk 2\n")
 
     manager.apply!
     assert_equal ["conflict_file.rb"], manager.last_conflicts
@@ -254,14 +254,14 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_read_with_reload_resolves_conflict_by_syncing_with_disk
     file_path = File.join(@temp_dir, "test.txt")
-    File.write(file_path, "initial content\n")
+    File.binwrite(file_path, "initial content\n")
 
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     manager.read("test.txt")
     manager.write("test.txt", "buffered content\n")
 
     # External modification
-    File.write(file_path, "external modified content\n")
+    File.binwrite(file_path, "external modified content\n")
 
     # Before reload, normal read returns dirty buffer
     assert_equal "buffered content\n", manager.read("test.txt")
@@ -276,7 +276,7 @@ class TestBufferApplyConflict < Minitest::Test
 
   def test_discard_clears_dirty_buffer_and_conflicts
     file_path = File.join(@temp_dir, "test.txt")
-    File.write(file_path, "initial content\n")
+    File.binwrite(file_path, "initial content\n")
 
     manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
     manager.read("test.txt")

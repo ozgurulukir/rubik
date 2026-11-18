@@ -13,14 +13,14 @@ class TestAllowedExternalDirs < Minitest::Test
 
     # Primary files
     FileUtils.mkdir_p(File.join(@temp_root, "lib"))
-    File.write(File.join(@temp_root, "lib", "app.rb"), "class App\n  def run\n    puts 'app running'\n  end\nend\n")
+    File.binwrite(File.join(@temp_root, "lib", "app.rb"), "class App\n  def run\n    puts 'app running'\n  end\nend\n")
 
     # Files inside allowed external dirs
-    File.write(File.join(@allowed_dir1, "temp_scratch.rb"), "class TempScratch\n  def scratch_method\n    42\n  end\nend\n")
-    File.write(File.join(@allowed_dir2, "dataset.csv"), "id,name,value\n1,alpha,100\n")
+    File.binwrite(File.join(@allowed_dir1, "temp_scratch.rb"), "class TempScratch\n  def scratch_method\n    42\n  end\nend\n")
+    File.binwrite(File.join(@allowed_dir2, "dataset.csv"), "id,name,value\n1,alpha,100\n")
 
     # Files inside unauthorized dir
-    File.write(File.join(@unauthorized_dir, "secret_key.pem"), "-----BEGIN PRIVATE KEY-----")
+    File.binwrite(File.join(@unauthorized_dir, "secret_key.pem"), "-----BEGIN PRIVATE KEY-----")
   end
 
   def teardown

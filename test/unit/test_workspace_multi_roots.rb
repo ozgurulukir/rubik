@@ -11,17 +11,17 @@ class TestWorkspaceMultiRoots < Minitest::Test
 
     # Create files in primary dir
     FileUtils.mkdir_p(File.join(@primary_dir, "lib"))
-    File.write(File.join(@primary_dir, "lib", "main.rb"), "puts 'primary main'")
+    File.binwrite(File.join(@primary_dir, "lib", "main.rb"), "puts 'primary main'")
 
     # Create files in extra dir 1 (e.g. shared library)
     FileUtils.mkdir_p(File.join(@extra_dir1, "proto"))
-    File.write(File.join(@extra_dir1, "proto", "user.go"), "package proto\ntype User struct {}")
+    File.binwrite(File.join(@extra_dir1, "proto", "user.go"), "package proto\ntype User struct {}")
 
     # Create files in extra dir 2 (e.g. contracts)
-    File.write(File.join(@extra_dir2, "schema.json"), '{"type": "object"}')
+    File.binwrite(File.join(@extra_dir2, "schema.json"), '{"type": "object"}')
 
     # Create files in unauthorized dir
-    File.write(File.join(@unauthorized_dir, "secret.txt"), "secret_data")
+    File.binwrite(File.join(@unauthorized_dir, "secret.txt"), "secret_data")
   end
 
   def teardown
