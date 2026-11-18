@@ -216,6 +216,44 @@ module Rubik
 
       private
 
+      # Caller must hold @mutex. outline_for does the (disk-reading) extraction
+      # outside the lock and only merges the finished result through here.
+      def _merge_extraction_result_unlocked(file_path, result)
+        @extraction_status[file_path] = result.status
+
+        # A failed extraction must not silently DELETE the file's previously
+        # indexed symbols (issue #147): stale-but-known beats unknown, and
+        # the log line makes the downgrade visible. The best-effort symbols
+        # are only indexed when there is nothing to protect.
+        if result.status == :failed
+          existing = _get_file_symbols_unlocked(file_path)
+          unless existing.empty?
+            Rubik::Log.warn(:ast, "extraction failed for #{file_path} (#{result.detail}); keeping previously indexed symbols")
+            return existing
+          end
+        end
+
+        _remove_file_unlocked(file_path)
+
+        ext = File.extname(file_path).downcase
+        lang = CacheStore::LANGUAGE_MAP[ext] || "code"
+
+        extracted = result.symbols
+        if result.status == :failed
+          # Truthful accounting: the fallback symbols ARE indexed when
+          # nothing pre-existing needed protection — even when there are
+          # none, the log must not claim otherwise.
+          Rubik::Log.warn(:ast, "extraction failed for #{file_path} (#{result.detail}); indexing #{extracted.length} best-effort fallback symbols")
+        end
+        extracted.each do |sym|
+          @symbols[sym.name] = sym
+          q_key = "#{lang}:#{file_path}##{sym.name}"
+          @qualified_symbols[q_key] = sym
+          @file_symbols[file_path] << sym
+        end
+        extracted
+      end
+
       def _search_rank(name, query)
         return 0 if name == query
         return 1 if name.start_with?(query)
