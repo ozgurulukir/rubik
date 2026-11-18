@@ -132,6 +132,59 @@ class TestCommandClassifierDatabase < Minitest::Test
     assert_equal :readonly, gci.classification
   end
 
+  def test_key_keys_size_are_consistent
+    assert @db.key?("git")
+    refute @db.key?("definitely-not-a-command-xyz")
+    assert_includes @db.keys, "git"
+    assert_equal @db.keys.size, @db.size
+  end
+
+  # #540: key?/keys/size must hold the same monitor as get/reload!.
+  # A tracking Hash records whether the monitor was owned at access time.
+  def test_readers_hold_monitor_while_touching_index
+    db = @db
+    checked = []
+    tracking = Class.new(Hash) do
+      define_method(:key?) do |key|
+        checked << db.mon_owned?
+        super(key)
+      end
+      define_method(:keys) do
+        checked << db.mon_owned?
+        super()
+      end
+    end.new
+    db.instance_variable_set(:@files, tracking)
+    db.instance_variable_set(:@cache, {})
+
+    db.key?("git")
+    db.keys
+    db.size
+
+    refute_empty checked
+    assert checked.all?, "index readers must run under the database monitor"
+  end
+
+  def test_readers_are_safe_during_concurrent_reload
+    errors = []
+    workers = 4.times.map do
+      Thread.new do
+        40.times do
+          @db.key?("git")
+          @db.keys
+          @db.size
+        end
+      rescue StandardError => e
+        errors << "#{e.class}: #{e.message}"
+      end
+    end
+    reloader = Thread.new { 20.times { @db.reload! } }
+    (workers + [reloader]).each(&:join)
+
+    assert_empty errors
+    assert @db.key?("git"), "database is intact after reload"
+  end
+
   def test_thread_safety
     threads = 10.times.map do
       Thread.new do

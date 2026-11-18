@@ -81,7 +81,7 @@ module Rubik
           key_s = self.class.yaml_str(key)
           return true if shell == :powershell && PwshRules.key?(key_s)
 
-          @cache.key?(key_s) || @files.key?(key_s) || PwshRules.key?(key_s)
+          synchronize { @cache.key?(key_s) || @files.key?(key_s) || PwshRules.key?(key_s) }
         end
 
         def resolve_alias(command_def)
@@ -97,7 +97,7 @@ module Rubik
         end
 
         def keys
-          (@files.keys + PwshRules.definitions.keys).uniq
+          synchronize { (@files.keys + PwshRules.definitions.keys).uniq }
         end
 
         def size
