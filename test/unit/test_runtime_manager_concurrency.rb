@@ -228,7 +228,10 @@ class TestRuntimeManagerConcurrency < Minitest::Test
     end
 
     refute_nil captured_env
-    assert_empty captured_env
+    # A nil value is Ruby's spawn sentinel for "unset this inherited variable".
+    # The process driver may list credential/build-tool vars as nil so the
+    # child cannot see them; what must never appear are injected VALUES.
+    assert_empty captured_env.compact
   end
 
   # 7. Safe iteration under reconcile_all when fiber activation registers a child fiber

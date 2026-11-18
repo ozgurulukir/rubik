@@ -31,6 +31,57 @@ class TestSandboxDrivers < Minitest::Test
     assert_includes res[:stderr], "timed out"
   end
 
+  def test_process_driver_strips_credential_environment
+    markers = {
+      "RUBIK_ENVTEST_KEY" => "secret-key-value",
+      "RUBIK_ENVTEST_TOKEN" => "secret-token-value",
+      "RUBIK_ENVTEST_SECRET" => "secret-secret-value",
+      "RUBIK_ENVTEST_PASSWORD" => "secret-password-value",
+      "RUBIK_ENVTEST_ACCESS_KEY_ID" => "secret-aki-value",
+      "RUBIK_ENVTEST_SAFE" => "keep-me"
+    }
+    originals = markers.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
+    markers.each { |key, value| ENV[key] = value }
+
+    env = capture_process_args("echo ok").first
+
+    assert_kind_of Hash, env
+    ["RUBIK_ENVTEST_KEY", "RUBIK_ENVTEST_TOKEN", "RUBIK_ENVTEST_SECRET", "RUBIK_ENVTEST_PASSWORD",
+     "RUBIK_ENVTEST_ACCESS_KEY_ID"].each do |key|
+      assert env.key?(key), "expected #{key} to be explicitly unset in the child env"
+      assert_nil env[key], "expected #{key} to be unset in the child env"
+    end
+    refute env.key?("RUBIK_ENVTEST_SAFE"), "benign variables must remain inheritable"
+  ensure
+    originals&.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
+  end
+
+  def test_process_driver_child_cannot_read_parent_credential
+    key = "RUBIK_ENVTEST_LEAK_TOKEN"
+    original = ENV.fetch(key, nil)
+    ENV[key] = "leaked-secret-value"
+
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    res = driver.run("printf '%s' \"$#{key}\"", chdir: @temp_dir)
+    assert res[:ok]
+    refute_includes res[:stdout], "leaked-secret-value", "child must not inherit credential env vars"
+  ensure
+    original.nil? ? ENV.delete(key) : ENV[key] = original
+  end
+
+  def test_process_driver_preserves_benign_environment
+    key = "RUBIK_ENVTEST_BENIGN"
+    original = ENV.fetch(key, nil)
+    ENV[key] = "benign-value"
+
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    res = driver.run("printf '%s' \"$#{key}\"", chdir: @temp_dir)
+    assert res[:ok]
+    assert_includes res[:stdout], "benign-value", "benign env vars must remain inheritable"
+  ensure
+    original.nil? ? ENV.delete(key) : ENV[key] = original
+  end
+
   def test_docker_driver_argument_construction
     driver = Rubik::Sandbox::Driver::DockerDriver.new(image: "custom-sandbox:v1")
     assert_equal "docker", driver.name
@@ -326,5 +377,19 @@ class TestSandboxDrivers < Minitest::Test
         assert_includes res[:stdout], "still-runs"
       end
     end
+  end
+
+  private
+
+  def capture_process_args(cmd)
+    captured = nil
+    Open3.stub :popen3, lambda { |*args, &block|
+      captured = args
+      mock_thr = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 1234)
+      block.call(StringIO.new, StringIO.new(""), StringIO.new(""), mock_thr)
+    } do
+      Rubik::Sandbox::Driver::ProcessDriver.new.run(cmd, chdir: @temp_dir)
+    end
+    captured
   end
 end

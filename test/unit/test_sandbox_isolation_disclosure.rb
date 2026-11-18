@@ -67,6 +67,21 @@ class TestSandboxIsolationDisclosure < Minitest::Test
     end
     runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir, config: cfg, driver: mock_driver)
     res = runner.run("echo hello")
-    assert_includes res[:isolation], "🔍 Isolation: sandbox (mockbox, network=none) — strong"
+    assert_includes res[:isolation], "🔍 Isolation: sandbox (mockbox, network=none) — integrity only, NOT a secret-confinement boundary"
+    refute_includes res[:isolation], "strong", "sandbox label must not overstate confidentiality"
+  end
+
+  def test_sandbox_isolation_label_documents_residual_secret_exposure
+    cfg = Rubik::Config.new(root_dir: @temp_dir)
+    cfg.set("sandbox.enabled", true)
+    mock_driver = Object.new
+    mock_driver.define_singleton_method(:name) { "mockbox" }
+    mock_driver.define_singleton_method(:run) { |_cmd, **_opts| { ok: true, exit_code: 0, output: "" } }
+    runner = Rubik::Sandbox::Runner.new(root_dir: @temp_dir, config: cfg, driver: mock_driver)
+
+    label = runner.isolation_disclosure
+    assert_includes label, "credential-shaped env vars are stripped"
+    assert_includes label, "allowed read-only binds can still expose host files"
+    assert_includes label, "network=none", "existing network detail must remain in the label"
   end
 end

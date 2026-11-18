@@ -10,13 +10,29 @@ module Rubik
   module Sandbox
     module Driver
       class ProcessDriver < Base
+        # Credential-shaped variable names stripped from the child environment.
+        # Spawn semantics require an explicit nil to UNSET an inherited variable;
+        # the previous `env = {}` inherited the entire host environment, and the
+        # READONLY `env`/`printenv` commands could dump it into model-visible
+        # output. Matching is by underscore-delimited segment (case-insensitive)
+        # so SCREAMING_SNAKE names such as OPENAI_API_KEY, MY_SECRET and
+        # AWS_ACCESS_KEY_ID are covered without matching words like "tokenizer".
+        # NOTE: this is integrity hygiene, NOT a secret-confinement boundary —
+        # the child still inherits non-credential host variables by design.
+        CREDENTIAL_ENV_PATTERN = /
+          (?:_|\A)(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PAT|CREDENTIALS?)(?:_|\z)
+          |\A(?:DATABASE|REDIS|MONGO|POSTGRES|MYSQL|AMQP)_URL\z
+          |_(?:DATABASE|CONNECTION)_URL\z
+        /ix
+        private_constant :CREDENTIAL_ENV_PATTERN
+
         def available?
           true
         end
 
         def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0") # rubocop:disable Lint/UnusedMethodArgument -- sürücü arayüzü kwarg'leri korunuyor
           resolved = ShellResolver.resolve(cmd, preference: @options[:shell] || "auto")
-          env = {}
+          env = child_env
 
           res = Rubik::Platform.popen_capture(
             env,
@@ -43,6 +59,21 @@ module Rubik
         end
 
         private
+
+        # Environment handed to Open3.popen3. Start from the shared sanitized
+        # spawn env (bundler/Ruby runtime vars already nil'd), then explicitly
+        # nil every credential-shaped variable present in the host ENV so the
+        # child cannot observe or dump them. Benign variables are left out of
+        # the hash entirely and therefore remain normally inheritable, which
+        # keeps legitimate command execution (PATH, HOME, locale, proxies…)
+        # working. See CREDENTIAL_ENV_PATTERN for the shape that is stripped.
+        def child_env
+          env = Rubik::Platform.sanitized_spawn_env
+          ENV.each_key do |key|
+            env[key] = nil if key.match?(CREDENTIAL_ENV_PATTERN)
+          end
+          env
+        end
 
         # cmd.exe parses its tail with its own quoting rules that standard
         # Windows argv quoting cannot express, so the command must reach it
