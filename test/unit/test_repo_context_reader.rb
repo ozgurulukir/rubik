@@ -89,11 +89,13 @@ class TestRepoContextReader < Minitest::Test
   end
 
   def test_read_protocol_xml_escapes_source_attribute
-    write('evil"name.md', "content")
-    reader = Rubik::Context::RepoContextReader.new(root_dir: @tmp, protocol_candidates: ['evil"name.md'])
+    # '&' is valid in a Windows filename but must still be escaped in the
+    # source="..." XML attribute (CGI.escapeHTML -> &amp;).
+    write("evil&name.md", "content")
+    reader = Rubik::Context::RepoContextReader.new(root_dir: @tmp, protocol_candidates: ["evil&name.md"])
     xml = reader.read_protocol_xml
-    assert_includes xml, '<protocol source="evil&quot;name.md">'
-    refute_includes xml, 'source="evil"name.md"'
+    assert_includes xml, '<protocol source="evil&amp;name.md">'
+    refute_includes xml, 'source="evil&name.md"'
   end
 
   # ---------- read_git_branch ----------
