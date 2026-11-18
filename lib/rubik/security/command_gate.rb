@@ -197,7 +197,14 @@ module Rubik
             block_ambiguous_parse!(ast, cmd_str)
           end
 
-          return true if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
+          # Classification-based allow verdicts must not skip the un-bypassable
+          # fallback regex: every other allow path runs it (directly or via
+          # operator_allowlist_pass?). An under-rated database entry must not
+          # become a silent full bypass of the final safety layer.
+          if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
+            verify_command_fallback_regex!(cmd_str)
+            return true
+          end
         rescue BlockedWriteError
           raise
         rescue StandardError => e

