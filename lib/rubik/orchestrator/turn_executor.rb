@@ -223,11 +223,14 @@ module Rubik
 
       def tool_turn(res, text_resp, tool_calls)
         channel.nudge_policy.reset!
-        channel.append_tool_call_row(channel.final_text(res, text_resp), tool_calls)
+        # One stitched text for the assistant row AND tool dispatch, so a
+        # bare finish after truncation sees the partial (issue #547).
+        final = channel.final_text(res, text_resp)
+        channel.append_tool_call_row(final, tool_calls)
         streamed = res.respond_to?(:streamed) && res.streamed == true
         channel.announce_llm_thought(text_resp, streamed: streamed) if !text_resp.empty? && tool_calls.none? { |tc| self.class.finish_call?(channel.tool_registry, tc) }
 
-        tool_calls.each do |tc|
+        tool_calls.each_with_index do |tc, idx|
           # finish is exempt (pinned by test_orchestrator_stream): its args
           # are optional and the fallback text carries the message, so a
           # malformed finish must still complete the turn gracefully instead
@@ -236,8 +239,12 @@ module Rubik
             channel.malformed_args_row(tc)
             next
           end
-          result = channel.execute_tool_call(tc, text_resp)
-          return result if result
+          result = channel.execute_tool_call(tc, final)
+          next unless result
+
+          # Pair calls that follow a terminal one (issue #548).
+          tool_calls[(idx + 1)..]&.each { |later| channel.pair_skipped_tool_call(later) }
+          return result
         end
         nil
       end
@@ -335,10 +342,19 @@ module Rubik
           raise NotImplementedError, "channel must dispatch tool calls"
         end
 
-        # Canonical error row for a tool call whose String args failed to
-        # parse (issue #55 3.4): the model sees its own rejected payload,
-        # the tool_call_id stays paired (strict providers 400 on orphaned
-        # ids), and the tool never dispatches with degraded {} args.
+        # Pairing row for a skipped tool_use id (issue #548).
+        def pair_skipped_tool_call(tool_call)
+          ToolHistory.write(history,
+                            tool_call_id: tool_call["id"],
+                            tool_name: tool_call["tool"].to_s,
+                            status: :error,
+                            duration_ms: 0.0,
+                            content: "Tool call was not executed: the turn completed on an earlier tool call.")
+          nil
+        end
+
+        # Canonical error row for unparsable String args (issue #55 3.4):
+        # echo the rejected payload, keep the tool_call_id paired.
         def malformed_args_row(tool_call)
           ToolHistory.write(history,
                             tool_call_id: tool_call["id"],

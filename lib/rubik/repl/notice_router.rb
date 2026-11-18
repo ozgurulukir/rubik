@@ -238,12 +238,18 @@ module Rubik
 
       def inject_subagent_notice_into_conversation_history!(notice)
         xml_payload = Rubik::Orchestrator::Subagent::Notices.history_block([notice])
-        history = shell_state(:conversation_history)
-        unless history
-          history = []
-          @shell.instance_variable_set(:@conversation_history, history)
+        # The bus thread injects while the turn thread may replace the whole
+        # history array in trim_conversation_window!. Share the standby mutex
+        # with that mutation so a notice is never written to a stale array
+        # (issue #557).
+        subagent_notices_mutex.synchronize do
+          history = shell_state(:conversation_history)
+          unless history
+            history = []
+            @shell.instance_variable_set(:@conversation_history, history)
+          end
+          Rubik::Prompt::ConversationRows.append_notice!(history, xml_payload)
         end
-        Rubik::Prompt::ConversationRows.append_notice!(history, xml_payload)
       end
 
       def flush_subagent_notices!

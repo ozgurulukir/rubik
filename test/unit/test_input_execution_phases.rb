@@ -86,6 +86,21 @@ class TestInputExecutionPhases < Minitest::Test
     spy.posts.select { |(name, _p, _kw)| name == Rubik::Events::TURN_FINISHED }.last[1][:kind]
   end
 
+  def test_first_tool_using_turn_keeps_tool_rows_on_a_fresh_window
+    install_turn_event_spy
+    tool_row = { role: "tool", tool_call_id: "c1", tool_name: "read_file", status: :ok,
+                 duration_ms: 1.0, content: "file content" }
+    loop_double = Object.new
+    loop_double.define_singleton_method(:history) { [tool_row] }
+    res = { ok: true, output: "done", tokens: 1, streamed: false, loop_instance: loop_double }
+
+    @shell.settle_free_text_result!("do work", res, orchestrator: nil, theme: nil, md_enabled: false)
+
+    roles = @shell.conversation_history.map { |r| r[:role] }
+    assert_equal ["user", "assistant", "tool"], roles,
+                 "recording the outcome before the merge keeps tool rows on a fresh window (issue #557)"
+  end
+
   # ------------------------------------------------------------------
   # Adapter-command execution (execute_command)
   # ------------------------------------------------------------------

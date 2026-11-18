@@ -197,15 +197,20 @@ module Rubik
       end
 
       def process_normal_line(line, _multiline_buffer)
-        # Only trigger heredoc if line explicitly opens a multiline block (e.g. `<<EOF`, `!plan <<EOF`)
-        # NEVER trigger on inline operators like `array << item` or `a << b`
-        heredoc_match = line.match(/\A[ \t]*(?:[a-zA-Z0-9_!.-]+[ \t]+)?<<[-~]?['"]?([A-Za-z0-9_]+)['"]?[ \t]*\z/)
+        # Only trigger heredoc if line explicitly opens a multiline block
+        # (e.g. `<< EOF`, `!plan << EOF`). Whitespace after `<<` is required:
+        # `array <<item` is an inline append operator, not a heredoc (#557).
+        heredoc_match = line.match(/\A[ \t]*(?:![a-zA-Z0-9_.-]+[ \t]+)?<<[-~]?[ \t]+['"]?([A-Za-z0-9_]+)['"]?[ \t]*\z/)
         if heredoc_match && !line.strip.start_with?("#")
           delimiter = heredoc_match[1]
-          prefix = line.sub(/<<[-~]?['"]?#{Regexp.escape(delimiter)}['"]?\s*$/, "").strip
+          prefix = line.sub(/<<[-~]?[ \t]+['"]?#{Regexp.escape(delimiter)}['"]?\s*$/, "").strip
           buffer = prefix.empty? ? [] : [prefix]
           { stop: false, buffer: buffer, delimiter: delimiter }
         elsif ["exit", "quit", "!exit", "!quit"].include?(line.strip.downcase)
+          # Design note (#557): interactive mode stops the REPL here, while
+          # stream mode (execute_input) sends the same tokens to the model.
+          # This divergence is deliberate — piped scripts use the model as
+          # the interpreter — so do not "align" it without a product decision.
           stop
           { stop: true, buffer: [], delimiter: nil }
         else

@@ -17,8 +17,15 @@ module Rubik
         %r{(https?://[^\s/@:]+:)([^\s/@:]+)@}
       ].freeze
 
-      ASSIGNMENT_KEY_REGEX = /\b(password|passwd|api_key|secret)(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/i
-      ASSIGNMENT_TOKEN_REGEX = /\b(token)(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/i
+      # Generic NAME <sep> VALUE assignment. The name is normalized (camelCase
+      # boundaries -> snake_case, downcase) and classified by #secret_key? at
+      # match time, so `password=...`, `OPENAI_API_KEY=...`, `apiKey=...` and the
+      # `--key=...` flag form all share ONE rule. The optional `--` prefix is
+      # what makes provider CLI flags land here (issue #542).
+      ASSIGNMENT_KEY_REGEX = /(--)?\b([A-Za-z][A-Za-z0-9_-]*)(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/
+      # Positional counterpart of `--key=...`: `!provider set <name> key <value>`
+      # has no separator, so it needs its own bounded shape (no prose masking).
+      CLI_POSITIONAL_KEY_REGEX = /\b(set\s+\S+\s+(?:key|api[_-]?key|secret|token|password|passwd)\s+)(['"][^'"]*['"]|[^\s,;'"]+)/i
 
       # PERF: Pre-compiled constants to avoid re-allocation inside hot loops
       URL_PATTERN = %r{(https?://[^\s/@:]+:)([^\s/@:]+)@}
@@ -26,13 +33,18 @@ module Rubik
       STATIC_PATTERNS = PATTERNS.reject { |pattern| pattern == URL_PATTERN }.freeze
       # Skip static replacement passes for assignment-only and URL-only inputs.
       STATIC_PATTERNS_COMBINED_REGEX = Regexp.union(STATIC_PATTERNS).freeze
-      QUICK_CHECK_REGEX = %r{sk-|AKIA|ghp_|github_pat_|AIza|bearer|PRIVATE KEY|://[^\s/@:]+:|password|passwd|api_key|secret|token}i
+      # `key` is load-bearing: without it `--key=...` and `apiKey` take the
+      # fast path and keep the credential verbatim (issue #542).
+      QUICK_CHECK_REGEX = %r{sk-|AKIA|ghp_|github_pat_|AIza|bearer|PRIVATE KEY|://[^\s/@:]+:|password|passwd|api_key|secret|token|\bkey\b}i
 
       # Anahtar-maskeleme desenleri (Session::Recorder#mask_payload ile aynı
       # aile): sır görünümlü anahtarların değerleri desen eşleşmese bile
-      # maskelenir; sayaç anahtarları (tokens, max_tokens) istisnadır.
-      SECRET_KEY_REGEX = /(api_key|auth|password|secret|_token\b|^token\b)/i
-      TOKEN_COUNT_REGEX = /(tokens|token_count|max_tokens)/i
+      # maskelenir. Her iki desen de NORMALİZE anahtara uygulanır; sayaç
+      # istisnası tam adla eşleşir, yoksa `auth_tokens` gibi bir sır anahtarı
+      # `tokens` alt dizgisi yüzünden yanlışlıkla istisna sayılırdı (#542).
+      SECRET_KEY_REGEX = /(?:api_key|auth|password|passwd|secret|_token\z|\Atoken\b|\bkey\b)/i
+      TOKEN_COUNT_REGEX = /\A(?:tokens|token_count|max_tokens)\z/i
+      TOKEN_NAME_REGEX = /(?:\Atoken\b|_token\z)/i
 
       def self.redact(text)
         return text unless text.is_a?(String)
@@ -59,21 +71,54 @@ module Rubik
         result.gsub!(URL_PATTERN, URL_MASK)
 
         result.gsub!(ASSIGNMENT_KEY_REGEX) do
-          "#{Regexp.last_match(1)}#{Regexp.last_match(2)}#{MASK_STRING}"
-        end
-
-        result.gsub!(ASSIGNMENT_TOKEN_REGEX) do |match|
-          prefix = Regexp.last_match(1)
-          sep = Regexp.last_match(2)
-          val = Regexp.last_match(3)
-          if val =~ /\A['"]?\d+['"]?\z/
-            match
+          full = Regexp.last_match(0)
+          flag = Regexp.last_match(1)
+          name = Regexp.last_match(2)
+          sep = Regexp.last_match(3)
+          value = Regexp.last_match(4)
+          if maskable_assignment?(name, value)
+            "#{flag}#{name}#{sep}#{MASK_STRING}"
           else
-            "#{prefix}#{sep}#{MASK_STRING}"
+            full
           end
         end
 
+        result.gsub!(CLI_POSITIONAL_KEY_REGEX) do
+          "#{Regexp.last_match(1)}#{MASK_STRING}"
+        end
+
         result
+      end
+
+      # camelCase / SCREAMING_SNAKE -> lower snake_case, so one vocabulary
+      # recognizes `apiKey`, `APIKey`, `OPENAI_API_KEY` and `api_key` alike.
+      # Both patterns are FIXED-LENGTH: the old `([A-Z]+)([A-Z][a-z])` had a
+      # repeated class immediately followed by an overlapping class, which
+      # backtracks polynomially on a long uppercase run (CodeQL rb/polynomial-
+      # redos). Matching a single uppercase before the boundary is equivalent
+      # — the preceding uppercase chars are simply copied — and linear.
+      def self.normalize_key(key)
+        key.to_s
+           .gsub(/([A-Z])([A-Z][a-z])/, '\1_\2')
+           .gsub(/([a-z\d])([A-Z])/, '\1_\2')
+           .downcase
+      end
+
+      # True for a secret-looking key, with counter names excluded by EXACT
+      # match (so `auth_tokens` stays a secret while `max_tokens` does not).
+      def self.secret_key?(key)
+        normalized = normalize_key(key)
+        normalized.match?(SECRET_KEY_REGEX) && !normalized.match?(TOKEN_COUNT_REGEX)
+      end
+
+      # Token-valued assignments keep a numeric value (the existing contract:
+      # `token: 20` / `max_tokens: 100` are counters, not credentials).
+      def self.maskable_assignment?(name, value)
+        normalized = normalize_key(name)
+        return false unless normalized.match?(SECRET_KEY_REGEX) && !normalized.match?(TOKEN_COUNT_REGEX)
+        return false if normalized.match?(TOKEN_NAME_REGEX) && value.to_s.match?(/\A['"]?\d+['"]?\z/)
+
+        true
       end
 
       # Bir payload ağacında (Hash/Array/String) her metne redact uygular ve
@@ -88,9 +133,7 @@ module Rubik
         case payload
         when Hash
           payload.each_with_object({}) do |(k, v), h|
-            key_str = k.to_s
-            is_secret_key = key_str.match?(SECRET_KEY_REGEX) && !key_str.match?(TOKEN_COUNT_REGEX)
-            h[k] = is_secret_key ? MASK_STRING : mask_value(v)
+            h[k] = secret_key?(k) ? MASK_STRING : mask_value(v)
           end
         when Array
           payload.map { |v| mask_value(v) }

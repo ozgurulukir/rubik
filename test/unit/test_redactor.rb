@@ -1,11 +1,24 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
+require "timeout"
 require_relative "../../lib/rubik/security/redactor"
 require_relative "../../lib/rubik/security/guard"
 require_relative "../../lib/rubik/ui/diff_viewer"
 
 class TestRedactor < Minitest::Test
+  def test_normalize_key_is_linear_on_long_uppercase_runs
+    long_key = "A" * 20_000
+    result = Timeout.timeout(2) { Rubik::Security::Redactor.normalize_key(long_key) }
+    assert_equal long_key.downcase, result, "a long uppercase run has no camelCase boundary to split"
+  end
+
+  def test_redact_handles_long_adversarial_assignment_quickly
+    payload = "key=#{'A' * 20_000}"
+    result = Timeout.timeout(2) { Rubik::Security::Redactor.redact(payload) }
+    assert_equal "key=#{Rubik::Security::Redactor::MASK_STRING}", result
+  end
+
   def test_redacts_api_keys
     assert_equal "***MASKED***", Rubik::Security::Redactor.redact("sk-1234567890abcdef1234567890")
     assert_equal "***MASKED***", Rubik::Security::Redactor.redact("sk-ant-1234567890abcdef1234567890")
@@ -54,6 +67,36 @@ class TestRedactor < Minitest::Test
     assert_equal "token_count = 50", Rubik::Security::Redactor.redact("token_count = 50")
     assert_equal "token: 20", Rubik::Security::Redactor.redact("token: 20")
     assert_equal "tokens = 10", Rubik::Security::Redactor.redact("tokens = 10")
+  end
+
+  def test_redacts_provider_cli_credential_forms
+    secret = "gsk_abc1234567890"
+    assert_equal "!provider add p http://x --key=***MASKED***",
+                 Rubik::Security::Redactor.redact("!provider add p http://x --key=#{secret}")
+    assert_equal "!provider add p http://x --api-key=***MASKED***",
+                 Rubik::Security::Redactor.redact("!provider add p http://x --api-key=#{secret}")
+    assert_equal "!provider set p key ***MASKED***",
+                 Rubik::Security::Redactor.redact("!provider set p key #{secret}")
+  end
+
+  def test_redacts_env_style_and_camelcase_assignments
+    assert_equal "OPENAI_API_KEY=***MASKED*** MY_SECRET=***MASKED***",
+                 Rubik::Security::Redactor.redact("OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz1234 MY_SECRET=hunter2")
+    assert_equal "apiKey=***MASKED*** accessToken=***MASKED***",
+                 Rubik::Security::Redactor.redact("apiKey=abc123 accessToken=abc123")
+  end
+
+  def test_mask_value_normalizes_keys_and_anchors_counter_exclusion
+    payload = {
+      "apiKey" => "secret-one", "accessToken" => "secret-two",
+      "auth_tokens" => "secret-three", "max_tokens" => 100, "tokens" => 10
+    }
+    masked = Rubik::Security::Redactor.mask_value(payload)
+    assert_equal "***MASKED***", masked["apiKey"]
+    assert_equal "***MASKED***", masked["accessToken"]
+    assert_equal "***MASKED***", masked["auth_tokens"], "auth_tokens is a secret, not a counter"
+    assert_equal 100, masked["max_tokens"]
+    assert_equal 10, masked["tokens"]
   end
 
   def test_guard_mask_text_delegates_to_redactor

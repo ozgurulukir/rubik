@@ -193,7 +193,12 @@ module Rubik
       # @return [void]
       def execute_input(input_text)
         parsed = CommandParser.parse(input_text)
-        @recorder.record(parsed.type, input_text) if !@replaying && parsed.type != :empty && parsed.type != :prompt
+        # Redact at the record seam, BEFORE the transcript write: provider
+        # CLI forms (`--key=…`, `set <name> key <value>`) are accepted here and
+        # must never land in the JSONL even if a recorder wrapper changes
+        # (issue #542). The recorder masks again as defence in depth.
+        clean_input = Rubik::Security::Redactor.redact(input_text)
+        @recorder.record(parsed.type, clean_input) if !@replaying && parsed.type != :empty && parsed.type != :prompt
 
         case parsed.type
         when :empty
@@ -208,7 +213,10 @@ module Rubik
           if resume_intent?(parsed.raw)
             execute_resumed_turn!
           else
-            execute_free_text(parsed.raw)
+            # The redacted form is the one that reaches the recorder, the
+            # conversation window and every downstream LLM request — a
+            # pasted credential must not become durable prompt memory (#542).
+            execute_free_text(clean_input)
           end
         end
 

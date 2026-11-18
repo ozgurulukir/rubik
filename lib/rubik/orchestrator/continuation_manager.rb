@@ -130,6 +130,15 @@ module Rubik
         @continuation_buffer = +""
       end
 
+      # A successful turn closes the *consecutive* truncation chain, so the
+      # ceiling must start over (issue #549). The partial text buffer is NOT
+      # cleared here: stitch_and_reset owns that, and dropping it on a tool
+      # turn would lose the already-generated answer. Only the strike count
+      # is reset.
+      def reset_strikes!
+        @auto_continue_count = 0
+      end
+
       private
 
       def safe_config(key, default)

@@ -78,7 +78,10 @@ class TestFailedTurnPersistence < Minitest::Test
     @shell.execute_free_text("fix everything")
 
     hist = @shell.conversation_history
-    assert_equal 2, hist.size, "invalid-tool loop must end with exactly one recorded pair"
+    assert_equal "user", hist[0][:role], "the outcome pair must lead the window (issue #557)"
+    assert_equal "assistant", hist[1][:role]
+    assert hist[2..].all? { |r| ["assistant", "tool"].include?(r[:role]) }, "merged tool rows follow the outcome pair"
+    assert hist.any? { |r| r[:role] == "tool" }, "the invalid-tool loop's tool rows survive the merge (issue #557)"
     assert_includes hist[1][:content], "[Turn incomplete:"
     assert_includes hist[1][:content], "Repeated invalid tool call"
     assert_includes hist[1][:content], "no_such_tool_xyz", "turn summary must list the attempted tool"

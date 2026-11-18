@@ -133,25 +133,12 @@ module Rubik
         event
       end
 
+      # SSOT: the subagent channel masks with Redactor.mask_value, so the
+      # session recorder must delegate to the very same routine — a second
+      # copy of the key vocabulary drifts (camelCase, counter exclusions,
+      # env-style assignments) the moment one side is hardened (issue #542).
       def mask_payload(payload)
-        case payload
-        when Hash
-          payload.each_with_object({}) do |(k, v), h|
-            key_str = k.to_s
-            is_secret_key = key_str.match?(/(api_key|auth|password|secret|_token\b|^token\b)/i) && !key_str.match?(/(tokens|token_count|max_tokens)/i)
-            h[k] = if is_secret_key
-                     "***MASKED***"
-                   else
-                     mask_payload(v)
-                   end
-          end
-        when Array
-          payload.map { |v| mask_payload(v) }
-        when String
-          mask_text(payload)
-        else
-          payload
-        end
+        Rubik::Security::Redactor.mask_value(payload)
       end
     end
   end

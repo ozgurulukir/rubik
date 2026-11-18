@@ -77,7 +77,7 @@ class TestREPL < Minitest::Test
       executed_inputs << text
     end
 
-    lines = ["<<EOF", "line 1", "line 2", "EOF", "exit"]
+    lines = ["<< EOF", "line 1", "line 2", "EOF", "exit"]
     Reline.stub(:readline, ->(_prompt, _add_hist) { lines.shift }) do
       @shell.run_interactive
     end
@@ -195,6 +195,20 @@ class TestREPL < Minitest::Test
 
     @shell.execute_input("!hang_cmd")
     assert_includes @output.string, "Command cancelled by user (^C)"
+  end
+
+  def test_adjacent_shift_marker_is_not_a_heredoc
+    executed_inputs = []
+    @shell.define_singleton_method(:execute_input) do |text|
+      executed_inputs << text
+    end
+
+    lines = ["array <<item", "exit"]
+    Reline.stub(:readline, ->(_prompt, _add_hist) { lines.shift }) do
+      @shell.run_interactive
+    end
+
+    assert_includes executed_inputs, "array <<item", "no whitespace after << means inline append, not heredoc"
   end
 end
 

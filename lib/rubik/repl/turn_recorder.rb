@@ -135,9 +135,20 @@ module Rubik
           Rubik::Platform.debug_warn("input ceiling lookup failed (#{e.class}: #{e.message}); using nil budget")
           nil
         end
-        @conversation_history = Rubik::Prompt::ContextCompactor.trim_history_to_budget(
-          @conversation_history, ceiling: ceiling, max_entries: MAX_CONVERSATION_ENTRIES
-        )
+        # Serialize the read-compute-replace of the history array with the
+        # bus-thread notice injection (issue #557). Both sides use the same
+        # mutex owned by NoticeRouter; bare EmitHost doubles skip the lock.
+        if respond_to?(:notice_router)
+          notice_router.subagent_notices_mutex.synchronize do
+            @conversation_history = Rubik::Prompt::ContextCompactor.trim_history_to_budget(
+              @conversation_history, ceiling: ceiling, max_entries: MAX_CONVERSATION_ENTRIES
+            )
+          end
+        else
+          @conversation_history = Rubik::Prompt::ContextCompactor.trim_history_to_budget(
+            @conversation_history, ceiling: ceiling, max_entries: MAX_CONVERSATION_ENTRIES
+          )
+        end
       rescue StandardError => e
         Rubik::Log.warn(:repl, "conversation trim failed (#{e.class}: #{e.message}); window may exceed token budget")
         nil

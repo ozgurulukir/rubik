@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "shellwords"
 require_relative "base"
 require_relative "../../storage/layout"
 require_relative "../../runtime"
@@ -172,7 +173,11 @@ module Rubik
           shell.register_command("sh", description: "Execute shell command via sandbox runner") do |args, ctx|
             Base.pre_execution_apply(ctx, "command execution", "Commands")
 
-            cmd = args.join(" ")
+            # CommandParser already consumed the quotes via Shellwords.split;
+            # rebuild a shell-safe command so `!sh grep "foo bar" file` keeps
+            # its single argument — both for execution and for the safety
+            # gate (issue #557).
+            cmd = Shellwords.shelljoin(args)
             ctx.guard.verify_command_safety!(cmd)
             runner = ctx.sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: ctx.config, guard: ctx.guard)
             res = runner.run(cmd)
