@@ -26,6 +26,11 @@ module Rubik
         /ix
         private_constant :CREDENTIAL_ENV_PATTERN
 
+        # Serializes the scrub/restore window so two concurrent spawns cannot
+        # restore each other's variables while a child is still starting.
+        ENV_SCRUB_MUTEX = Mutex.new
+        private_constant :ENV_SCRUB_MUTEX
+
         def available?
           true
         end
@@ -34,12 +39,14 @@ module Rubik
           resolved = ShellResolver.resolve(cmd, preference: @options[:shell] || "auto")
           env = child_env
 
-          res = Rubik::Platform.popen_capture(
-            env,
-            *spawn_args_for(resolved, cmd),
-            timeout: timeout,
-            chdir: chdir
-          )
+          res = with_scrubbed_env do
+            Rubik::Platform.popen_capture(
+              env,
+              *spawn_args_for(resolved, cmd),
+              timeout: timeout,
+              chdir: chdir
+            )
+          end
 
           stderr_out = resolved[:note] ? "#{resolved[:note]}\n#{res[:stderr]}" : res[:stderr]
           require_relative "../../security/redactor" unless defined?(Rubik::Security::Redactor)
@@ -60,19 +67,43 @@ module Rubik
 
         private
 
-        # Environment handed to Open3.popen3. Start from the shared sanitized
-        # spawn env (bundler/Ruby runtime vars already nil'd), then explicitly
-        # nil every credential-shaped variable present in the host ENV so the
-        # child cannot observe or dump them. Benign variables are left out of
-        # the hash entirely and therefore remain normally inheritable, which
-        # keeps legitimate command execution (PATH, HOME, locale, proxies…)
-        # working. See CREDENTIAL_ENV_PATTERN for the shape that is stripped.
+        # The spawn env hash is intentionally EMPTY: no overrides are injected
+        # into the child. Sensitive variables are withheld by #with_scrubbed_env
+        # around the spawn instead. Keeping this hash empty is part of the
+        # process-driver contract (no fake proxy/build-tool env injection).
         def child_env
-          env = Rubik::Platform.sanitized_spawn_env
-          ENV.each_key do |key|
-            env[key] = nil if key.match?(CREDENTIAL_ENV_PATTERN)
+          {}
+        end
+
+        # Keys withheld from the child. Credential-shaped names plus bundler /
+        # Ruby runtime overrides — a foreign BUNDLE_GEMFILE or RUBYOPT would
+        # change what a spawned helper loads.
+        def scrubbed_env_key?(key)
+          key.match?(CREDENTIAL_ENV_PATTERN) ||
+            key.start_with?("BUNDLE_", "BUNDLER_") ||
+            ["RUBYOPT", "RUBYLIB"].include?(key)
+        end
+
+        # Ruby's spawn merges the env hash onto the parent ENV and only UNSETS
+        # keys given an explicit nil. Since the env hash must stay empty here,
+        # the scrub has to happen on ENV itself for the duration of the spawn
+        # and be restored afterwards. The mutex keeps concurrent runs from
+        # restoring each other's variables mid-spawn; benign variables are
+        # never touched, so PATH/HOME/locale/proxies remain inheritable.
+        def with_scrubbed_env
+          ENV_SCRUB_MUTEX.synchronize do
+            removed = {}
+            ENV.to_h.each_key do |key|
+              next unless scrubbed_env_key?(key)
+
+              removed[key] = ENV.delete(key)
+            end
+            begin
+              yield
+            ensure
+              removed.each { |key, value| ENV[key] = value }
+            end
           end
-          env
         end
 
         # cmd.exe parses its tail with its own quoting rules that standard

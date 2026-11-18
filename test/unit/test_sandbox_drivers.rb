@@ -43,15 +43,25 @@ class TestSandboxDrivers < Minitest::Test
     originals = markers.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
     markers.each { |key, value| ENV[key] = value }
 
-    env = capture_process_args("echo ok").first
+    captured_env = nil
+    env_at_spawn = nil
+    Open3.stub :popen3, lambda { |env, *_args, &block|
+      captured_env = env
+      env_at_spawn = ENV.to_h
+      mock_thr = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 1234)
+      block.call(StringIO.new, StringIO.new(""), StringIO.new(""), mock_thr)
+    } do
+      Rubik::Sandbox::Driver::ProcessDriver.new.run("echo ok", chdir: @temp_dir)
+    end
 
-    assert_kind_of Hash, env
+    assert_empty captured_env, "no env overrides may be injected into the spawn hash"
     ["RUBIK_ENVTEST_KEY", "RUBIK_ENVTEST_TOKEN", "RUBIK_ENVTEST_SECRET", "RUBIK_ENVTEST_PASSWORD",
      "RUBIK_ENVTEST_ACCESS_KEY_ID"].each do |key|
-      assert env.key?(key), "expected #{key} to be explicitly unset in the child env"
-      assert_nil env[key], "expected #{key} to be unset in the child env"
+      refute env_at_spawn.key?(key), "#{key} must be withheld from the child at spawn time"
     end
-    refute env.key?("RUBIK_ENVTEST_SAFE"), "benign variables must remain inheritable"
+    assert_equal "keep-me", env_at_spawn["RUBIK_ENVTEST_SAFE"], "benign variables must remain inheritable"
+    assert_equal markers, markers.keys.to_h { |key| [key, ENV.fetch(key, nil)] },
+                 "host ENV must be restored after the run"
   ensure
     originals&.each { |key, value| value.nil? ? ENV.delete(key) : ENV[key] = value }
   end
@@ -377,19 +387,5 @@ class TestSandboxDrivers < Minitest::Test
         assert_includes res[:stdout], "still-runs"
       end
     end
-  end
-
-  private
-
-  def capture_process_args(cmd)
-    captured = nil
-    Open3.stub :popen3, lambda { |*args, &block|
-      captured = args
-      mock_thr = Struct.new(:value, :pid).new(Struct.new(:exitstatus).new(0), 1234)
-      block.call(StringIO.new, StringIO.new(""), StringIO.new(""), mock_thr)
-    } do
-      Rubik::Sandbox::Driver::ProcessDriver.new.run(cmd, chdir: @temp_dir)
-    end
-    captured
   end
 end
