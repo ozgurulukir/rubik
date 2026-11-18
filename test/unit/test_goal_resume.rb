@@ -449,6 +449,62 @@ class TestGoalResume < Minitest::Test
                "a body without the five Σ collections is not a resumable stamp"
   end
 
+  def test_load_refuses_a_corrupt_item_shape_before_unsuspend_consumes_the_stamp
+    ledger = led
+    ledger.suspend!(stamp_meta)
+    id = ledger.snapshot[:storage_id]
+    @store.put(type: "goal", id: id, title: "t",
+               body: JSON.generate({ "rev" => 1, "objective" => "g",
+                                     "tasks" => ["junk"], "findings" => [], "decisions" => [],
+                                     "open_questions" => [], "environment_notes" => [] }),
+               tags: ["goal-ledger"], links: { "suspended" => "{}" }, status: "suspended")
+
+    assert_nil GL::Ledger.load(store: @store, storage_id: id),
+               "a non-Hash task item must be refused at load"
+    row = @store.get(type: "goal", id: id)
+    assert_equal "suspended", row["status"], "the stamp survives — load refused before unsuspend!"
+    assert_equal "{}", row.dig("links", "suspended"), "the suspend meta is still intact"
+  end
+
+  def test_load_accepts_string_items_in_the_scalar_collection
+    ledger = led
+    ledger.suspend!(stamp_meta)
+    id = ledger.snapshot[:storage_id]
+    @store.put(type: "goal", id: id, title: "t",
+               body: JSON.generate({ "rev" => 1, "objective" => "g",
+                                     "tasks" => [{ "id" => "t1", "title" => "x", "status" => "todo" }],
+                                     "findings" => [], "decisions" => [],
+                                     "open_questions" => ["still a string?"], "environment_notes" => [] }),
+               tags: ["goal-ledger"], links: { "suspended" => "{}" }, status: "suspended")
+
+    loaded = GL::Ledger.load(store: @store, storage_id: id)
+    refute_nil loaded, "string items are valid in the scalar open_questions collection"
+    assert_equal ["still a string?"], loaded.snapshot_doc["open_questions"]
+  end
+
+  def test_retention_bounds_stale_suspended_rows_but_keeps_the_resume_target
+    ids = 20.times.map do |i|
+      one = GL::Ledger.create!(goal_text: "goal #{i}", store: @store)
+      one.suspend!(stamp_meta(attempt: i + 1))
+      one.snapshot[:storage_id]
+    end
+    before = Rubik::Orchestrator::GoalSession.suspended_rows(@store)
+    assert_equal 20, before.size
+    resume_target = before.last.id
+
+    # Any accepted patch triggers retention; it must bound stale suspended
+    # rows while preserving the row `.last` would resume.
+    worker = GL::Ledger.create!(goal_text: "worker", store: @store)
+    worker.update(JSON.generate({ "rev" => 0, "ops" => [{ "op" => "replace", "path" => "/objective",
+                                                          "value" => "worker v1" }] }))
+
+    after = Rubik::Orchestrator::GoalSession.suspended_rows(@store)
+    assert_operator after.size, :<, before.size, "stale suspended rows are reaped"
+    assert_includes after.map(&:id), resume_target, "the `.last` resume target survives"
+    assert_operator after.size, :<=, GL::Ledger::MAX_RETAINED_REVISIONS + 1
+    assert_includes ids, resume_target
+  end
+
   def test_suspend_degrades_without_store_but_keeps_in_process_resume_alive
     ledger = nil
     warns = capture_warnings do

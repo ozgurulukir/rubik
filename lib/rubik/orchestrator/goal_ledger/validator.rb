@@ -20,7 +20,26 @@ module Rubik
         # kalır ve validate içinde implicit self ile erişilir.
         extend DeepOps
 
+        # Σ belgesi cap'lidir (üstteki sözleşme): alan uzunlukları ve patch
+        # boyutu zaten sınırlıydı; koleksiyon başına öğe sayısı da sınırlanır.
+        # Yoksa pinli tek Σ satırı (refresh_in_history!) her adımda sınırsız
+        # büyür ve hiçbir compaction tier'ı onu küçültemez. SSOT burasıdır —
+        # Ledger.load da aynı tavanı okur.
+        MAX_ITEMS_PER_COLLECTION = 200
+
         module_function
+
+        # Σ gövde şekli kapısı (Ledger.load): koleksiyonlar dizi, madde
+        # listeleri Hash, skalar liste String olmalı; tavan SSOT burada.
+        def sigma_doc_well_formed?(doc, schema:)
+          return false unless doc.is_a?(Hash) && doc["rev"].is_a?(Integer) && doc["objective"]
+
+          schema.sections.all? do |name, spec|
+            coll = doc[name]
+            coll.is_a?(Array) && coll.size <= MAX_ITEMS_PER_COLLECTION &&
+              coll.all?(spec.item ? Hash : String)
+          end
+        end
 
         # patch_or_text: String (önce parse edilir) | GoalLedger::Patch
         # -> [:ok, new_doc, new_rev] | [:rejected, [reason, ...]]
@@ -139,7 +158,7 @@ module Rubik
             return [err] if err
 
             coll << op[:value]
-            return []
+            return collection_cap_rejection(op, name, coll)
           end
 
           idx = index_token(idx_tok, name, coll, op, insertable: op[:op] == :add)
@@ -148,14 +167,17 @@ module Rubik
           err = op[:op] == :remove ? nil : check_value(spec, op[:value], name, op)
           return [err] if err
 
-          if op[:op] == :add
+          case op[:op]
+          when :add
             coll.insert(idx, op[:value])
-          elsif op[:op] == :replace
+            collection_cap_rejection(op, name, coll)
+          when :replace
             coll[idx] = op[:value]
+            []
           else
             coll.delete_at(idx)
+            []
           end
-          []
         end
 
         # ---- item listesi (tasks/findings/...) ----
@@ -179,7 +201,7 @@ module Rubik
             return errs unless errs.empty?
 
             coll << op[:value]
-            return dup_id_rejections(coll, spec, name, op)
+            return dup_id_rejections(coll, spec, name, op) + collection_cap_rejection(op, name, coll)
           end
 
           idx = index_token(idx_tok, name, coll, op, insertable: op[:op] == :add)
@@ -193,8 +215,13 @@ module Rubik
           errs = validate_item_object(spec, op[:value], name, op)
           return errs unless errs.empty?
 
-          op[:op] == :add ? coll.insert(idx, op[:value]) : coll[idx] = op[:value]
-          dup_id_rejections(coll, spec, name, op)
+          if op[:op] == :add
+            coll.insert(idx, op[:value])
+            dup_id_rejections(coll, spec, name, op) + collection_cap_rejection(op, name, coll)
+          else
+            coll[idx] = op[:value]
+            dup_id_rejections(coll, spec, name, op)
+          end
         end
 
         def field_op(op, name, spec, coll, idx_tok)
@@ -325,6 +352,18 @@ module Rubik
         def append_only_rejection(op, name)
           rejection(:schema, op[:index], op[:path], "'-' appends; it cannot address an existing #{name} item",
                     "use a numeric index for replace/remove")
+        end
+
+        # Koleksiyon başına öğe tavanı: yalnız BÜYÜTEN op'lar reddedilir;
+        # replace/remove her zaman geçer (mevcut fazla öğeler temizlenebilir).
+        # Working copy zaten mutasyona uğramış olsa da ret tüm patch'i çöpe
+        # atar — current_doc dokunulmaz (atomiklik korunur).
+        def collection_cap_rejection(op, name, coll)
+          return [] if coll.size <= MAX_ITEMS_PER_COLLECTION
+
+          [rejection(:schema, op[:index], op[:path],
+                     "#{name} is at its cap of #{MAX_ITEMS_PER_COLLECTION} items",
+                     "remove an existing #{name} item before adding another")]
         end
 
         def dup_id_rejections(coll, spec, name, op)

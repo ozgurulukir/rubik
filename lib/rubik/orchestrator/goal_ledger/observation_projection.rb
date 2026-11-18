@@ -77,10 +77,13 @@ module Rubik
           before = Prompt::TokenEstimator.estimate_history(rows)
           units = Prompt::ContextCompactor.group_atomic_units(rows)
           anchor_idx = anchor_unit_index(units)
+          # Her apply! turunda TEK kez hesaplanır (O(n)): eskiden banked?
+          # her birim için assistant birimlerini yeniden tarardı (O(n²)).
+          recency_start = recency_start_index(units)
           count = 0
           rev_now = @ledger.rev
           units.each_with_index do |unit, idx|
-            next unless banked?(idx, anchor_idx, units)
+            next unless banked?(idx, anchor_idx, recency_start)
             next if Prompt::ContextCompactor.unit_pins_goal?(unit) # <user_task> taşıyan birim asla emilmez
 
             unit.each do |row|
@@ -114,12 +117,18 @@ module Rubik
         # Recency: son K assistant-taşıyan birimin İLKİnden itibaren her şey
         # (ve anchor'u ve sonrası) raw kalır; banked = idx < anchor VE
         # idx < recency_start.
-        def banked?(idx, anchor_idx, units)
+        def banked?(idx, anchor_idx, recency_start)
           return false if anchor_idx.nil? || idx >= anchor_idx
 
-          assistant_units = units.each_index.select { |i| units[i].any? { |r| assistant_row?(r) } }
-          recency_start = assistant_units[[assistant_units.size - @window, 0].max] || units.size
           idx < recency_start
+        end
+
+        # Son K assistant-taşıyan birimin İLKİ — tur boyunca sabit, bu yüzden
+        # apply! içinde bir kez hoist edilir. assistant_units listesi artık
+        # birim başına değil, tur başına kurulur (issue #551, O(n²) → O(n)).
+        def recency_start_index(units)
+          assistant_units = units.each_index.select { |i| units[i].any? { |r| assistant_row?(r) } }
+          assistant_units[[assistant_units.size - @window, 0].max] || units.size
         end
 
         def assistant_row?(row)
