@@ -37,7 +37,9 @@ module Rubik
         answer = p.select("Select an option:", choices, filter: true, per_page: 10)
         if answer == "Other (write-in response)"
           custom = p.ask("Your answer:")
-          custom.to_s.strip.empty? ? options.first : "Other (write-in): #{custom.strip}"
+          # An empty write-in is "no selection" — never bind the
+          # model-authored first option as the user's choice (#559).
+          custom.to_s.strip.empty? ? nil : "Other (write-in): #{custom.strip}"
         else
           answer
         end
@@ -59,7 +61,8 @@ module Rubik
         p = build_prompt
         answers = p.multi_select("Select options (Space: toggle, Enter: confirm):",
                                  options.uniq, filter: true, per_page: 10)
-        answers.empty? ? [options.first] : answers
+        # An empty confirmation means no selection, not the first option (#559).
+        answers
       rescue Interrupt, StandardError
         :cancelled
       ensure

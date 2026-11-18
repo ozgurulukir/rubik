@@ -69,9 +69,19 @@ module Rubik
         ellipsis = theme.glyph(:ellipsis)
         return str if display_width(str) <= max
 
-        "#{str[0...(max - display_width(ellipsis))]}#{ellipsis}"
-      rescue ArgumentError
-        str[0...max]
+        # Slice by accumulated display cells, not characters: a CJK/emoji run
+        # sliced by character count can still overrun the frame (#559).
+        budget = [max - display_width(ellipsis), 0].max
+        kept = +""
+        used = 0
+        str.each_char do |chr|
+          width = display_width(chr)
+          break if used + width > budget
+
+          kept << chr
+          used += width
+        end
+        "#{kept}#{ellipsis}"
       end
 
       # East-Asian wide + common emoji blocks that render two columns wide
