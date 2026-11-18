@@ -110,7 +110,7 @@ class TestShellAskYesNo < Minitest::Test
       tee = Rubik::REPL::TeeIO.new(real_target, StringIO.new)
       @shell, @d1, @d2 = build_shell(reline: fake_reline, output: tee)
       with_env("RUBIK_TEST", nil) do
-        assert_equal "y", @shell.ask_yes_no("Plan uygulansın mı?", default: "n")
+        assert_equal "y", @shell.ask_yes_no("[Rubik::Plan] Should the plan be applied?", default: "n")
         assert_equal 1, reads.size, "must READ via Reline when tee wraps real output"
       end
     end

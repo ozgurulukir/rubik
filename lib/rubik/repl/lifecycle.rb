@@ -151,8 +151,7 @@ module Rubik
         return unless Rubik::Storage::Layout.config_get(@config, "connect.first_run_offer", true)
         return unless llm_client_pending?
 
-        answer = ask_yes_no("Hiç model sağlayıcısı yapılandırılmamış görünüyor. Bağlantı sihirbazı çalıştırılsın mı? / " \
-                            "No LLM provider is configured yet. Run the connect wizard?", default: "n")
+        answer = ask_yes_no("No LLM provider is configured yet. Run the connect wizard?", default: "n")
         return unless ["y", "yes", "evet"].include?(answer.to_s.downcase)
 
         ui = Rubik::Connect::PromptUI.new(input: @input,

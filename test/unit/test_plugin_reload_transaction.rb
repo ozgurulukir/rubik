@@ -211,12 +211,12 @@ class TestPluginReloadTransaction < Minitest::Test
     install(PLUGIN, broken_body(PLUGIN, "2.0.0", "a2"))
     ctx = Struct.new(:out, :runtime_manager).new(StringIO.new, @runtime)
     Rubik::REPL::Commands::Plugins.reload_plugin(ctx, @manager, @storage, PLUGIN)
-    assert_includes ctx.out.string, "❌ Hata"
+    assert_includes ctx.out.string, "❌ Error"
 
     install(PLUGIN, valid_body(PLUGIN, "3.0.0", "a3"))
     ctx = Struct.new(:out, :runtime_manager).new(StringIO.new, @runtime)
     Rubik::REPL::Commands::Plugins.reload_plugin(ctx, @manager, @storage, PLUGIN)
-    assert_includes ctx.out.string, "başarıyla yeniden yüklendi"
+    assert_includes ctx.out.string, "reloaded successfully"
   end
 
   def test_load_plugin_file_with_broken_replacement_does_not_destroy_running_plugin

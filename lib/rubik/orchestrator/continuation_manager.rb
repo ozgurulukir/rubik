@@ -66,16 +66,16 @@ module Rubik
 
         unless enabled?
           rec = (max_tokens.to_i * 2).positive? ? max_tokens.to_i * 2 : 8192
-          diag = "⚠️ Model çıktısı maksimum token sınırına (max_output_tokens: #{max_tokens}) ulaştığı için tamamlanamadan kesildi.\n" \
-                 "Çözüm: Çıktı token bütçesini artırmak için şu komutu çalıştırabilirsiniz:\n  !config set llm.default_max_output_tokens #{rec}"
+          diag = "⚠️ Model output reached the maximum token limit (max_output_tokens: #{max_tokens}) and was cut off before completion.\n" \
+                 "Solution: To increase the output token budget, you can run the following command:\n  !config set llm.default_max_output_tokens #{rec}"
           return { continue: false, error: diag }
         end
 
         if ceiling_reached?
           rec = (max_tokens.to_i * 2).positive? ? max_tokens.to_i * 2 : 8192
-          diag = "⚠️ Model çıktısı maksimum token sınırına (max_output_tokens: #{max_tokens}) ulaştığı için " \
-                 "ve #{@max_auto_continues} otomatik devam denemesi tükendiği için durduruldu.\n" \
-                 "Çözüm: Çıktı token bütçesini artırmak için şu komutu çalıştırabilirsiniz:\n  !config set llm.default_max_output_tokens #{rec}"
+          diag = "⚠️ Model output reached the maximum token limit (max_output_tokens: #{max_tokens}) and " \
+                 "the #{@max_auto_continues} automatic continue attempts were exhausted, so it was stopped.\n" \
+                 "Solution: To increase the output token budget, you can run the following command:\n  !config set llm.default_max_output_tokens #{rec}"
           return { continue: false, error: diag }
         end
 

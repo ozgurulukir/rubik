@@ -119,7 +119,7 @@ class TestPlanAndGoal < Minitest::Test
 
     out = @output.string
     assert_includes out, "Max steps budget exceeded"
-    assert_includes out, "Adım bütçesi +20 artırılıyor", "approved extension must resume the loop"
+    assert_includes out, "Increasing step budget by +20 and resuming the goal...", "approved extension must resume the loop"
     assert_includes out, "Goal Achieved in 3 steps", "run must finish on the extended budget"
 
     goal_turns = @shell.conversation_history.count { |m| m[:content].to_s.include?("Goal: Fix the failing spec") }
@@ -141,7 +141,7 @@ class TestPlanAndGoal < Minitest::Test
     out = @output.string
     # Non-interactive ask_yes_no short-circuits to the default "n" — the
     # decline is observable through the ABSENCE of the extension banner.
-    refute_includes out, "Adım bütçesi +20 artırılıyor", "declined extension must not resume"
+    refute_includes out, "Increasing step budget by +20 and resuming the goal...", "declined extension must not resume"
     assert_includes out, "Goal could not be completed"
 
     contents = @shell.conversation_history.map { |m| m[:content].to_s }
@@ -560,7 +560,7 @@ class TestPlanAndGoal < Minitest::Test
     @shell.execute_input("!goal Auto continue goal")
 
     out = @output.string
-    assert_includes out, "Otonom devam hakkı (1/1) kullanılarak +20 adım ekleniyor", "must auto-continue without prompting"
+    assert_includes out, "Using autonomous continue allowance (1/1), +20 steps are being added...", "must auto-continue without prompting"
     assert_includes out, "Goal Achieved in 3 steps"
     state = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
     assert_equal 22, state.max_steps, "auto-extension must raise the visible goal budget (2 + 20)"
@@ -576,7 +576,7 @@ class TestPlanAndGoal < Minitest::Test
     @shell.execute_input("!goal -s Missing value must not start")
 
     out = @output.string
-    assert_equal 3, out.scan("--steps pozitif bir tam sayı bekliyor").length, "every invalid --steps form must be rejected"
+    assert_equal 3, out.scan("--steps expects a positive integer").length, "every invalid --steps form must be rejected"
     refute_includes out, "Starting autonomous goal loop", "no goal may start from an invalid flag"
   end
 end

@@ -6,13 +6,13 @@ module Rubik
       module Plugins
         # Whole-command synopsis: shared by the spine registration (usage:)
         # and the unknown-subcommand fallback branch, so the two cannot drift.
-        USAGE_PLUGIN = "Kullanım: !plugin [list|add|remove|reload|enable|disable|info]"
+        USAGE_PLUGIN = "Usage: !plugin [list|add|remove|reload|enable|disable|info]"
 
         def self.register(shell)
           handler = proc do |args, ctx|
             manager = ctx.plugin_manager
             unless manager
-              ctx.out.puts "Eklenti yöneticisi bulunamadı."
+              ctx.out.puts "Plugin manager not found."
               next
             end
 
@@ -37,23 +37,23 @@ module Rubik
             when "info"
               info_plugin(ctx, manager, args[1])
             else
-              ctx.out.puts "Bilinmeyen komut: #{subcommand}. #{USAGE_PLUGIN}"
+              ctx.out.puts "Unknown command: #{subcommand}. #{USAGE_PLUGIN}"
             end
           end
 
-          shell.register_command("plugin", description: "Eklenti yönetimi: list, add, remove, reload, enable, disable, info",
+          shell.register_command("plugin", description: "Plugin management: list, add, remove, reload, enable, disable, info",
                                            usage: USAGE_PLUGIN, audience: :human, &handler)
-          shell.register_command("plugins", description: "Yüklü eklentileri listeler", usage: USAGE_PLUGIN, audience: :human) do |_args, ctx|
+          shell.register_command("plugins", description: "Lists installed plugins", usage: USAGE_PLUGIN, audience: :human) do |_args, ctx|
             handler.call(["list"], ctx)
           end
         end
 
         def self.list_plugins(ctx, manager, storage)
-          ctx.out.puts "🧩 Eklentiler (Plugins)"
+          ctx.out.puts "🧩 Plugins"
           ctx.out.puts "======================"
 
           if manager.registered_plugins.empty? && (!storage || storage.discover_plugins.empty?)
-            ctx.out.puts "Yüklü eklenti yok."
+            ctx.out.puts "No plugins installed."
           else
             manager.registered_plugins.each do |gem_name|
               component_name = "plugin_#{gem_name}"
@@ -66,7 +66,7 @@ module Rubik
           if storage
             dropins = storage.discover_plugins
             unless dropins.empty?
-              ctx.out.puts "\n📂 Drop-in Eklentileri"
+              ctx.out.puts "\n📂 Drop-in Plugins"
               ctx.out.puts "======================"
               dropins.each do |meta|
                 component_name = "plugin_#{meta[:name]}"
@@ -77,10 +77,10 @@ module Rubik
             end
           end
 
-          ctx.out.puts "\n🔗 Alias Tablosu"
+          ctx.out.puts "\n🔗 Alias Table"
           ctx.out.puts "================"
           if manager.aliases.empty?
-            ctx.out.puts "Kayıtlı alias yok."
+            ctx.out.puts "No registered aliases."
           else
             manager.aliases.each do |short, full|
               ctx.out.puts "- !#{short} -> !#{full}"
@@ -90,12 +90,12 @@ module Rubik
 
         def self.add_plugin(ctx, manager, storage, path, flags)
           unless storage
-            ctx.out.puts "Hata: Drop-in eklenti motoru aktif değil."
+            ctx.out.puts "Error: Drop-in plugin engine is not active."
             return
           end
 
           unless path
-            ctx.out.puts "Hata: Eklenti yolu belirtilmedi. Kullanım: !plugin add <path>"
+            ctx.out.puts "Error: Plugin path not specified. Usage: !plugin add <path>"
             return
           end
 
@@ -103,7 +103,7 @@ module Rubik
           result = storage.add_plugin(path, scope: scope)
 
           if result[:ok]
-            ctx.out.puts "✅ Eklenti #{result[:name]} (#{scope}) başarıyla eklendi."
+            ctx.out.puts "✅ Plugin #{result[:name]} (#{scope}) added successfully."
 
             # Build a proper plugin_meta for load_plugin_file:
             # storage.add_plugin returns {ok, name, path, type} but
@@ -112,72 +112,72 @@ module Rubik
             # $LOAD_PATH.
             plugin_meta = build_plugin_meta(result, scope)
             if manager.load_plugin_file(plugin_meta, runtime_manager: ctx.runtime_manager)
-              ctx.out.puts "🚀 Eklenti #{result[:name]} canlı olarak yüklendi."
+              ctx.out.puts "🚀 Plugin #{result[:name]} loaded live."
             else
-              ctx.out.puts "⚠️ Eklenti #{result[:name]} dosyası kopyalandı ancak yüklenemedi."
+              ctx.out.puts "⚠️ Plugin #{result[:name]} file was copied but could not be loaded."
             end
           else
-            ctx.out.puts "❌ Hata: #{result[:error]}"
+            ctx.out.puts "❌ Error: #{result[:error]}"
           end
         end
 
         def self.remove_plugin(ctx, manager, storage, name, flags)
           unless storage
-            ctx.out.puts "Hata: Drop-in eklenti motoru aktif değil."
+            ctx.out.puts "Error: Drop-in plugin engine is not active."
             return
           end
           unless name
-            ctx.out.puts "Hata: Eklenti adı belirtilmedi."
+            ctx.out.puts "Error: Plugin name not specified."
             return
           end
 
           scope = flags.include?("--global") ? :global : :project
 
           unloaded = manager.unload_plugin(name, runtime_manager: ctx.runtime_manager)
-          ctx.out.puts "🧹 Eklenti #{name} fiber'ı sonlandırıldı (ters kayıtlar işletildi)." if unloaded
+          ctx.out.puts "🧹 Plugin #{name} fiber terminated (inverse records executed)." if unloaded
 
           result = storage.remove_plugin(name, scope: scope)
           if result[:ok]
-            ctx.out.puts "🗑️ Eklenti #{name} diskten (#{scope}) silindi."
+            ctx.out.puts "🗑️ Plugin #{name} deleted from disk (#{scope})."
           else
-            ctx.out.puts "⚠️ Eklenti diskten silinemedi: #{result[:error]}"
+            ctx.out.puts "⚠️ Plugin could not be deleted from disk: #{result[:error]}"
           end
         end
 
         def self.reload_plugin(ctx, manager, storage, name)
           unless storage
-            ctx.out.puts "Hata: Drop-in eklenti motoru aktif değil."
+            ctx.out.puts "Error: Drop-in plugin engine is not active."
             return
           end
           unless name
-            ctx.out.puts "Hata: Eklenti adı belirtilmedi."
+            ctx.out.puts "Error: Plugin name not specified."
             return
           end
 
           if manager.reload_plugin(name, storage: storage, runtime_manager: ctx.runtime_manager)
-            ctx.out.puts "🔄 Eklenti #{name} başarıyla yeniden yüklendi (zero-downtime)."
+            ctx.out.puts "🔄 Plugin #{name} reloaded successfully (zero-downtime)."
           else
-            ctx.out.puts "❌ Hata: Eklenti #{name} yeniden yüklenemedi."
+            ctx.out.puts "❌ Error: Plugin #{name} could not be reloaded."
           end
         end
 
         def self.enable_plugin(ctx, _manager, name)
           # Not implemented deeply for now, simply unpauses fiber
-          ctx.out.puts "Eklenti #{name} etkinleştirildi (placeholder)."
+          ctx.out.puts "Plugin #{name} enabled (placeholder)."
         end
 
         def self.disable_plugin(ctx, _manager, name)
-          ctx.out.puts "Eklenti #{name} devre dışı bırakıldı (placeholder)."
+          ctx.out.puts "Plugin #{name} disabled (placeholder)."
         end
 
         def self.info_plugin(ctx, _manager, name)
           if Rubik::Plugin::Registry.get(name)
             def_obj = Rubik::Plugin::Registry.get(name)
-            ctx.out.puts "Eklenti: #{def_obj.name} v#{def_obj.version}"
-            ctx.out.puts "Açıklama: #{def_obj.description}"
-            ctx.out.puts "Bağımlılıklar (inject): #{def_obj.inject.join(', ')}"
+            ctx.out.puts "Plugin: #{def_obj.name} v#{def_obj.version}"
+            ctx.out.puts "Description: #{def_obj.description}"
+            ctx.out.puts "Dependencies (inject): #{def_obj.inject.join(', ')}"
           else
-            ctx.out.puts "Eklenti bilgisi bulunamadı."
+            ctx.out.puts "Plugin info not found."
           end
         end
 

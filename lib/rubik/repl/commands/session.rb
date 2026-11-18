@@ -46,7 +46,7 @@ module Rubik
 
           def run_paste(ctx)
             ctx.request_paste!
-            ctx.out.puts "[Rubik] Paste modu bir sonraki prompt'ta başlayacak."
+            ctx.out.puts "[Rubik] Paste mode will begin on the next prompt."
           end
 
           def run_replay(args, ctx)
@@ -97,7 +97,7 @@ module Rubik
             if target_id.nil?
               picked = interactive_session_pick(ctx)
               if picked == :picker_cancelled
-                ctx.out.puts "[Rubik::Session] Resume iptal edildi."
+                ctx.out.puts "[Rubik::Session] Resume cancelled."
                 return
               end
               target_id = picked || :latest
@@ -194,11 +194,11 @@ module Rubik
             return nil if sessions.empty?
 
             prompt = Rubik::UI::Approvals.build_prompt(ctx)
-            prompt.select("Devam edilecek oturumu seç:") do |menu|
+            prompt.select("Select the session to resume:") do |menu|
               sessions.first(15).each do |s|
-                menu.choice "#{s[:id]} · #{s[:event_count]} olay · \"#{s[:last_prompt].to_s[0, 40]}\"", s[:id]
+                menu.choice "#{s[:id]} · #{s[:event_count]} events · \"#{s[:last_prompt].to_s[0, 40]}\"", s[:id]
               end
-              menu.choice "← en son oturum (:latest)", :latest
+              menu.choice "← latest session (:latest)", :latest
             end
           rescue Interrupt
             Rubik::REPL::InterruptHandler.restore_console_after_interrupt

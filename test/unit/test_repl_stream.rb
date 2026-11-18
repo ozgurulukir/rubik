@@ -109,6 +109,6 @@ class TestReplStream < Minitest::Test
     @shell.execute_free_text("Task to be cancelled")
 
     out_str = @output.string
-    assert_includes out_str, "Görev kullanıcı tarafından iptal edildi (^C)"
+    assert_includes out_str, "Task cancelled by user (^C)"
   end
 end

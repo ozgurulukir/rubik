@@ -105,7 +105,7 @@ class TestUIRenderer < Minitest::Test
   def test_thinking_static_line_when_spinner_unavailable
     out = renderer.render({ type: :thinking, step: 2, max_steps: 40,
                             provider: "deepseek", model: "coder" })
-    assert_includes out, "⏳ Düşünüyor [2/40]"
+    assert_includes out, "⏳ Thinking [2/40]"
     assert_includes out, "deepseek/coder"
   end
 

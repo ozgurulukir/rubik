@@ -15,9 +15,12 @@
 require_relative "../lib/rubik/tools/catalog"
 
 TOOLS_MD = File.expand_path("../TOOLS.md", __dir__)
-TABLE_HEADER = /^## 📊 .*Araç Özet Tablosu.*\z/.freeze
+# Matchers stay language-agnostic so they survive a future translation of
+# TOOLS.md, but the emitted prose remains Turkish: TOOLS.md is intentionally
+# not translated, and a half-English regeneration would corrupt its grammar.
+TABLE_HEADER = /^## 📊 .*\z/.freeze
 ROW = /\A\| \*\*`([a-z0-9_]+)`\*\* *\| *(.+?) *\| `:(read|write|execute)` *\| (.*) \|\z/.freeze
-OVERVIEW_COUNT = /\*\*[^*]*yerleşik[^*]*\*\*/.freeze
+OVERVIEW_COUNT = /\*\*\d+[^*]*\*\*/.freeze
 
 def aliases_cell(declaration)
   return "—" if declaration.aliases.empty?

@@ -72,7 +72,7 @@ class TestUITheme < Minitest::Test
   end
 
   def test_default_spinner_verbs_present_and_custom_override
-    assert Rubik::UI::Theme::DEFAULT_SPINNER_VERBS.include?("Düşünüyor")
+    assert Rubik::UI::Theme::DEFAULT_SPINNER_VERBS.include?("Thinking")
 
     custom = Rubik::UI::Theme.new(enabled: false, spinner_verbs: ["Küpüyor"])
     assert_equal ["Küpüyor"], custom.spinner_verbs

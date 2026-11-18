@@ -15,8 +15,8 @@ module Rubik
 
         # Whole-command synopses: shared by the spine registration (usage:)
         # and the empty-args branches that print them, so the two cannot drift.
-        USAGE_PLAN = "Kullanım: !plan <görev açıklaması>"
-        USAGE_GOAL = "Kullanım: !goal [--steps N|-s N] <hedef açıklaması>  |  !goal resume  |  !goal list"
+        USAGE_PLAN = "Usage: !plan <task description>"
+        USAGE_GOAL = "Usage: !goal [--steps N|-s N] <goal description>  |  !goal resume  |  !goal list"
 
         # The !goal run lifecycle (start/suspend/resume/terminal mapping) is
         # the Orchestrator::GoalSession domain (issue #404); this module keeps
@@ -59,15 +59,15 @@ module Rubik
               ctx.out.puts "\n=== Proposed Plan ==="
               ctx.out.puts res[:output]
               ctx.out.puts "=====================\n"
-              ans = ctx.ask_yes_no("[Rubik::Plan] Plan uygulansın mı?", default: "y")
+              ans = ctx.ask_yes_no("[Rubik::Plan] Should the plan be applied?", default: "y")
               if ["y", "yes", "evet"].include?(ans)
                 ctx.out.puts "[Rubik::Act] Executing approved plan..."
                 ctx.execute_free_text("Execute the following approved plan step by step:\n#{res[:output]}")
               else
-                ctx.out.puts "[Rubik] Plan iptal edildi."
+                ctx.out.puts "[Rubik] Plan cancelled."
               end
             else
-              ctx.out.puts "Plan üretilemedi: #{res[:error]}"
+              ctx.out.puts "Plan could not be generated: #{res[:error]}"
             end
           end
         end
@@ -85,7 +85,7 @@ module Rubik
             parsed = parse_goal_args(args)
             if !parsed[:valid]
               ctx.out.puts USAGE_GOAL
-              ctx.out.puts "⚠️ [Rubik::Goal] --steps pozitif bir tam sayı bekliyor (örn. !goal --steps 200 <hedef>)"
+              ctx.out.puts "⚠️ [Rubik::Goal] --steps expects a positive integer (e.g. !goal --steps 200 <goal>)"
               next
             elsif parsed[:goal_text].empty?
               ctx.out.puts USAGE_GOAL
@@ -190,15 +190,15 @@ module Rubik
 
             if clean_args.empty? || subcmd == "status"
               enabled = Rubik::Storage::Layout.config_get(ctx.config, "sandbox.enabled", false)
-              state_str = enabled ? "Açık (enabled)" : "Kapalı (disabled - direct safe execution)"
+              state_str = enabled ? "Enabled" : "Disabled - direct safe execution"
               driver_name = ctx.sandbox_runner&.driver&.name || Rubik::Storage::Layout.config_get(ctx.config, "sandbox.driver", "bwrap")
               net_str = Rubik::Storage::Layout.config_get(ctx.config, "sandbox.allow_network", false) ? "allowed" : "blocked"
 
-              ctx.out.puts "=== Sandbox Durumu ==="
-              ctx.out.puts "Durum:       #{state_str}"
-              ctx.out.puts "Aktif Motor: #{driver_name}"
-              ctx.out.puts "Ağ:          #{net_str}"
-              ctx.out.puts "Kayıtlı:     #{registered_keys.join(', ')}"
+              ctx.out.puts "=== Sandbox Status ==="
+              ctx.out.puts "Status:        #{state_str}"
+              ctx.out.puts "Active Driver: #{driver_name}"
+              ctx.out.puts "Network:       #{net_str}"
+              ctx.out.puts "Registered:    #{registered_keys.join(', ')}"
             elsif subcmd == "on"
               res = ctx.config.set("sandbox.enabled", true, persist: scope)
               driver_res = ctx.config.set("sandbox.driver", "bwrap", persist: scope) if Rubik::Platform.linux?
@@ -212,7 +212,7 @@ module Rubik
 
               ctx.out.puts "[Sandbox] Disabled (direct safe execution active)."
             elsif registered_map.key?(subcmd)
-              ctx.out.puts "⚠️ [Sandbox] 'bwrap' yalnızca Linux üzerinde desteklenir." if ["bwrap", "bubblewrap"].include?(subcmd) && !Rubik::Platform.linux?
+              ctx.out.puts "⚠️ [Sandbox] 'bwrap' is only supported on Linux." if ["bwrap", "bubblewrap"].include?(subcmd) && !Rubik::Platform.linux?
               res = ctx.config.set("sandbox.enabled", true, persist: scope)
               driver_res = ctx.config.set("sandbox.driver", subcmd, persist: scope)
               next if Base.report_persist_failure(ctx, res, scope)
@@ -220,7 +220,7 @@ module Rubik
 
               ctx.out.puts "[Sandbox] Driver set to '#{subcmd}' (enabled)."
             else
-              ctx.out.puts "[Sandbox] Bilinmeyen alt komut veya sürücü: '#{subcmd}'. Kayıtlı sürücüler: #{registered_keys.join(', ')}"
+              ctx.out.puts "[Sandbox] Unknown subcommand or driver: '#{subcmd}'. Registered drivers: #{registered_keys.join(', ')}"
             end
           end
         end

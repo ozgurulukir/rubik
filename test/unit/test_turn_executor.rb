@@ -104,7 +104,7 @@ class TestTurnExecutor < Minitest::Test
     result = @executor.call(response(text: "Still cutting off...", raw: { "finish_reason" => "length" }))
 
     refute result[:ok]
-    assert_includes result[:error], "3 otomatik devam denemesi tükendiği için durduruldu"
+    assert_includes result[:error], "3 automatic continue attempts were exhausted, so it was stopped"
     error_event = @events.find { |e| e[:type] == :error }
     refute_nil error_event
   end

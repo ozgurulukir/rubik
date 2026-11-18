@@ -23,11 +23,11 @@ module Rubik
       def render(shell, theme)
         fibers = shell.runtime_manager&.fibers || {}
         if fibers.empty?
-          shell.output.puts "Kayıtlı fiber/ajan yok."
+          shell.output.puts "No registered fiber/agent."
           return
         end
 
-        shell.output.puts "=== Ajan / Fiber Panosu ==="
+        shell.output.puts "=== Agent / Fiber Panel ==="
         rows = fibers.values.sort_by { |f| STATE_ORDER[f.state] || 99 }
         rows.each do |fiber|
           shell.output.puts detail_line(fiber, theme)
@@ -50,9 +50,9 @@ module Rubik
         inst = fiber.instance
         if inst.respond_to?(:step_count)
           depth = fiber.sub_context ? " · Ω#{fiber.sub_context.disposable_count}" : ""
-          "adım #{inst.step_count}/#{inst.max_steps}#{depth}"
+          "step #{inst.step_count}/#{inst.max_steps}#{depth}"
         elsif fiber.state == :failed
-          "hata: #{fiber.last_error&.message.to_s[0, 50]}"
+          "error: #{fiber.last_error&.message.to_s[0, 50]}"
         else
           deps = fiber.inject
           deps.empty? ? "-" : "coeffects: #{deps.join(', ')}"
@@ -62,8 +62,8 @@ module Rubik
       def select_fiber(shell, rows, _theme)
         prompt = Approvals.build_prompt(shell)
         choices = rows.map { |f| { name: "#{STATE_GLYPHS[f.state]} #{f.name}", value: f } }
-        choices << { name: "← çıkış", value: nil }
-        prompt.select("Detay için fiber seç:") do |menu|
+        choices << { name: "← exit", value: nil }
+        prompt.select("Select a fiber for details:") do |menu|
           choices.each { |c| menu.choice c[:name], c[:value] }
         end
       rescue Interrupt
@@ -77,15 +77,15 @@ module Rubik
         inst = fiber.instance
         shell.output.puts
         shell.output.puts theme.paint("── #{fiber.name} ──", :bold)
-        shell.output.puts "  Durum       : #{STATE_GLYPHS[fiber.state]} #{fiber.state}"
+        shell.output.puts "  State       : #{STATE_GLYPHS[fiber.state]} #{fiber.state}"
         shell.output.puts "  Coeffects   : #{fiber.inject.join(', ')}"
-        shell.output.puts "  Ω derinliği : #{fiber.sub_context ? fiber.sub_context.disposable_count : 0}"
+        shell.output.puts "  Ω depth     : #{fiber.sub_context ? fiber.sub_context.disposable_count : 0}"
         if inst.respond_to?(:step_count)
-          shell.output.puts "  Adım        : #{inst.step_count}/#{inst.max_steps}"
+          shell.output.puts "  Step        : #{inst.step_count}/#{inst.max_steps}"
           shell.output.puts "  Token       : #{inst.total_tokens.inspect}" if inst.respond_to?(:total_tokens)
         end
-        shell.output.puts "  Son hata    : #{fiber.last_error&.message}" if fiber.last_error
-        shell.output.puts theme.paint("  (enter ile panoya dön)", :dim)
+        shell.output.puts "  Last error  : #{fiber.last_error&.message}" if fiber.last_error
+        shell.output.puts theme.paint("  (press enter to return to the panel)", :dim)
       end
 
       def interactive?(shell)

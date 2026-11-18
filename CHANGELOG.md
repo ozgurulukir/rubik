@@ -27,6 +27,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   overrides (`max_retries`, `max_429_retries`, backoff, wall clock, ...)
   through the same `ProviderResolver` seam as the root loop — previously
   only the global `llm.*` spelling reached them.
+- User-facing REPL, CLI and UI messages now render in English. Bilingual
+  Turkish/English strings keep only the English half; `Vakanüvis` domain
+  vocabulary, Turkish test fixtures and the generated `TOOLS.md` are
+  intentionally unchanged. Turkish resume phrases (`devam et`) still work.
 
 ## [0.13.0] - 2026-11-17
 

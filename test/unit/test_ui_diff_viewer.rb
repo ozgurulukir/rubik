@@ -90,7 +90,7 @@ class TestUIDiffViewer < Minitest::Test
   def test_apply_all_with_no_dirty_files
     Rubik::UI::DiffViewer.apply_all(@shell)
 
-    assert_includes @output.string, "Uygulanacak değişiklik kalmadı."
+    assert_includes @output.string, "No changes left to apply."
   end
 
   def test_apply_all_applies_dirty_files
@@ -101,7 +101,7 @@ class TestUIDiffViewer < Minitest::Test
 
     Rubik::UI::DiffViewer.apply_all(@shell)
 
-    assert_includes @output.string, "Uygulandı"
+    assert_includes @output.string, "Applied"
     assert_includes @output.string, "new_file.rb"
   end
 end

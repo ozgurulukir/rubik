@@ -62,7 +62,7 @@ class TestReplConnectCommand < Minitest::Test
                                      ->(_k, _q, choices, _d) { choices.find { |c| c.include?("Ollama") } },
                                      ->(_k, _q, _c, d) { d },                             # endpoint
                                      ->(_k, _q, choices, _d) { choices.find { |c| c.include?("qwen:7b") } },
-                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("Sadece default") } },
+                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("default only") } },
                                      ->(_k, _q, _c, _d) { true }                          # confirm
                                    ])
 
@@ -95,12 +95,12 @@ class TestReplConnectCommand < Minitest::Test
 
     ui = ScriptedConnectPrompt.new([
                                      ->(_k, _q, choices, _d) { choices.find { |c| c.include?("OpenAI") } },
-                                     ->(_k, _q, _c, d) { d },                                              # endpoint
-                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("Hayır") } }, # session header: no
-                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("API anahtarı") } },
+                                     ->(_k, _q, _c, d) { d }, # endpoint
+                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("No") } }, # session header: no
+                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("API key") } },
                                      ->(*_args) { "fake-repl-key" },
                                      ->(_k, _q, choices, _d) { choices.find { |c| c.include?("gpt-live") } },
-                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("Sadece default") } },
+                                     ->(_k, _q, choices, _d) { choices.find { |c| c.include?("default only") } },
                                      ->(_k, _q, _c, _d) { true }
                                    ])
 

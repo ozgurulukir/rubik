@@ -224,14 +224,14 @@ class TestConfigPersistence < Minitest::Test
     # Verbless usage produces smart guidance: !config lsp.enabled true
     out.reopen
     shell.execute_input("!config lsp.enabled true")
-    assert_includes out.string, "[Rubik::Config] Geçersiz kullanım."
+    assert_includes out.string, "[Rubik::Config] Invalid usage."
     assert_includes out.string, "!config set lsp.enabled true"
     assert_includes out.string, "!config get lsp.enabled"
 
     # Verbless single key usage produces smart guidance: !config lsp.enabled
     out.reopen
     shell.execute_input("!config lsp.enabled")
-    assert_includes out.string, "[Rubik::Config] Geçersiz kullanım."
+    assert_includes out.string, "[Rubik::Config] Invalid usage."
     assert_includes out.string, "!config get lsp.enabled"
 
     # Explicit set: !config set lsp.enabled true

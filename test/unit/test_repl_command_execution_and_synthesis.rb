@@ -177,7 +177,7 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
     # 1. Status
     @output.reopen
     @shell.execute_input("!sandbox status")
-    assert_includes @output.string, "Sandbox Durumu"
+    assert_includes @output.string, "Sandbox Status"
     assert_includes @output.string, "bwrap"
 
     # 2. Enable sandbox
