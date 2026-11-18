@@ -16,7 +16,7 @@ module Rubik
         return nil unless Capability.interactive?(input: shell.input, output: shell.output)
 
         routed = Statusline.current_route(shell)
-        model = routed ? Statusline.model_label(routed) : "model yapılandırılmamış"
+        model = routed ? Statusline.model_label(routed) : "model not configured"
         project = File.basename(shell.buffer_manager&.root_dir || Dir.pwd)
         branch = shell.detect_git_branch || "no-git"
 
@@ -24,13 +24,13 @@ module Rubik
           "🎲 Rubik v#{Rubik::VERSION}",
           theme.paint(model, :info),
           theme.paint("#{project} · #{branch}", :dim),
-          theme.paint("!help komutlar · ctrl+c kes · !config ayarlar", :dim)
+          theme.paint("!help commands · ctrl+c interrupt · !config settings", :dim)
         ]
 
         if Rubik::Platform.linux? && Rubik::Platform.which("bwrap") &&
            !Rubik::Storage::Layout.config_get(shell.config, "sandbox.enabled", false) &&
            Rubik::Storage::Layout.config_get(shell.config, "sandbox.prompt_on_startup", true)
-          lines << theme.paint("💡 Linux & bwrap algılandı: '!sandbox on' ile donanımsal OS izolasyonu açılabilir", :warn)
+          lines << theme.paint("💡 Linux & bwrap detected: hardware OS isolation can be enabled with '!sandbox on'", :warn)
         end
 
         Frame.draw(

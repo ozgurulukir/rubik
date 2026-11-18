@@ -57,7 +57,7 @@ module Rubik
               cmd_meta[:handler].call(parsed.args, command_context)
             rescue Interrupt
               Rubik::REPL::InterruptHandler.restore_console_after_interrupt
-              @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
+              @output.puts "\n⚠️ [Rubik] Command cancelled by user (^C)."
             ensure
               # !goal dahil lifecycle komutları tracked dal ile aynı spinner
               # garantisini taşır (field incident 2026-10-12: !goal'ten kaçan
@@ -74,7 +74,7 @@ module Rubik
             rescue Interrupt
               cmd_interrupted = true
               Rubik::REPL::InterruptHandler.restore_console_after_interrupt
-              @output.puts "\n⚠️ [Rubik] Komut kullanıcı tarafından iptal edildi (^C)."
+              @output.puts "\n⚠️ [Rubik] Command cancelled by user (^C)."
             ensure
               # A command (!plan/!goal) may leave a live spinner if it died mid-wait.
               kill_command_spinner!
@@ -99,7 +99,7 @@ module Rubik
           reap_dead_kernel_units! if respond_to?(:reap_dead_kernel_units!)
         else
           available = @commands.keys.sort.map { |c| "!#{c}" }.join(", ")
-          @output.puts "Bilinmeyen komut: !#{parsed.command_name}. Kullanılabilir komutlar: #{available} (!help'e bakın)."
+          @output.puts "Unknown command: !#{parsed.command_name}. Available commands: #{available} (see !help)."
         end
       end
 
@@ -225,7 +225,7 @@ module Rubik
         return routed if routed[:provider]
 
         spec_str = routed[:spec].is_a?(Hash) ? "#{routed[:spec]['provider']}/#{routed[:spec]['name']}" : routed[:spec].to_s
-        @output.puts "Hata: Model sağlayıcısı başlatılamadı (#{spec_str})."
+        @output.puts "Error: Could not initialize model provider (#{spec_str})."
         record_failed_turn!(text, "failed", "no LLM provider available (#{spec_str})", nil)
         nil
       end
@@ -314,10 +314,10 @@ module Rubik
       def drive_budget_continuations!(orchestrator, res)
         while !res[:ok] && res[:reason] == :budget_exhausted && Rubik::Storage::Layout.config_get(@config, "agent.ask_continue_on_limit", true)
           @output.puts "\n⚠️ [Rubik::Agent] #{res[:error]}"
-          ans = ask_yes_no(" [Rubik::Agent] +20 adım ile devam edilsin mi?", default: "n")
+          ans = ask_yes_no(" [Rubik::Agent] Continue with +20 steps?", default: "n")
           break unless ["y", "yes", "evet"].include?(ans)
 
-          @output.puts " [Rubik::Agent] Adım bütçesi +20 artırılıyor ve görev sürdürülüyor..."
+          @output.puts " [Rubik::Agent] Increasing step budget by +20 and resuming task..."
           res = orchestrator.continue_loop(20)
 
         end
@@ -356,7 +356,7 @@ module Rubik
           emit_turn_finished(kind: "success", prompt: text, outcome: res[:output].to_s,
                              orchestrator: orchestrator, tokens: res[:tokens])
         else
-          @output.puts "Görev tamamlanamadı: #{res[:error]}"
+          @output.puts "Task could not be completed: #{res[:error]}"
           record_failed_turn!(text, "incomplete", res[:error], orchestrator)
         end
       end
@@ -407,8 +407,8 @@ module Rubik
       # execute_steps yolu) işletilir — aynı @history, aynı adım bütçesi
       # (kullanıcının !steps extend'i dahil). Amaç-eşleşmesi BİREBİRDİR:
       # substring eşleşmesi yeni bir görevi yanlışlıkla resume sanabilir.
-      RESUME_INTENTS = ["devam et", "devam", "continue", "sürdür"].freeze
-      RESUME_PROMPT = "devam et"
+      RESUME_INTENTS = ["devam et", "devam", "continue", "sürdür", "resume"].freeze
+      RESUME_PROMPT = "continue"
       RESUME_REASON = "llm_error_recovery"
 
       def resumable_turn? = !!@resumable_turn
@@ -443,8 +443,8 @@ module Rubik
       def stash_and_announce_resume!(orchestrator)
         return unless stash_resumable_turn!(orchestrator)
 
-        @output.puts "[Rubik] Turn duraklatıldı (adım #{orchestrator.step_count}/#{orchestrator.max_steps}). " \
-                     "'devam et' yazarsan aynı bağlam ve adım bütçesiyle sürer; başka bir şey yazarsan yeni görev olarak koşar."
+        @output.puts "[Rubik] Turn paused (step #{orchestrator.step_count}/#{orchestrator.max_steps}). " \
+                     "Type 'continue' to resume with the same context and step budget; type anything else to run as a new task."
       end
 
       # Duraklatılmış turn'in yeniden koşusu: taze turn yaşam döngüsünü
@@ -498,7 +498,7 @@ module Rubik
         @recorder&.record("cancelled_turn",
                           "question" => text.to_s.strip[0, 80],
                           "reason" => "Interrupted by user (^C)")
-        @output.puts "\n⚠️ [Rubik::Agent] Görev kullanıcı tarafından iptal edildi (^C)."
+        @output.puts "\n⚠️ [Rubik::Agent] Task cancelled by user (^C)."
         record_failed_turn!(text, "cancelled", "Interrupted by user (^C)", orchestrator)
         merge_failed_turn_tool_history!(orchestrator)
       end
@@ -510,7 +510,7 @@ module Rubik
       # LLM error. Sanitize before use.
       def handle_llm_client_error!(text, error, orchestrator)
         message = Rubik::Platform.safe_utf8(error.message)
-        @output.puts "[Rubik::LLM Hatası] #{message}"
+        @output.puts "[Rubik::LLM Error] #{message}"
         record_failed_turn!(text, "failed", message, orchestrator)
         merge_failed_turn_tool_history!(orchestrator)
         stash_and_announce_resume!(orchestrator) unless @autonomous_turn
@@ -520,7 +520,7 @@ module Rubik
       # error path above.
       def handle_unexpected_error!(text, error, orchestrator)
         message = Rubik::Platform.safe_utf8(error.message)
-        @output.puts "[Hata] #{error.class}: #{message}"
+        @output.puts "[Error] #{error.class}: #{message}"
         record_failed_turn!(text, "failed", "#{error.class}: #{message}", orchestrator)
         merge_failed_turn_tool_history!(orchestrator)
       end
@@ -575,15 +575,15 @@ module Rubik
       # interrupted WAIT; one with owned work is a cancelled TASK TREE — and
       # remaining work is named, so an incomplete cleanup is never silent.
       def task_cancellation_lines(outcome)
-        return ["⏸️  [Rubik] Bekleme kesildi (^C) — iptal edilecek bağlı alt ajan yok."] unless outcome&.any?
+        return ["⏸️  [Rubik] Wait interrupted (^C) — no linked subagents to cancel."] unless outcome&.any?
 
-        line = "🛑 [Rubik] Görev ağacı iptal edildi (^C): #{outcome.stopped.size} bağlı alt ajan durduruldu"
-        line << ", #{outcome.queued_cancelled.size} kuyruk işi iptal edildi" unless outcome.queued_cancelled.empty?
+        line = "🛑 [Rubik] Task tree cancelled (^C): #{outcome.stopped.size} linked subagents stopped"
+        line << ", #{outcome.queued_cancelled.size} queued jobs cancelled" unless outcome.queued_cancelled.empty?
         if outcome.complete?
-          line << "; temizlik tamamlandı."
+          line << "; cleanup completed."
         else
           remaining = outcome.remaining.map { |r| "#{r[:id]}:#{r[:state]}" }.join(", ")
-          line << "; temizlik TAMAMLANMADI — kalan: #{remaining}."
+          line << "; cleanup INCOMPLETE — remaining: #{remaining}."
         end
         [line]
       end

@@ -110,7 +110,7 @@ module Rubik
       def current_message(verb, step_part, elapsed)
         seconds = elapsed.to_i
         suffix = seconds.positive? ? " · #{seconds}s" : ""
-        "#{@theme.paint(verb, :accent)}#{step_part}#{suffix} (ctrl+c: kes)"
+        "#{@theme.paint(verb, :accent)}#{step_part}#{suffix} (ctrl+c: interrupt)"
       end
 
       def next_verb

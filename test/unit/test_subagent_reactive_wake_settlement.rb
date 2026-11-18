@@ -131,7 +131,7 @@ class TestSubagentReactiveWakeSettlement < Minitest::Test
 
     shell.execute_input("go to work")
     assert_equal 1, llm.turns, "anchor: the interrupted turn ran once"
-    assert_includes shell.output.string, "iptal edildi", "the interrupt must be acknowledged"
+    assert_includes shell.output.string, "Task cancelled by user (^C)", "the interrupt must be acknowledged"
 
     shell.read_and_process_line([], nil) # injected Enter at the restored prompt
     shell.read_and_process_line([], nil)
@@ -176,7 +176,7 @@ class TestSubagentReactiveWakeSettlement < Minitest::Test
     assert shell.pending_wake_notices?, "anchor: the pre-queued debt exists"
 
     shell.execute_input("go to work") # interrupted mid-turn
-    assert_includes shell.output.string, "iptal edildi"
+    assert_includes shell.output.string, "Task cancelled by user (^C)"
 
     shell.read_and_process_line([], nil) # injected Enter at the restored prompt
     assert_equal 1, llm.turns, "pre-queued wake debt must not fire a turn after ^C"

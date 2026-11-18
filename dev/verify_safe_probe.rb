@@ -32,7 +32,7 @@ end
 # 4) MISSING_BINARY localization (Windows exit 9009 + Turkish stderr)
 diag = Rubik::Runtime::DiagnosticEngine.diagnose(
   cmd: "python3 --version", exit_code: 49,
-  stderr: "Python bulunamadı", stdout: ""
+  stderr: "Python not found", stdout: ""
 )
 puts "category: #{diag.category} (expect missing_binary)"
 puts diag.format_for_llm

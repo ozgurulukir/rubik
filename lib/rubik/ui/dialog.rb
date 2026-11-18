@@ -34,9 +34,9 @@ module Rubik
         choices = options.uniq.dup
         choices << "Other (write-in response)" if allow_custom
 
-        answer = p.select("Seçiminizi yapın / Select an option:", choices, filter: true, per_page: 10)
+        answer = p.select("Select an option:", choices, filter: true, per_page: 10)
         if answer == "Other (write-in response)"
-          custom = p.ask("Yanıtınız / Your answer:")
+          custom = p.ask("Your answer:")
           custom.to_s.strip.empty? ? options.first : "Other (write-in): #{custom.strip}"
         else
           answer
@@ -57,7 +57,7 @@ module Rubik
 
         render_card(question, multi: true)
         p = build_prompt
-        answers = p.multi_select("Seçenekleri belirleyin / Select options (Space: toggle, Enter: confirm):",
+        answers = p.multi_select("Select options (Space: toggle, Enter: confirm):",
                                  options.uniq, filter: true, per_page: 10)
         answers.empty? ? [options.first] : answers
       rescue Interrupt, StandardError
@@ -80,11 +80,11 @@ module Rubik
       def render_card(question, multi: false)
         return unless @shell&.output
 
-        subtitle = multi ? "Çoklu Seçim (Boşluk: Seç/Kaldır · Enter: Onayla)" : "Tekli Seçim (Ok tuşları: Gezin · Enter: Onayla)"
+        subtitle = multi ? "Multi-Select (Space: Select/Deselect · Enter: Confirm)" : "Single-Select (Arrow keys: Navigate · Enter: Confirm)"
         card = Frame.draw(
           [@theme.paint(question, :bold), @theme.paint(subtitle, :dim)],
           theme: @theme,
-          title: @theme.paint("#{@theme.glyph(:action)} AJAN SORUSU", :accent)
+          title: @theme.paint("#{@theme.glyph(:action)} AGENT QUESTION", :accent)
         )
         @shell.output.puts(card)
       end

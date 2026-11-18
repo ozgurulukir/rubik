@@ -28,8 +28,8 @@ class TestTurnErrorResume < Minitest::Test
     @shell.handle_llm_client_error!("görev", Rubik::LLM::ClientError.new("Net::ReadTimeout", transient: true), loop)
 
     assert @shell.resumable_turn?
-    assert_includes @output.string, "Turn duraklatıldı (adım 41/50)"
-    assert_includes @output.string, "devam et"
+    assert_includes @output.string, "Turn paused (step 41/50)"
+    assert_includes @output.string, "continue"
   end
 
   def test_stub_orchestrator_without_resume_contract_is_not_stashed
@@ -39,7 +39,7 @@ class TestTurnErrorResume < Minitest::Test
     @shell.handle_llm_client_error!("görev", Rubik::LLM::ClientError.new("boom", transient: true), bare)
 
     refute @shell.resumable_turn?
-    refute_includes @output.string, "Turn duraklatıldı"
+    refute_includes @output.string, "Turn paused"
   end
 
   # ── Amaç-eşleşmesi: BİREBİR, substring değil ────────────────────────
@@ -74,7 +74,7 @@ class TestTurnErrorResume < Minitest::Test
     assert_equal "llm_error_recovery", calls[0][:reason]
     assert calls[0][:on_step], "resume taze display kanalını sözleşmeye taşır"
     # Dürüst provenance: recorder'a ve konuşma hafızasına "devam et" düşer.
-    assert(@shell.conversation_history.any? { |m| m[:role] == "user" && m[:content] == "devam et" })
+    assert(@shell.conversation_history.any? { |m| m[:role] == "user" && m[:content] == "continue" })
     assert(@shell.conversation_history.any? { |m| m[:role] == "assistant" && m[:content].to_s.include?("resumed ok") })
     # Tüketilen stash geri dönmez.
     refute @shell.resumable_turn?
@@ -89,7 +89,7 @@ class TestTurnErrorResume < Minitest::Test
 
     assert_empty loop.resume_calls, "resume-niyeti olmayan satır stashed loop'u sürdürmez"
     refute @shell.resumable_turn?, "yeni görev seçimi bayat resume teklifini geçersiz kılar"
-    assert_includes @output.string, "Model sağlayıcısı başlatılamadı"
+    assert_includes @output.string, "Error: Could not initialize model provider"
   end
 
   def test_devam_et_without_stash_runs_as_normal_task
@@ -97,7 +97,7 @@ class TestTurnErrorResume < Minitest::Test
 
     @shell.execute_input("devam et")
 
-    assert_includes @output.string, "Model sağlayıcısı başlatılamadı"
+    assert_includes @output.string, "Error: Could not initialize model provider"
     refute @shell.resumable_turn?
   end
 

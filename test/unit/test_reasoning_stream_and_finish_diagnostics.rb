@@ -138,7 +138,7 @@ class TestReasoningStreamAndFinishDiagnostics < Minitest::Test
     result = mock_loop.turn_executor.call(response)
 
     refute result[:ok]
-    assert_includes result[:error], "maksimum token sınırına (max_output_tokens: 4096) ulaştığı için tamamlanamadan kesildi"
+    assert_includes result[:error], "reached the maximum token limit (max_output_tokens: 4096) and was cut off before completion"
     assert_includes result[:error], "!config set llm.default_max_output_tokens 8192"
     assert_equal 1, error_events.size
     assert_includes error_events[0][:content], "max_output_tokens: 4096"

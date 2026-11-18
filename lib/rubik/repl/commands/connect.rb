@@ -27,7 +27,6 @@ module Rubik
             # the wizard can make. Honest refusal beats silent escalation.
             if args.intersect?(["--session", "-s"])
               ctx.out.puts USAGE_CONNECT
-              ctx.out.puts "  !connect yalnızca kalıcı kapsamlara yazar; oturum-kapsamı için !provider add kullanın."
               ctx.out.puts "  !connect writes persistent scopes only; use !provider add for a session-scoped provider."
             else
               scope, _clean = Base.parse_scope(args)

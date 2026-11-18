@@ -73,15 +73,15 @@ class TestReplStandardizedCommands < Minitest::Test
     # 1.6 Verbless calls generate smart guidance
     @out.reopen
     @shell.execute_input("!config lsp.enabled true")
-    assert_includes @out.string, "[Rubik::Config] Geçersiz kullanım."
-    assert_includes @out.string, "• Ayar yapmak için : !config set lsp.enabled true"
-    assert_includes @out.string, "• Değer okumak için: !config get lsp.enabled"
+    assert_includes @out.string, "[Rubik::Config] Invalid usage."
+    assert_includes @out.string, "• To set a value: !config set lsp.enabled true"
+    assert_includes @out.string, "• To read a value: !config get lsp.enabled"
 
     @out.reopen
     @shell.execute_input("!config lsp.enabled")
-    assert_includes @out.string, "[Rubik::Config] Geçersiz kullanım."
-    assert_includes @out.string, "• Ayar yapmak için : !config set lsp.enabled <val>"
-    assert_includes @out.string, "• Değer okumak için: !config get lsp.enabled"
+    assert_includes @out.string, "[Rubik::Config] Invalid usage."
+    assert_includes @out.string, "• To set a value: !config set lsp.enabled <val>"
+    assert_includes @out.string, "• To read a value: !config get lsp.enabled"
 
     # 1.7 Subsystem wiring on !config set
     @out.reopen

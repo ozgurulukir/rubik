@@ -202,7 +202,7 @@ module Rubik
               ctx.out.puts "  • Default Task Max Steps : #{cur_max}"
               ctx.out.puts "  • Goal Mode Max Steps    : #{goal_max}"
               ctx.out.puts "  • Plan Mode Max Steps    : #{plan_max}"
-              ctx.out.puts "  • Warning Threshold      : #{(warn_r.to_f * 100).to_i}% (#{(cur_max.to_i * warn_r.to_f).ceil}. adım)"
+              ctx.out.puts "  • Warning Threshold      : #{(warn_r.to_f * 100).to_i}% (#{(cur_max.to_i * warn_r.to_f).ceil}. step)"
               ctx.out.puts "  • Ask Continue on Limit  : #{ask_c}"
             elsif clean_args.first.downcase == "default"
               num = clean_args[1].to_i

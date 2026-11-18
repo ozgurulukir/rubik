@@ -32,12 +32,12 @@ class TestUIStatuslineBannerAndConfig < Minitest::Test
   def test_statusline_renders_template_placeholders
     line = Rubik::UI::Statusline.render(@shell, @theme)
     assert_includes line, "ctx "
-    assert_includes line, "temiz"
-    assert_includes line, "sandbox kapalı"
+    assert_includes line, "clean"
+    assert_includes line, "sandbox off"
 
     @config.set("sandbox.enabled", true)
     enabled_line = Rubik::UI::Statusline.render(@shell, @theme)
-    assert_includes enabled_line, "izole"
+    assert_includes enabled_line, "isolated"
   end
 
   def test_statusline_custom_template
@@ -90,7 +90,7 @@ class TestUIStatuslineBannerAndConfig < Minitest::Test
     ENV.delete("RUBIK_TEST")
     tty_shell = Rubik::REPL::Shell.new(config: @config, output: FakeTTYIO.new, input: FakeTTYIO.new, root_dir: @temp_dir)
     banner = Rubik::UI::Banner.render(tty_shell, tty_shell.ui_theme)
-    assert_includes banner, "Linux & bwrap algılandı"
+    assert_includes banner, "Linux & bwrap detected"
   ensure
     ENV["RUBIK_TEST"] = "1"
     tty_shell&.stop

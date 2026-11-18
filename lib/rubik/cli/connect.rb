@@ -23,7 +23,6 @@ module Rubik
         end
         if argv.intersect?(["--session", "-s"])
           output.puts USAGE
-          output.puts "  rubik connect yalnızca kalıcı kapsamlara yazar; oturum-kapsamı için REPL içinde !provider add kullanın."
           output.puts "  rubik connect writes persistent scopes only; use !provider add in the REPL for a session-scoped provider."
           return 1
         end
@@ -38,12 +37,11 @@ module Rubik
         result = wizard.run
 
         if result[:reason] == :non_interactive
-          output.puts "Etkileşimsiz oturum — sihirbaz çalışamaz. 'rubik' ile REPL başlatıp !connect kullanın " \
-                      "veya !provider add <name> [type] <url> [--key=...] sözdizimini uygulayın."
-          output.puts "Non-interactive session — start the REPL and run !connect, or use !provider add flags."
+          output.puts "Non-interactive session — the wizard cannot run. Start the REPL with 'rubik' and use !connect, " \
+                      "or apply the !provider add <name> [type] <url> [--key=...] syntax."
           return 2
         end
-        output.puts "Çıkmak için 'rubik' ile REPL'i başlatın / Start the REPL with 'rubik'." if result[:ok]
+        output.puts "Start the REPL with 'rubik'." if result[:ok]
         result[:ok] ? 0 : 1
       end
     end

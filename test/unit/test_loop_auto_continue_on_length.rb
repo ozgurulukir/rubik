@@ -99,7 +99,7 @@ class TestLoopAutoContinueOnLength < Minitest::Test
 
     res = mock_loop.turn_executor.call(truncated)
     refute res[:ok]
-    assert_includes res[:error], "3 otomatik devam denemesi tükendiği için durduruldu"
+    assert_includes res[:error], "3 automatic continue attempts were exhausted, so it was stopped"
     assert_includes res[:error], "!config set llm.default_max_output_tokens 8192"
   end
 end

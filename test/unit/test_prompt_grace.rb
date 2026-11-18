@@ -65,7 +65,7 @@ class TestPromptGrace < Minitest::Test
     assert_equal :execute, gate(events).wait(1000)
     assert_equal 1.0, @now
     assert_equal 3, @output.string.count("\a")
-    assert_includes @output.string, "Tuş yok sayıldı"
+    assert_includes @output.string, "Key ignored"
     assert_clean
   end
 
@@ -90,7 +90,7 @@ class TestPromptGrace < Minitest::Test
     @input.queued = "accidental\r"
     assert_equal :execute, gate.wait(1000)
     assert_empty @input.queued
-    assert_includes @output.string, "tuşlar yok sayıldı"
+    assert_includes @output.string, "Keys received while waiting were ignored."
     assert_clean
   end
 

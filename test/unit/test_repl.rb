@@ -30,8 +30,8 @@ class TestREPL < Minitest::Test
 
   def test_unknown_command_shows_error
     @shell.execute_input("!unknown_cmd")
-    assert_includes @output.string, "Bilinmeyen komut: !unknown_cmd"
-    assert_includes @output.string, "Kullanılabilir komutlar:"
+    assert_includes @output.string, "Unknown command: !unknown_cmd"
+    assert_includes @output.string, "Available commands:"
   end
 
   def test_hooks_execution_order_and_resilience
@@ -194,7 +194,7 @@ class TestREPL < Minitest::Test
     end
 
     @shell.execute_input("!hang_cmd")
-    assert_includes @output.string, "Komut kullanıcı tarafından iptal edildi (^C)"
+    assert_includes @output.string, "Command cancelled by user (^C)"
   end
 end
 

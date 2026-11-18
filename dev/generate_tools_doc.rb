@@ -15,9 +15,12 @@
 require_relative "../lib/rubik/tools/catalog"
 
 TOOLS_MD = File.expand_path("../TOOLS.md", __dir__)
-TABLE_HEADER = /^## 📊 .*Araç Özet Tablosu.*\z/.freeze
+# Matchers stay language-agnostic: TOOLS.md is generated and intentionally not
+# translated, so its headings may still read in a language other than the cells
+# this script emits.
+TABLE_HEADER = /^## 📊 .*\z/.freeze
 ROW = /\A\| \*\*`([a-z0-9_]+)`\*\* *\| *(.+?) *\| `:(read|write|execute)` *\| (.*) \|\z/.freeze
-OVERVIEW_COUNT = /\*\*[^*]*yerleşik[^*]*\*\*/.freeze
+OVERVIEW_COUNT = /\*\*\d+[^*]*\*\*/.freeze
 
 def aliases_cell(declaration)
   return "—" if declaration.aliases.empty?
@@ -28,9 +31,9 @@ end
 skill = Rubik::Tools::Catalog.dynamic_declarations.first
 abort("[tools:doc] no dynamic declaration found for the skill row") unless skill
 SKILL_ROW = "| **`#{skill.name}`** | #{aliases_cell(skill)} | `:#{skill.risk}` | " \
-            "[Dinamik] Bir ajan becerisinin tam SKILL.md talimatını adıyla yükler. " \
-            "Yerleşik `build_default` dışında: kayıt `Skills::Manager` epoch'unda kendi ctx " \
-            "ters-inverse'i ile yapılır; REQUIRES memnuniyetsizken reklam edilmez. |".freeze
+            "[Dynamic] Loads the full SKILL.md instructions of an agent skill by name. " \
+            "Other than the built-in `build_default`: registration is done in the `Skills::Manager` epoch with its own ctx " \
+            "inverse; not advertised while REQUIRES is unsatisfied. |".freeze
 
 lines = File.binread(TOOLS_MD).force_encoding("UTF-8").split("\n")
 header_idx = lines.index { |l| l.match?(TABLE_HEADER) }
@@ -68,11 +71,11 @@ builtin_count = Rubik::Tools::Catalog.names.size
 dynamic_count = Rubik::Tools::Catalog.dynamic_declarations.size
 overview = lines.index { |l| l.match?(OVERVIEW_COUNT) }
 if overview
-  count_phrase = dynamic_count.positive? ? "#{builtin_count} yerleşik + #{dynamic_count} dinamik (`#{skill.name}`) araç" : "#{builtin_count} yerleşik araç"
+  count_phrase = dynamic_count.positive? ? "#{builtin_count} built-in + #{dynamic_count} dynamic (`#{skill.name}`) tools" : "#{builtin_count} built-in tools"
   lines[overview] = lines[overview].sub(OVERVIEW_COUNT, "**#{count_phrase}**")
 end
-header_suffix = dynamic_count.positive? ? " (#{builtin_count} yerleşik + dinamik `#{skill.name}`)" : ""
-lines[header_idx] = "## 📊 Araç Özet Tablosu#{header_suffix}"
+header_suffix = dynamic_count.positive? ? " (#{builtin_count} built-in + dynamic `#{skill.name}`)" : ""
+lines[header_idx] = "## 📊 Tool Summary Table#{header_suffix}"
 
 updated = lines.join("\n") + "\n"
 if updated == File.binread(TOOLS_MD).force_encoding("UTF-8")

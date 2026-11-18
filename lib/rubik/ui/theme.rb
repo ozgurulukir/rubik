@@ -49,7 +49,7 @@ module Rubik
       }.freeze
 
       DEFAULT_SPINNER_VERBS = [
-        "Düşünüyor", "Kavuruyor", "Karıştırıyor", "Damıtıyor", "Biçimlendiriyor", "Harmanlıyor", "Tarıyor", "Planlıyor", "Doğruluyor", "Tamamlıyor"
+        "Thinking", "Roasting", "Stirring", "Distilling", "Formatting", "Blending", "Sifting", "Planning", "Verifying", "Completing"
       ].freeze
 
       attr_reader :pastel, :glyphs, :spinner_verbs

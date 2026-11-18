@@ -32,7 +32,7 @@ class TestCancelledTurnRecording < Minitest::Test
     long_text = "Analyze the whole codebase and refactor everything " * 10
     @shell.execute_free_text(long_text)
 
-    assert_includes @output.string, "iptal edildi"
+    assert_includes @output.string, "Task cancelled by user (^C)"
     events = @shell.recorder.events
     cancel_event = events.reverse.find { |e| e["type"] == "cancelled_turn" }
     refute_nil cancel_event, "cancellation must be recorded"

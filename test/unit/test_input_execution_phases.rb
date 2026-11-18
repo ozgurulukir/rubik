@@ -133,7 +133,7 @@ class TestInputExecutionPhases < Minitest::Test
     # Atomic rollback: a ^C mid-command must leave no dialogue pair behind.
     assert_empty @shell.conversation_history
     assert_empty events_of("repl_command")
-    assert_includes @output.string, "iptal edildi"
+    assert_includes @output.string, "Command cancelled by user (^C)"
   end
 
   def test_untracked_lifecycle_command_skips_history_capture
@@ -152,7 +152,7 @@ class TestInputExecutionPhases < Minitest::Test
   def test_unknown_command_prints_available_list_without_dispatch
     @shell.execute_command(fake_parsed("nosuchcmd"))
 
-    assert_includes @output.string, "Bilinmeyen komut: !nosuchcmd"
+    assert_includes @output.string, "Unknown command: !nosuchcmd"
     assert_includes @output.string, "!help"
     assert_empty @shell.conversation_history
   end
@@ -209,7 +209,7 @@ class TestInputExecutionPhases < Minitest::Test
 
     @shell.execute_free_text("turn that cannot route")
 
-    assert_includes @output.string, "Model sağlayıcısı başlatılamadı"
+    assert_includes @output.string, "Error: Could not initialize model provider"
     assert_includes @output.string, "x/y"
     assert_equal "failed", last_turn_event_kind(spy)
     # The failed turn still lands in the conversation window as a pair.
@@ -224,7 +224,7 @@ class TestInputExecutionPhases < Minitest::Test
 
     @shell.execute_free_text("doomed task")
 
-    assert_includes @output.string, "Görev tamamlanamadı: budget blew up"
+    assert_includes @output.string, "Task could not be completed: budget blew up"
     assert_includes @shell.conversation_history.last[:content], "[Turn incomplete: budget blew up]"
     assert_equal "incomplete", last_turn_event_kind(spy)
     assert_nil @shell.active_loop
@@ -236,7 +236,7 @@ class TestInputExecutionPhases < Minitest::Test
 
     @shell.execute_free_text("talk to the model")
 
-    assert_includes @output.string, "[Rubik::LLM Hatası] 503 upstream gone"
+    assert_includes @output.string, "[Rubik::LLM Error] 503 upstream gone"
     assert_includes @shell.conversation_history.last[:content], "[Turn failed: 503 upstream gone]"
     assert_equal "failed", last_turn_event_kind(spy)
     assert_nil @shell.active_loop
@@ -247,7 +247,7 @@ class TestInputExecutionPhases < Minitest::Test
 
     @shell.execute_free_text("trigger a bug")
 
-    assert_includes @output.string, "[Hata] ArgumentError: bad arg"
+    assert_includes @output.string, "[Error] ArgumentError: bad arg"
     assert_includes @shell.conversation_history.last[:content], "[Turn failed: ArgumentError: bad arg]"
     assert_nil @shell.active_loop
   end
@@ -257,7 +257,7 @@ class TestInputExecutionPhases < Minitest::Test
 
     @shell.execute_free_text("long running thing")
 
-    assert_includes @output.string, "iptal edildi"
+    assert_includes @output.string, "Task cancelled by user (^C)"
     cancel_event = events_of("cancelled_turn").last
     refute_nil cancel_event, "^C must record a dedicated cancelled_turn event"
     assert_equal "Interrupted by user (^C)", cancel_event["payload"]["reason"]
@@ -339,19 +339,19 @@ class TestInputExecutionPhases < Minitest::Test
   def test_task_cancellation_lines_report_wait_vs_cancelled_tree
     waiting = @shell.task_cancellation_lines(nil)
     assert_equal 1, waiting.size
-    assert_includes waiting.first, "Bekleme kesildi"
+    assert_includes waiting.first, "Wait interrupted"
 
     outcome = Struct.new(:stopped, :queued_cancelled, :complete?, :remaining)
                     .new([1, 2], [:q1], true, [])
     tree = @shell.task_cancellation_lines(outcome)
-    assert_includes tree.first, "2 bağlı alt ajan durduruldu"
-    assert_includes tree.first, "1 kuyruk işi iptal edildi"
-    assert_includes tree.first, "temizlik tamamlandı"
+    assert_includes tree.first, "2 linked subagents stopped"
+    assert_includes tree.first, "1 queued jobs cancelled"
+    assert_includes tree.first, "cleanup completed"
 
     incomplete = Struct.new(:stopped, :queued_cancelled, :complete?, :remaining)
                        .new([1], [], false, [{ id: "s9", state: "stuck" }])
     partial = @shell.task_cancellation_lines(incomplete)
-    assert_includes partial.first, "TAMAMLANMADI"
+    assert_includes partial.first, "INCOMPLETE"
     assert_includes partial.first, "s9:stuck"
   end
 

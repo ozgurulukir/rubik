@@ -341,25 +341,25 @@ class TestTaskCancellation < Minitest::Test
   def test_ui_distinguishes_an_interrupted_wait_from_a_cancelled_task_tree
     shell = Rubik::REPL::Shell.new(config: Rubik::Config.new(root_dir: @ws_root), output: StringIO.new, root_dir: @ws_root)
     wait_lines = shell.send(:task_cancellation_lines, nil)
-    assert_includes wait_lines.first, "Bekleme kesildi"
-    refute_includes wait_lines.first, "Görev ağacı"
+    assert_includes wait_lines.first, "Wait interrupted"
+    refute_includes wait_lines.first, "Task tree cancelled"
 
     outcome = Rubik::Orchestrator::Subagent::TaskOwnershipSupervisor::CancellationOutcome.new(
       cancelled: true, stopped: ["subagent-1", "subagent-2"], remaining: [], queued_cancelled: []
     )
     lines = shell.send(:task_cancellation_lines, outcome)
-    assert_includes lines.first, "Görev ağacı iptal edildi"
-    assert_includes lines.first, "2 bağlı alt ajan durduruldu"
-    assert_includes lines.first, "temizlik tamamlandı"
+    assert_includes lines.first, "Task tree cancelled"
+    assert_includes lines.first, "2 linked subagents stopped"
+    assert_includes lines.first, "cleanup completed"
 
     stuck = Rubik::Orchestrator::Subagent::TaskOwnershipSupervisor::CancellationOutcome.new(
       cancelled: true, stopped: ["subagent-1"], remaining: [{ id: "subagent-2", state: "canceling" }],
       queued_cancelled: ["subagent-3"]
     )
     lines = shell.send(:task_cancellation_lines, stuck)
-    assert_includes lines.first, "temizlik TAMAMLANMADI"
+    assert_includes lines.first, "cleanup INCOMPLETE"
     assert_includes lines.first, "subagent-2:canceling"
-    assert_includes lines.first, "1 kuyruk işi iptal edildi"
+    assert_includes lines.first, "1 queued jobs cancelled"
   ensure
     shell&.stop
   end

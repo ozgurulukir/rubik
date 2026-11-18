@@ -383,13 +383,13 @@ module Rubik
               end
             else
               # Smart guidance for verbless input
-              ctx.out.puts "[Rubik::Config] Geçersiz kullanım."
+              ctx.out.puts "[Rubik::Config] Invalid usage."
               if clean_args.size >= 2
-                ctx.out.puts "  • Ayar yapmak için : !config set #{clean_args[0]} #{clean_args[1]}"
+                ctx.out.puts "  • To set a value: !config set #{clean_args[0]} #{clean_args[1]}"
               else
-                ctx.out.puts "  • Ayar yapmak için : !config set #{clean_args[0]} <val>"
+                ctx.out.puts "  • To set a value: !config set #{clean_args[0]} <val>"
               end
-              ctx.out.puts "  • Değer okumak için: !config get #{clean_args[0]}"
+              ctx.out.puts "  • To read a value: !config get #{clean_args[0]}"
             end
           end
         end

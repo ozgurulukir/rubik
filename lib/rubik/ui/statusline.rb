@@ -76,15 +76,15 @@ module Rubik
 
       def dirty_segment(shell, theme)
         count = shell.buffer_manager&.dirty? ? (shell.buffer_manager.dirty_files&.size || 0) : 0
-        count.zero? ? "temiz" : "#{count} #{theme.glyph(:dirty)}"
+        count.zero? ? "clean" : "#{count} #{theme.glyph(:dirty)}"
       end
 
       def sandbox_segment(shell)
         if Rubik::Storage::Layout.config_get(shell.config, "sandbox.enabled", false)
-          net_str = Rubik::Storage::Layout.config_get(shell.config, "sandbox.allow_network", false) ? "ağ-açık" : "izole"
+          net_str = Rubik::Storage::Layout.config_get(shell.config, "sandbox.allow_network", false) ? "network-open" : "isolated"
           "#{shell.sandbox_runner&.driver&.name || 'sandbox'}:#{net_str}"
         else
-          "kapalı"
+          "off"
         end
       end
 

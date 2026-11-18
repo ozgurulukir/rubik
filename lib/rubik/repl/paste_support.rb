@@ -66,7 +66,7 @@ module Rubik
       # Plan 109: koleksiyon with_collecting içinde — reaktif bir uyandırma
       # Enter'ı yapıştırılan metne boş satır eklemez.
       def read_paste_block
-        @output.puts "[Rubik] Paste modu: metni yapıştırın, bitirmek için tek başına '.' yazın (Ctrl+C iptal)."
+        @output.puts "[Rubik] Paste mode: paste the text, type '.' on its own to finish (Ctrl+C to cancel)."
         lines = []
         collector = lambda do
           loop do

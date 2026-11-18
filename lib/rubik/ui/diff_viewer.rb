@@ -50,23 +50,23 @@ module Rubik
       # keypress uses the same raw-mode path as every other UI surface.
       def offer_actions(shell, theme)
         prompt = Approvals.build_prompt(shell)
-        key = prompt.keypress(theme.paint("  a: uygula (!apply) · q veya enter: çık ", :dim))
+        key = prompt.keypress(theme.paint("  a: apply (!apply) · q or enter: exit ", :dim))
         apply_all(shell) if key.to_s.strip.downcase == "a"
       rescue Interrupt
         Rubik::REPL::InterruptHandler.restore_console_after_interrupt
       rescue StandardError => e
         # apply! fails loud on containment breaks and IO errors — the user
         # pressed "a", so the verdict must reach them, not vanish here.
-        shell.output.puts "\n[Hata] Uygulama başarısız: #{e.message}"
+        shell.output.puts "\n[Error] Apply failed: #{e.message}"
       end
 
       def apply_all(shell)
         applied = shell.buffer_manager.apply!
         if applied.empty?
-          shell.output.puts "Uygulanacak değişiklik kalmadı."
+          shell.output.puts "No changes left to apply."
         else
           shell.sync_context_and_ast(applied)
-          shell.output.puts "Uygulandı: #{applied.join(', ')}"
+          shell.output.puts "Applied: #{applied.join(', ')}"
         end
       end
 

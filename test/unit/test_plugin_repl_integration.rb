@@ -29,7 +29,7 @@ class TestPluginReplIntegration < Minitest::Test
     @shell.execute_command(parsed)
 
     # Should print to shell output
-    assert_includes @shell.output.string, "Eklentiler (Plugins)"
+    assert_includes @shell.output.string, "🧩 Plugins"
   end
 
   def test_plugins_command_displays_active_plugin_state

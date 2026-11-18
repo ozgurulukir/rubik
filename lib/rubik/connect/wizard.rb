@@ -18,29 +18,29 @@ module Rubik
     # the full models array), then role specs. An interrupt mid-commit
     # leaves an inert-but-valid provider; roles re-attach with `!model set`.
     class Wizard
-      CUSTOM_LABEL = "Özel uç nokta / Custom endpoint"
-      MANUAL_MODEL_LABEL = "✎ Elle gir / Enter manually"
-      S_PROVIDER = "Sağlayıcı seçin / Choose a provider:"
-      S_ALL_CATALOG = "Tüm katalog / All catalog providers:"
-      S_ENDPOINT = "Uç nokta / Endpoint:"
-      S_SESSION_HEADER = "Ağ geçidi oturum başlığı gerektiriyor mu? / Does the gateway require a session header? (e.g. x-opencode-session)"
-      S_AUTH = "Kimlik doğrulama / Authentication:"
-      S_MODEL = "Model seçin (önerilen üstte) / Pick a model (recommended first):"
-      S_ROLES = "Roller / Roles:"
+      CUSTOM_LABEL = "Custom endpoint"
+      MANUAL_MODEL_LABEL = "✎ Enter manually"
+      S_PROVIDER = "Choose a provider:"
+      S_ALL_CATALOG = "All catalog providers:"
+      S_ENDPOINT = "Endpoint:"
+      S_SESSION_HEADER = "Does the gateway require a session header? (e.g. x-opencode-session)"
+      S_AUTH = "Authentication:"
+      S_MODEL = "Pick a model (recommended first):"
+      S_ROLES = "Roles:"
       MAX_PROBE_ATTEMPTS = 5
 
-      ROLE_DEFAULT = "Sadece default / default only"
+      ROLE_DEFAULT = "default only"
       ROLE_DEFAULT_FAST = "default + fast"
       ROLE_ALL = "default + fast + advanced"
-      ROLE_NONE = "Rol atama yok / no role binding"
+      ROLE_NONE = "no role binding"
       ROLE_MENU = [ROLE_DEFAULT, ROLE_DEFAULT_FAST, ROLE_ALL, ROLE_NONE].freeze
 
-      AUTH_KEY = "API anahtarı gireceğim / I'll enter an API key"
-      AUTH_ENV = "Ortam değişkeni kullanacağım / I'll use an environment variable"
-      AUTH_SKIP = "Şimdilik atla / Skip for now"
+      AUTH_KEY = "I'll enter an API key"
+      AUTH_ENV = "I'll use an environment variable"
+      AUTH_SKIP = "Skip for now"
 
-      SESSION_HEADER_NO = "Hayır — gerek yok / No — not required"
-      SESSION_HEADER_YES = "Evet — gireceğim / Yes — I'll enter one"
+      SESSION_HEADER_NO = "No — not required"
+      SESSION_HEADER_YES = "Yes — I'll enter one"
 
       def initialize(config:, ui:, io:, scope: :global, refresh: nil, catalog_loader: nil, probe: nil)
         @config = config
@@ -81,27 +81,26 @@ module Rubik
       private
 
       def finish_abort(reason)
-        @ui.puts @ui.paint("Sihirbaz iptal edildi — hiçbir şey yazılmadı / Wizard cancelled — nothing was written.", :dim)
+        @ui.puts @ui.paint("Wizard cancelled — nothing was written.", :dim)
         { ok: false, reason: reason, error: nil, provider: nil, notes: @notes }
       end
 
       def render_header
         @io.puts Rubik::UI::Frame.draw(
-          [@ui.paint("Sağlayıcı ekle, anahtarı doğrula, modeli bağla", :bold),
-           @ui.paint("Add a provider, validate its key, bind a model", :dim)],
+          [@ui.paint("Add a provider, validate its key, bind a model", :bold)],
           theme: @ui.theme, width: 78,
-          title: @ui.paint("⚙ BAĞLANTI SİHİRBAZI / CONNECT WIZARD", :accent)
+          title: @ui.paint("⚙ CONNECT WIZARD", :accent)
         )
       end
 
       def load_catalog
-        result = @ui.spinner("Katalog indiriliyor / Fetching model catalog…") { @catalog_loader.call }
+        result = @ui.spinner("Fetching model catalog…") { @catalog_loader.call }
         @catalog = result[:catalog].is_a?(Hash) ? result[:catalog] : {}
         case result[:source]
         when :stale
-          note("katalog önbelleği bayat — eski katalog gösteriliyor / showing a stale cached catalog")
+          note("showing a stale cached catalog")
         when :none
-          note("katalog alınamadı — manuel mod / catalog unavailable — manual mode")
+          note("catalog unavailable — manual mode")
         end
       end
 
@@ -125,7 +124,7 @@ module Rubik
         lookup[CUSTOM_LABEL] = :custom
 
         compatible = ModelsDev.compatible_providers(@catalog)
-        all_label = "Tüm katalog / All catalog (#{compatible.size})"
+        all_label = "All catalog (#{compatible.size})"
         if compatible.any?
           choices << all_label
           lookup[all_label] = :all
@@ -153,10 +152,10 @@ module Rubik
       end
 
       def ask_custom_provider
-        name = @ui.ask("Sağlayıcı adı / Provider name:")
+        name = @ui.ask("Provider name:")
         return :cancelled unless name.is_a?(String) && !ModelsDev.provider_key(name).empty?
 
-        type = @ui.select("Tür / Type:", ["openai_compatible", "anthropic", "ollama"], default: "openai_compatible")
+        type = @ui.select("Type:", ["openai_compatible", "anthropic", "ollama"], default: "openai_compatible")
         return :cancelled unless type.is_a?(String)
 
         { id: ModelsDev.provider_key(name), label: name.strip, type: type,
@@ -185,7 +184,7 @@ module Rubik
         until (answer = request_endpoint(default)).is_a?(String) && valid_endpoint?(answer)
           return :cancelled unless answer.is_a?(String)
 
-          @ui.puts @ui.paint("⚠ Geçersiz uç nokta / Endpoint must start with http:// or https://", :error)
+          @ui.puts @ui.paint("⚠ Endpoint must start with http:// or https://", :error)
         end
 
         plan[:base_url] = answer.strip
@@ -219,7 +218,7 @@ module Rubik
         until (name = request_session_header_name).is_a?(String) && valid_session_header_name?(name)
           return :cancelled unless name.is_a?(String)
 
-          @ui.puts @ui.paint("⚠ Geçersiz başlık adı / Header name must contain only letters, digits or dashes", :error)
+          @ui.puts @ui.paint("⚠ Header name must contain only letters, digits or dashes", :error)
         end
 
         plan[:session_header] = name.strip
@@ -227,7 +226,7 @@ module Rubik
       end
 
       def request_session_header_name
-        answer = @ui.ask("Oturum başlığı adı / Session header name:")
+        answer = @ui.ask("Session header name:")
         answer.is_a?(String) ? answer.strip : answer
       end
 
@@ -243,12 +242,12 @@ module Rubik
         return :cancelled unless choice.is_a?(String)
 
         if choice == AUTH_ENV
-          env = @ui.ask("Ortam değişkeni / Environment variable name:")
+          env = @ui.ask("Environment variable name:")
           return :cancelled unless env.is_a?(String) && !env.strip.empty?
 
           plan[:api_key_env] = env.strip
         elsif choice == AUTH_SKIP
-          note("anahtar sonra ayarlanacak — doğrulama atlandı / key deferred — validation skipped")
+          note("key deferred — validation skipped")
         else
           key = key_with_validation(plan)
           return :cancelled if key == :cancelled
@@ -267,17 +266,17 @@ module Rubik
         last_key = nil
         attempts = 0
         while attempts < MAX_PROBE_ATTEMPTS
-          key = @ui.secret("#{plan[:label]} API anahtarı / API key:")
+          key = @ui.secret("#{plan[:label]} API key:")
           return :cancelled unless key.is_a?(String) # interrupt / prompt failure
 
           if key.strip.empty? # empty entry = defer, same as AUTH_SKIP
-            note("anahtar sonra ayarlanacak — doğrulama atlandı / key deferred — validation skipped")
+            note("key deferred — validation skipped")
             return nil
           end
 
           last_key = key
           attempts += 1
-          result = @ui.spinner("Doğrulanıyor / Validating…") { probe_plan(plan, key) }
+          result = @ui.spinner("Validating…") { probe_plan(plan, key) }
           if result[:ok]
             plan[:live_models] = result[:models] if result[:models].any?
             return key
@@ -288,10 +287,10 @@ module Rubik
           action = @ui.select(failure_question(result), failure_menu(result))
           return :cancelled unless action.is_a?(String)
 
-          return last_key if action.start_with?("Doğrulamadan", "Yine de")
-          return :cancelled if action.start_with?("İptal")
+          return last_key if action.start_with?("Save without validation", "Save anyway")
+          return :cancelled if action.start_with?("Cancel")
         end
-        note("doğrulama denemeleri tükendi — kaydediliyor / validation attempts exhausted — saving unvalidated")
+        note("validation attempts exhausted — saving unvalidated")
         last_key
       end
 
@@ -305,17 +304,17 @@ module Rubik
 
       def failure_question(result)
         if result[:auth_failed]
-          "Anahtar reddedildi (#{result[:note]}). Ne yapalım? / Key rejected. What now?"
+          "Key rejected (#{result[:note]}). What now?"
         else
-          "Uç nokta doğrulanamadı (#{result[:note]}). Ne yapalım? / Could not validate the endpoint. What now?"
+          "Could not validate the endpoint (#{result[:note]}). What now?"
         end
       end
 
       def failure_menu(result)
         if result[:auth_failed]
-          ["Anahtarı yeniden gir / Re-enter key", "Doğrulamadan kaydet / Save without validation", "İptal / Cancel"]
+          ["Re-enter key", "Save without validation", "Cancel"]
         else
-          ["Anahtarı yeniden gir / Re-enter key", "Yine de kaydet / Save anyway", "İptal / Cancel"]
+          ["Re-enter key", "Save anyway", "Cancel"]
         end
       end
 
@@ -326,10 +325,10 @@ module Rubik
         return :cancelled unless chosen.is_a?(String)
 
         if chosen == MANUAL_MODEL_LABEL
-          name = @ui.ask("Model adı / Model name:")
+          name = @ui.ask("Model name:")
           return :cancelled unless name.is_a?(String) && !name.strip.empty?
 
-          limit = @ui.ask("Bağlam sınırı (token) / Context limit (tokens):", default: ModelsDev::DEFAULT_CONTEXT_LIMIT.to_s)
+          limit = @ui.ask("Context limit (tokens):", default: ModelsDev::DEFAULT_CONTEXT_LIMIT.to_s)
           return :cancelled unless limit.is_a?(String)
 
           plan[:model] = { name: name.strip, context_limit: parse_limit(limit) || ModelsDev::DEFAULT_CONTEXT_LIMIT }
@@ -390,7 +389,7 @@ module Rubik
       def fetch_live_models(plan)
         return unless plan[:type] == "ollama"
 
-        result = @ui.spinner("Ollama modelleri alınıyor / Fetching Ollama models…") { @probe.ollama(plan[:base_url]) }
+        result = @ui.spinner("Fetching Ollama models…") { @probe.ollama(plan[:base_url]) }
         if result[:ok]
           plan[:live_models] = result[:models]
         else
@@ -423,30 +422,30 @@ module Rubik
         key_desc = if plan[:api_key_env]
                      "env: #{plan[:api_key_env]}"
                    elsif plan[:api_key].to_s.empty?
-                     "yok / none"
+                     "none"
                    else
-                     "secret store'a yazılacak / stored via secret store"
+                     "stored via secret store"
                    end
         summary = [
-          "#{@ui.paint('Sağlayıcı / Provider', :bold)}  : #{plan[:id]} (#{plan[:type]})",
-          "#{@ui.paint('Uç nokta / Endpoint', :bold)}   : #{plan[:base_url]}"
+          "#{@ui.paint('Provider', :bold)}  : #{plan[:id]} (#{plan[:type]})",
+          "#{@ui.paint('Endpoint', :bold)}   : #{plan[:base_url]}"
         ]
-        summary << "#{@ui.paint('Oturum / Session header', :bold)} : #{plan[:session_header]}" if plan[:session_header]
+        summary << "#{@ui.paint('Session header', :bold)} : #{plan[:session_header]}" if plan[:session_header]
         summary += [
           "#{@ui.paint('Model', :bold)}            : #{plan[:model][:name]} (#{compact_ctx(plan[:model][:context_limit])} ctx)",
-          "#{@ui.paint('Roller / Roles', :bold)}      : #{roles_desc}",
-          "#{@ui.paint('Anahtar / Key', :bold)}       : #{key_desc}",
-          "#{@ui.paint('Kapsam / Scope', :bold)}      : #{scope_persist_label}"
+          "#{@ui.paint('Roles', :bold)}      : #{roles_desc}",
+          "#{@ui.paint('Key', :bold)}       : #{key_desc}",
+          "#{@ui.paint('Scope', :bold)}      : #{scope_persist_label}"
         ]
         @io.puts Rubik::UI::Frame.draw(summary, theme: @ui.theme, width: 78,
-                                                title: @ui.paint("⚙ BAĞLANTI ÖZETİ / CONNECTION SUMMARY", :accent))
-        @ui.yes?("Kaydet / Save?", default: true) == true
+                                                title: @ui.paint("⚙ CONNECTION SUMMARY", :accent))
+        @ui.yes?("Save?", default: true) == true
       end
 
       def commit(plan)
         res = @config.set("providers.#{plan[:id]}", build_spec(plan), persist: @scope)
         unless res[:ok]
-          @ui.puts @ui.paint("Yazma başarısız / Could not save: #{res[:error]}", :error)
+          @ui.puts @ui.paint("Could not save: #{res[:error]}", :error)
           return { ok: false, reason: :write_failed, error: res[:error], provider: plan[:id], notes: @notes }
         end
 
@@ -493,8 +492,7 @@ module Rubik
           next if res[:ok]
 
           failures << role
-          note("rol '#{role}' yazılamadı — `!model set #{role} #{plan[:id]}/#{plan[:model][:name]}` ile tamamlayın / " \
-               "role write failed — complete it with !model set")
+          note("role write failed — complete it with `!model set #{role} #{plan[:id]}/#{plan[:model][:name]}`")
           break
         end
         failures
@@ -503,7 +501,7 @@ module Rubik
       def render_success(plan, res, role_failures)
         bound = plan[:roles] - role_failures
         bound_desc = bound.empty? ? "—" : bound.join(", ")
-        @io.puts @ui.paint("✔ #{plan[:id]}/#{plan[:model][:name]} bağlandı / connected · roller / roles: #{bound_desc} " \
+        @io.puts @ui.paint("✔ #{plan[:id]}/#{plan[:model][:name]} connected · roles: #{bound_desc} " \
                            "[#{scope_persist_label}]", :success)
 
         info = res[:secret]
@@ -514,7 +512,7 @@ module Rubik
             @io.puts "  Warning: #{info[:warning]}"
           end
         end
-        @notes.each { |n| @io.puts "  Not / Note: #{n}" }
+        @notes.each { |n| @io.puts "  Note: #{n}" }
       end
 
       def scope_persist_label

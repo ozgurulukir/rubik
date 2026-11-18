@@ -103,7 +103,7 @@ class TestOrchestratorContinuationManager < Minitest::Test
     )
 
     refute exceeded[:continue]
-    assert_includes exceeded[:error], "3 otomatik devam denemesi tükendiği için durduruldu"
+    assert_includes exceeded[:error], "3 automatic continue attempts were exhausted, so it was stopped"
     assert_includes exceeded[:error], "!config set llm.default_max_output_tokens 8192"
   end
 
@@ -120,7 +120,7 @@ class TestOrchestratorContinuationManager < Minitest::Test
     )
 
     refute res[:continue]
-    assert_includes res[:error], "maksimum token sınırına (max_output_tokens: 2048) ulaştığı için tamamlanamadan kesildi"
+    assert_includes res[:error], "reached the maximum token limit (max_output_tokens: 2048) and was cut off before completion"
     assert_includes res[:error], "!config set llm.default_max_output_tokens 4096"
   end
 end

@@ -11,7 +11,7 @@ module Rubik
     # effects and is pruned from its parent on every exit.
     class PromptGrace
       ESCAPE_TIMEOUT = 0.03
-      STATUS = "Gönderiliyor… Esc: düzenlemeye dön"
+      STATUS = "Sending… Esc: return to editing"
 
       def initialize(input:, output:, context: nil, clock: nil, reader: nil)
         @input = input
@@ -42,7 +42,7 @@ module Rubik
             # the last processed key. Do not let its Enter submit a later turn.
             if @input.respond_to?(:nread) && @input.nread.positive?
               @input.iflush
-              @output.print "\a\r\e[2K[Rubik] Bekleme sırasında gelen tuşlar yok sayıldı.\r\n"
+              @output.print "\a\r\e[2K[Rubik] Keys received while waiting were ignored.\r\n"
             end
             return :execute
           end
@@ -58,7 +58,7 @@ module Rubik
 
           # Other keys are intentionally rejected, with immediate feedback.
           # Enter never leaks into the next readline as an accidental submit.
-          @output.print "\a\r\e[2K#{STATUS} · Tuş yok sayıldı"
+          @output.print "\a\r\e[2K#{STATUS} · Key ignored"
           @output.flush
         end
       rescue Interrupt

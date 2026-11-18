@@ -203,8 +203,8 @@ module Rubik
         while !res[:ok] && res[:reason] == :budget_exhausted
           if auto_extensions < max_auto
             auto_extensions += 1
-            ctx.out.puts "\n🤖 [Rubik::Goal] Adım bütçesi doldu (#{res[:error]}). " \
-                         "Otonom devam hakkı (#{auto_extensions}/#{max_auto}) kullanılarak +20 adım ekleniyor..."
+            ctx.out.puts "\n🤖 [Rubik::Goal] Step budget exhausted (#{res[:error]}). " \
+                         "Using autonomous continue allowance (#{auto_extensions}/#{max_auto}), +20 steps are being added..."
             goal_state.extend!(goal_state.max_steps + 20)
             res = orchestrator.continue_loop(20, auto: true)
             next
@@ -213,10 +213,10 @@ module Rubik
           break unless Rubik::Storage::Layout.config_get(ctx.config, "agent.ask_continue_on_limit", true)
 
           ctx.out.puts "\n⚠️ [Rubik::Goal] #{res[:error]}"
-          ans = ctx.ask_yes_no(" [Rubik::Goal] +20 adım ile devam edilsin mi?", default: "n")
+          ans = ctx.ask_yes_no(" [Rubik::Goal] Continue with +20 steps?", default: "n")
           break unless ["y", "yes", "evet"].include?(ans)
 
-          ctx.out.puts " [Rubik::Goal] Adım bütçesi +20 artırılıyor ve hedef sürdürülüyor..."
+          ctx.out.puts " [Rubik::Goal] Increasing step budget by +20 and resuming the goal..."
           goal_state.extend!(goal_state.max_steps + 20)
           res = orchestrator.continue_loop(20)
         end

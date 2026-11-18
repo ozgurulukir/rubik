@@ -84,7 +84,7 @@ class TestUIPanel < Minitest::Test
     @shell.runtime_manager.dispose!
     Rubik::UI::Panel.render(@shell, @theme)
 
-    assert_includes @output.string, "Kayıtlı fiber/ajan yok."
+    assert_includes @output.string, "No registered fiber/agent."
   end
 
   def test_render_lists_fibers_with_state_glyphs
@@ -97,7 +97,7 @@ class TestUIPanel < Minitest::Test
     Rubik::UI::Panel.render(shell, @theme)
 
     out = @output.string
-    assert_includes out, "=== Ajan / Fiber Panosu ==="
+    assert_includes out, "=== Agent / Fiber Panel ==="
     assert_includes out, "🟢"
     assert_includes out, "⏳"
     assert_includes out, "🔴"
@@ -126,7 +126,7 @@ class TestUIPanel < Minitest::Test
 
     line = Rubik::UI::Panel.detail_line(fiber, @theme)
 
-    assert_includes line, "adım 3/10"
+    assert_includes line, "step 3/10"
     assert_includes line, "worker"
   end
 
@@ -135,7 +135,7 @@ class TestUIPanel < Minitest::Test
 
     line = Rubik::UI::Panel.detail_line(fiber, @theme)
 
-    assert_includes line, "hata: syntax error"
+    assert_includes line, "error: syntax error"
   end
 
   def test_detail_line_for_pending_fiber_shows_coeffects
@@ -181,19 +181,19 @@ class TestUIPanel < Minitest::Test
 
     out = @output.string
     assert_includes out, "── worker ──"
-    assert_includes out, "Durum"
+    assert_includes out, "State"
     assert_includes out, "Coeffects"
-    assert_includes out, "Ω derinliği"
-    assert_includes out, "Adım"
+    assert_includes out, "Ω depth"
+    assert_includes out, "Step"
     assert_includes out, "Token"
   end
 
   def test_show_fiber_detail_includes_error_when_present
-    fiber = FiberDouble.new(name: "broken", state: :failed, last_error: RuntimeError.new("kapandı"))
+    fiber = FiberDouble.new(name: "broken", state: :failed, last_error: RuntimeError.new("closed"))
 
     Rubik::UI::Panel.show_fiber_detail(@shell, fiber, @theme)
 
-    assert_includes @output.string, "kapandı"
+    assert_includes @output.string, "closed"
   end
 
   # ── interactive? / STATE_ORDER ─────────────────────────────────────
