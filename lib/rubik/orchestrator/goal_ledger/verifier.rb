@@ -93,9 +93,16 @@ module Rubik
         # Kesilmiş okumada needle yokluğu KANITLANAMAZ → unknown (tri-state
         # dürüstlüğünün kalbi); tam okumada yokluk gerçek yokluktur → failed.
         def needle_read(spec, expanded)
-          size = File.size(expanded)
+          # Missing path is a proven false (same contract as file_exists) — never
+          # let Errno::ENOENT fall through to the generic :unknown rescue.
+          return [:failed, "file_contains #{spec[:path]}: missing"] unless File.exist?(expanded)
           return [:failed, "file_contains #{spec[:path]}: path is a directory"] if File.directory?(expanded)
+          # A FIFO/socket/device reports File.size == 0 and File.open would block
+          # forever waiting for a writer (the verify path is model-authored).
+          # Reject non-regular files up front so they report :unknown, never hang.
+          return [:unknown, "file_contains #{spec[:path]}: not a regular file"] unless File.file?(expanded)
 
+          size = File.size(expanded)
           body = File.open(expanded, "rb") { |f| f.read(VerifySpec::READ_CAP_BYTES) }.to_s
           body = Rubik::Platform.safe_utf8(body)
           return [:ok, "file_contains"] if body.include?(spec[:needle])

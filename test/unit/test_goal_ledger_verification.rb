@@ -2,6 +2,7 @@
 
 require_relative "../test_helper"
 require_relative "../../lib/rubik/orchestrator/goal_ledger"
+require "timeout"
 
 # Plan B doğrulama yüzeyi: spec grammar (kapalı set), tri-state dürüstlük
 # (containment kanıtlanamayan her şey unknown — flip YAPMAZ), iç drift
@@ -90,6 +91,41 @@ class TestGoalLedgerVerification < Minitest::Test
     result = GL::Verifier.verify!(led, trigger: :step, root_dir: @root, config: {})
     assert_equal 1, result[:flipped]
     assert_includes led.to_xml, 'status="stale"'
+  end
+
+  # #550: a missing workspace path is a proven false for EVERY predicate type.
+  # needle_read used to raise ENOENT from File.size and fall into the generic
+  # :unknown rescue, so file_contains/marker never flipped a done task stale.
+  def test_missing_verify_target_is_failed_for_all_three_predicate_types
+    specs = {
+      "file_exists" => exists_spec("lib/gone.rb"),
+      "file_contains" => { "type" => "file_contains", "path" => "lib/gone.rb", "pattern" => "needle" },
+      "marker" => { "type" => "marker", "path" => "lib/gone.rb", "marker" => "needle" }
+    }
+    specs.each do |type, spec|
+      led = ledger(tasks: [{ "id" => "t1", "status" => "done", "verify" => spec }])
+      result = GL::Verifier.verify!(led, trigger: :step, root_dir: @root, config: {})
+      assert_equal 1, result[:flipped], "#{type}: a missing target must flip done -> stale"
+      assert_empty result[:unknowns], "#{type}: a missing target is proven :failed, not :unknown"
+      assert_includes led.to_xml, 'status="stale"'
+    end
+  end
+
+  # #550: File.size returns 0 for a FIFO and File.open would block forever
+  # waiting for a writer. The verify path is model-authored, so a repo holding
+  # a FIFO must report :unknown quickly and never hang the goal-loop thread.
+  def test_fifo_verify_target_reports_unknown_without_blocking
+    skip "mkfifo unavailable on this platform" unless File.respond_to?(:mkfifo)
+    fifo = File.join(@root, "pipe.log")
+    File.mkfifo(fifo)
+    spec = { "type" => "marker", "path" => "pipe.log", "marker" => "needle" }
+    led = ledger(tasks: [{ "id" => "t1", "status" => "done", "verify" => spec }])
+    result = Timeout.timeout(3) do
+      GL::Verifier.verify!(led, trigger: :step, root_dir: @root, config: {})
+    end
+    assert_equal 0, result[:flipped], "a FIFO is not readable proof - no flip"
+    assert_equal 1, result[:unknowns].size
+    assert_includes result[:unknowns].first[:reason], "not a regular file"
   end
 
   def test_file_contains_matches_literal_substring_and_never_regex
