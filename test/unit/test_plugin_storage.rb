@@ -266,4 +266,61 @@ class TestPluginStorage < Minitest::Test
     File.write(outside, "puts 'rogue'")
     assert_equal :rejected, @storage.verify_integrity(outside, scope: :project)
   end
+
+  # ── Issue #554: caller-supplied names must not escape the plugins dir ──
+
+  def test_remove_plugin_rejects_parent_directory_traversal
+    victim = File.join(@tmp_root, "victim_dir")
+    FileUtils.mkdir_p(victim)
+    File.write(File.join(victim, "keep.txt"), "keep")
+
+    res = @storage.remove_plugin("../../victim_dir", scope: :project)
+    refute res[:ok]
+    assert_includes res[:error], "Invalid plugin name"
+    assert Dir.exist?(victim), "victim directory must survive a traversal attempt"
+    assert File.exist?(File.join(victim, "keep.txt"))
+  end
+
+  def test_remove_plugin_rejects_traversal_for_file_branch
+    # file_path is built as "#{name}.rb", so "../../victim" targets victim.rb.
+    victim = File.join(@tmp_root, "victim_file.rb")
+    File.write(victim, "keep")
+
+    res = @storage.remove_plugin("../../victim_file", scope: :project)
+    refute res[:ok]
+    assert_includes res[:error], "Invalid plugin name"
+    assert File.exist?(victim), "victim file must survive a traversal attempt"
+  end
+
+  def test_remove_plugin_rejects_absolute_path
+    victim = File.join(@tmp_root, "abs_victim")
+    FileUtils.mkdir_p(victim)
+    File.write(File.join(victim, "keep.txt"), "keep")
+
+    res = @storage.remove_plugin(victim, scope: :project)
+    refute res[:ok]
+    assert_includes res[:error], "Invalid plugin name"
+    assert Dir.exist?(victim), "victim directory must survive an absolute-path attempt"
+    assert File.exist?(File.join(victim, "keep.txt"))
+  end
+
+  def test_remove_plugin_rejects_name_with_separator
+    victim = File.join(@storage.project_plugins_dir, "nested", "victim")
+    FileUtils.mkdir_p(victim)
+    File.write(File.join(victim, "keep.txt"), "keep")
+
+    res = @storage.remove_plugin("nested/victim", scope: :project)
+    refute res[:ok]
+    assert_includes res[:error], "Invalid plugin name"
+    assert Dir.exist?(victim), "nested victim directory must survive"
+    assert File.exist?(File.join(victim, "keep.txt"))
+  end
+
+  def test_remove_plugin_rejects_dot_and_empty_names
+    ["", ".", ".."].each do |bad|
+      res = @storage.remove_plugin(bad, scope: :project)
+      refute res[:ok], "expected #{bad.inspect} to be rejected"
+      assert_includes res[:error], "Invalid plugin name"
+    end
+  end
 end
