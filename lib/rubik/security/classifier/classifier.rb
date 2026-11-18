@@ -34,6 +34,15 @@ module Rubik
           "SSH_ASKPASS", "SSH_COMMAND", "LESSOPEN"
         ].freeze
         EXECUTED_ENV_PREFIXES = ["GIT_CONFIG_"].freeze
+        # Pre-subcommand git config assignments that redirect execution
+        # (editors, hooks, pagers, ssh, aliases). Global-option stripping
+        # removes these before subcommand options are evaluated, so the
+        # Engine must gate them from the raw argv (#539 residual).
+        GIT_CONFIG_FLAGS = ["-c", "--config"].freeze
+        DANGEROUS_GIT_CONFIG_KEYS = [
+          "core.editor", "core.hookspath", "core.pager", "core.sshcommand",
+          "core.fsmonitor", "core.gitproxy", "diff.external"
+        ].freeze
 
         def self.default_database
           @default_database ||= CommandDatabase.new
@@ -92,6 +101,7 @@ module Rubik
           # as a sibling inner command BEFORE redirects/system-path checks
           # so the rest of the pipeline sees the elevation.
           result = apply_assignment_payloads(result, inv, parse_warnings)
+          result = apply_git_config_overrides(result, inv, parse_warnings)
 
           write_paths, read_paths, all_temp = extract_paths(inv.redirects)
           result = apply_redirects(result, inv.redirects, write_paths, all_temp)
@@ -176,6 +186,74 @@ module Rubik
         def executed_env_var?(name)
           n = name.to_s
           EXECUTED_ENV_VARS.include?(n) || EXECUTED_ENV_PREFIXES.any? { |prefix| n.start_with?(prefix) }
+        end
+
+        def dangerous_git_config_key?(key)
+          k = key.to_s.downcase
+          DANGEROUS_GIT_CONFIG_KEYS.include?(k) || k.start_with?("alias.")
+        end
+
+        def dangerous_git_config_assignments(result, argv)
+          # Only the pre-subcommand region: global options are stripped there
+          # before subcommand options run (#539 residual). Post-subcommand
+          # -c/--config stays owned by the command definitions; restricting
+          # the scan also avoids flagging config-like text inside -m/--grep.
+          subcommand = result.command[1..].first
+          limit = subcommand ? (argv.index(subcommand) || argv.size) : argv.size
+          candidates = argv[1...limit] || []
+
+          assignments = []
+          candidates.each_with_index do |token, i|
+            if GIT_CONFIG_FLAGS.include?(token)
+              value = candidates[i + 1].to_s
+              next unless value.include?("=")
+
+              key, payload = value.split("=", 2)
+              assignments << [key, payload] if dangerous_git_config_key?(key)
+            elsif token.start_with?("--config=")
+              spec = token.delete_prefix("--config=")
+              next unless spec.include?("=")
+
+              key, payload = spec.split("=", 2)
+              assignments << [key, payload] if dangerous_git_config_key?(key)
+            end
+          end
+          assignments
+        end
+
+        # `git -c core.editor='curl ... | bash' clone ...` is stripped as a
+        # global option before subcommand options run, so the payload stayed
+        # invisible (#539 residual). Gate the dangerous key directly and
+        # surface its value through inner-command classification so the
+        # verdict is at least as strict as typing the payload itself.
+        def apply_git_config_overrides(result, inv, parse_warnings)
+          return result unless result.command.first.to_s == "git"
+
+          assignments = dangerous_git_config_assignments(result, inv.argv)
+          return result if assignments.empty?
+
+          inners = assignments.flat_map do |key, value|
+            inner_invs, warnings = Parser.parse(value, shell: @shell)
+            Matcher::Delegation.record_warnings(parse_warnings, warnings)
+            inner_invs.map do |inner_inv|
+              Matcher::Delegation.match_inner_command(
+                inner_inv.argv, @database,
+                delegation_mode: "git_config",
+                delegation_source: key,
+                parse_warnings: parse_warnings,
+                redirects: inner_inv.redirects
+              ) { |i, db, w| Matcher.match_command(i, db, w, shell: @shell) }
+            end
+          end
+
+          reason = append_reason(result.classification_reason,
+                                 "dangerous git config #{assignments.map(&:first).join(', ')}")
+          result.with(
+            inner_commands: result.inner_commands + inners,
+            classification: Classification::DANGEROUS,
+            risk: Risk::HIGH,
+            classification_reason: reason
+          )
         end
 
         def extract_paths(redirects)
