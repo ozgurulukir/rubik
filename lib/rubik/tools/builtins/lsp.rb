@@ -7,6 +7,35 @@ require_relative "../../platform"
 
 module Rubik
   module Tools
+    # Single source of truth for LSP DiagnosticSeverity (spec 3.17:
+    # 1=Error, 2=Warning, 3=Information, 4=Hint). Both the tool's human-facing
+    # output and the prompt builder's <diagnostic> tags map through here so a
+    # style hint can never be overstated as an error/warning (issue #546).
+    module LSPSeverity
+      # severity => [canonical label (prompt), display label (tool output)]
+      SEVERITIES = {
+        1 => ["error", "ERROR"].freeze,
+        2 => ["warning", "WARN"].freeze,
+        3 => ["info", "INFO"].freeze,
+        4 => ["hint", "HINT"].freeze
+      }.freeze
+      DEFAULT = SEVERITIES[4]
+
+      module_function
+
+      def entry(severity)
+        SEVERITIES.fetch(severity.to_s.to_i, DEFAULT)
+      end
+
+      def label(severity)
+        entry(severity)[0]
+      end
+
+      def display(severity)
+        entry(severity)[1]
+      end
+    end
+
     class BaseLSPTool < BaseTool
       REQUIRES = [Rubik::Coeffects::LSP_MANAGER].freeze
 
@@ -107,7 +136,7 @@ module Rubik
                           end
               lines << "\nFile: #{fpath} (#{diags.size}; #{freshness}):"
               diags.each do |d|
-                sev = d["severity"] == 1 ? "ERROR" : "WARN"
+                sev = LSPSeverity.display(d["severity"])
                 start_line = (d.dig("range", "start", "line") || 0) + 1
                 lines << "  • [#{sev}] Line #{start_line}: #{d['message']}"
               end
@@ -137,12 +166,7 @@ module Rubik
                         end
             lines = ["=== LSP Diagnostics for #{path} (#{diags.size} issue(s); #{freshness}) ==="]
             diags.each do |d|
-              sev = case d["severity"]
-                    when 1 then "ERROR"
-                    when 2 then "WARN"
-                    when 3 then "INFO"
-                    else "HINT"
-                    end
+              sev = LSPSeverity.display(d["severity"])
               range = d["range"] || {}
               start_line = (range.dig("start", "line") || 0) + 1
               start_char = (range.dig("start", "character") || 0) + 1

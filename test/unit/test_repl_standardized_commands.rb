@@ -97,6 +97,23 @@ class TestReplStandardizedCommands < Minitest::Test
   # 2. LSP Commands
   # =========================================================================
 
+  # Issue #546: the REPL diagnostics renderer must use the same shared
+  # severity mapper as the tool output and the prompt builder.
+  def test_lsp_diag_command_maps_all_severities
+    diags = (1..4).map do |sev|
+      { "severity" => sev, "message" => "msg#{sev}", "range" => { "start" => { "line" => sev - 1 } } }
+    end
+    mgr = @shell.lsp_manager
+    mgr.define_singleton_method(:all_diagnostics) { { "a.rb" => diags } }
+
+    @shell.execute_input("!lsp diag")
+
+    assert_includes @out.string, "[ERROR] Line 1: msg1"
+    assert_includes @out.string, "[WARN] Line 2: msg2"
+    assert_includes @out.string, "[INFO] Line 3: msg3"
+    assert_includes @out.string, "[HINT] Line 4: msg4"
+  end
+
   def test_lsp_subcommands_and_diagnostics
     # 2.1 !lsp status
     @out.reopen
