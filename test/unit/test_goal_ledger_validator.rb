@@ -365,6 +365,43 @@ class TestGoalLedgerValidator < Minitest::Test
     end
   end
 
+  # ---- per-collection cap (issue #551) ----
+
+  def test_an_item_collection_cannot_grow_past_the_per_collection_cap
+    doc = base_doc
+    doc["tasks"] = Array.new(GL::Validator::MAX_ITEMS_PER_COLLECTION) do |i|
+      { "id" => "t#{i}", "title" => "Task #{i}", "status" => "todo" }
+    end
+    verdict = validate([{ "op" => "add", "path" => "/tasks/-",
+                          "value" => { "id" => "overflow", "title" => "One too many", "status" => "todo" } }], doc: doc)
+    assert_equal :rejected, verdict[0]
+    assert_equal :schema, verdict[1].first[:class]
+    assert_includes verdict[1].first[:message], "cap"
+    assert_equal GL::Validator::MAX_ITEMS_PER_COLLECTION, doc["tasks"].size, "the current doc is untouched"
+  end
+
+  def test_a_scalar_collection_is_capped_too
+    doc = base_doc
+    doc["open_questions"] = Array.new(GL::Validator::MAX_ITEMS_PER_COLLECTION) { |i| "q#{i}" }
+    verdict = validate([{ "op" => "add", "path" => "/open_questions/-", "value" => "one too many" }], doc: doc)
+    assert_equal :rejected, verdict[0]
+    assert_includes verdict[1].first[:message], "open_questions is at its cap"
+  end
+
+  def test_removing_an_item_frees_room_under_the_cap
+    doc = base_doc
+    doc["tasks"] = Array.new(GL::Validator::MAX_ITEMS_PER_COLLECTION) do |i|
+      { "id" => "t#{i}", "title" => "Task #{i}", "status" => "todo" }
+    end
+    verdict = validate([
+                         { "op" => "remove", "path" => "/tasks/0" },
+                         { "op" => "add", "path" => "/tasks/-",
+                           "value" => { "id" => "fresh", "title" => "Fresh", "status" => "todo" } }
+                       ], doc: doc)
+    assert_equal :ok, verdict[0]
+    assert_equal GL::Validator::MAX_ITEMS_PER_COLLECTION, verdict[1]["tasks"].size
+  end
+
   def test_patch_objects_skip_reparse
     verdict = GL::Patch.parse(patch_json(rev: 7, ops: [{ "op" => "replace", "path" => "/objective", "value" => "via vo" }]))
     assert_equal :ok, verdict[0]

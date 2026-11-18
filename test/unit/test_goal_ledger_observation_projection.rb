@@ -225,4 +225,24 @@ class TestGoalLedgerObservationProjection < Minitest::Test
     refute rows[0].key?(:thought), "ephemeral thought is discarded in banked unit"
     assert_equal 1, rows[0][:tool_calls].size, "tool_calls pairing is preserved"
   end
+
+  def test_assistant_unit_scan_is_linear_not_per_unit
+    rows = Array.new(400) { |i| tool_row("read_file", "old observation #{i}") }
+    rows << ledger_row
+    d = directive(deps)
+
+    calls = 0
+    counter = Module.new do
+      define_method(:assistant_row?) do |row|
+        calls += 1
+        super(row)
+      end
+    end
+    d.singleton_class.prepend(counter)
+
+    out = d.apply!(rows)
+    assert_operator out[:count], :>, 0, "the banked rows are still absorbed"
+    assert_operator calls, :<=, rows.size,
+                    "assistant-unit scan runs once per pass (O(n)), not once per unit (O(n²))"
+  end
 end

@@ -313,4 +313,34 @@ class TestGoalLedger < Minitest::Test
     assert_equal keys.size, sizes.size, "a fresh ledger reports every schema collection"
     assert sizes.values.all?(0), "a fresh ledger seeds every schema collection empty"
   end
+
+  # ---- revision retention (issue #551) ----
+
+  def test_superseded_revision_rows_are_bounded_and_the_active_row_survives
+    led = ledger
+    20.times do |i|
+      res = led.update(JSON.generate({ "rev" => i, "ops" => [add_task_op(id: "t#{i}")] }))
+      assert_equal :applied, res.status
+    end
+
+    rows = @store.list(type: "goal")
+    assert_operator rows.size, :<=, GL::Ledger::MAX_RETAINED_REVISIONS + 1,
+                    "revision rows stay bounded across many accepted patches"
+    current = led.snapshot[:storage_id]
+    assert rows.any? { |s| s.id == current }, "the active/latest row is never dropped"
+    assert_equal current, @store.refs["goal-ledger"], "the ref still names the latest row"
+  end
+
+  def test_retention_never_drops_a_suspended_resume_row
+    led = ledger
+    led.suspend!("attempt" => 1, "goal_id" => "g")
+    suspended_id = led.snapshot[:storage_id]
+    20.times do |i|
+      led.update(JSON.generate({ "rev" => i, "ops" => [add_task_op(id: "t#{i}")] }))
+    end
+
+    row = @store.get(type: "goal", id: suspended_id)
+    assert row, "a suspended resume point survives retention pruning"
+    assert_equal "suspended", row["status"]
+  end
 end

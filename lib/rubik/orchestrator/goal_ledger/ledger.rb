@@ -30,6 +30,9 @@ module Rubik
       class Ledger
         Result = Struct.new(:status, :reasons, :rev, :uri, keyword_init: true)
 
+        # Revision chain bound (issue #551): newest N superseded rows kept.
+        MAX_RETAINED_REVISIONS = 16
+
         # Askı yaşam döngüsü (issue #106): suspend!/unsuspend! damgaları +
         # restore_from_row! + suspend_meta — instance-method include ile
         # private yardımcılara (row_title, canonical_json, final_result,
@@ -118,8 +121,7 @@ module Rubik
             return nil unless row.is_a?(Hash) && row["status"] == "suspended"
 
             doc = JSON.parse(row["body"].to_s)
-            return nil unless doc.is_a?(Hash) && doc["rev"].is_a?(Integer) &&
-                              doc["objective"] && SuspendLifecycle::SIGMA_COLLECTIONS.all? { |key| doc[key].is_a?(Array) }
+            return nil unless Validator.sigma_doc_well_formed?(doc, schema: PRODUCTION_SCHEMA)
 
             ledger = new(goal_text: doc["objective"].to_s,
                          max_retries: max_patch_retries(config),
@@ -297,6 +299,7 @@ module Rubik
           if row
             @storage_id = row["id"]
             @last_links = links
+            prune_superseded_rows!
           end
           log(:patch_accepted, "goal ledger rev #{@doc['rev']} applied (#{row ? "stored #{@storage_id}" : 'memory-only'})")
           Result.new(status: :applied, rev: @doc["rev"], uri: ledger_uri)
@@ -305,6 +308,19 @@ module Rubik
           # uygulandı (atomik validate-then-apply), yalnız kalıcılık düştü.
           degrade("revision row", e)
           Result.new(status: :applied, rev: @doc["rev"], uri: ledger_uri)
+        end
+
+        # Keep newest N superseded rows plus the active row and the newest
+        # suspended row (the `.last` resume target). Stale suspended rows from
+        # dead processes are bounded too. A pruning error never rolls back.
+        def prune_superseded_rows!
+          rows = @store.list(type: "goal").select { |s| s.tags.include?("goal-ledger") }.sort_by(&:row)
+          suspended = rows.select { |s| s.status == "suspended" }.sort_by(&:updated_at)
+          keep = [@storage_id, suspended.last&.id].compact
+          keep += rows.reject { |s| keep.include?(s.id) }.last(MAX_RETAINED_REVISIONS).map(&:id)
+          rows.each { |s| @store.delete(type: "goal", id: s.id) unless keep.include?(s.id) }
+        rescue StandardError => e
+          degrade("revision row pruning", e)
         end
 
         def exhausted_result
