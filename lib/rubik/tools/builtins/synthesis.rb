@@ -332,13 +332,13 @@ module Rubik
           previous_origin = previous_tool ? @tool_registry.origin(name) : nil
           @tool_registry.register(tool_instance, origin: :synthesis)
 
-          # Register inverse in Runtime Context. When hot-updating an existing
-          # overlay/MCP/synthesized tool, the inverse restores the previous
-          # instance instead of leaving a hole in the toolbelt.
+          # One keyed inverse restores the previous instance on hot-update.
           ctx = active_context
           if ctx.respond_to?(:on_dispose) || ctx.respond_to?(:register_disposable)
             hook = ctx.respond_to?(:on_dispose) ? :on_dispose : :register_disposable
-            ctx.send(hook) do
+            prior = (@synthesis_inverses ||= {})[name]
+            ctx.unregister_disposable(prior) if prior && ctx.respond_to?(:unregister_disposable)
+            @synthesis_inverses[name] = ctx.send(hook) do
               if previous_tool && @tool_registry.respond_to?(:swap)
                 @tool_registry.swap(name, previous_tool, origin: previous_origin || :overlay)
               else

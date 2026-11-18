@@ -10,6 +10,10 @@ class TestPathFilterNormalization < Minitest::Test
     @temp_dir = Dir.mktmpdir
     FileUtils.mkdir_p(File.join(@temp_dir, "lib"))
     File.write(File.join(@temp_dir, "lib", "greeter.rb"), "class Greeter; end\n")
+    # A sibling directory whose name merely starts with "lib" must not be
+    # swept into a `path: "lib"` filter (directory-boundary matching).
+    FileUtils.mkdir_p(File.join(@temp_dir, "libfoo"))
+    File.write(File.join(@temp_dir, "libfoo", "decoy.rb"), "Greeter decoy\n")
     File.write(File.join(@temp_dir, "readme.md"), "hi\n")
 
     @index = Rubik::Context::Index.new(root_dir: @temp_dir, native: "off")
@@ -64,6 +68,20 @@ class TestPathFilterNormalization < Minitest::Test
     tool = Rubik::Tools::GrepSearchTool.new(@buffer, @index, root_dir: @temp_dir, config: NativeOffConfig2.new)
     res = tool.execute({ "query" => "Greeter", "path" => "C:/elsewhere/other" })
     assert_includes res, "outside the project workspace"
+  end
+
+  def test_list_files_path_filter_respects_directory_boundary
+    tool = Rubik::Tools::ListFilesTool.new(@index, root_dir: @temp_dir)
+    res = tool.execute({ "path" => "lib" })
+    assert_includes res, "lib/greeter.rb"
+    refute_includes res, "libfoo/decoy.rb", "'lib' filter must not match 'libfoo/'"
+  end
+
+  def test_grep_path_filter_respects_directory_boundary
+    tool = Rubik::Tools::GrepSearchTool.new(@buffer, @index, root_dir: @temp_dir, config: NativeOffConfig2.new)
+    res = tool.execute({ "query" => "Greeter", "path" => "lib" })
+    assert_includes res, "lib/greeter.rb:1:"
+    refute_includes res, "libfoo/decoy.rb", "'lib' filter must not match 'libfoo/'"
   end
 
   def test_normalize_path_filter_cases

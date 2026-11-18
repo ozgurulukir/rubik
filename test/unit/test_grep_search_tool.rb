@@ -157,6 +157,13 @@ class TestGrepSearchTool < Minitest::Test
     assert_includes res_match, "Found 2 match(es)"
   end
 
+  def test_case_sensitive_string_false_does_not_invert_matching
+    # A JSON string "false" is truthy in Ruby; type: :flag coerces only the
+    # literal true, so it must not invert case-insensitive matching.
+    res = @tool.execute("query" => "hello", "case_sensitive" => "false")
+    assert_includes res, "Found 2 match(es)", "string 'false' must behave as case-insensitive"
+  end
+
   def test_max_results_limit
     res = @tool.execute("query" => "puts", "max_results" => 1)
     assert_includes res, "Found 1 match(es)"

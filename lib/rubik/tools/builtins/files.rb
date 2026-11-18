@@ -112,17 +112,13 @@ module Rubik
                                   "relative to the project root (e.g. 'lib/app.rb', 'src/main.go', 'Gemfile').")
         end
 
-        begin
-          # NB: reset_baseline defaults to false on purpose. The buffer only
-          # replaces the tracked baseline for files that have no baseline yet
-          # (new files). Passing reset_baseline: true here would overwrite the
-          # original baseline of an ALREADY-loaded file, defeating undo and
-          # conflict restoration — the buffer could never restore the file's
-          # true original state after a full overwrite.
-          @buffer_manager.write(path, content)
-        rescue ArgumentError
-          @buffer_manager.write(path, content)
-        end
+        # NB: reset_baseline defaults to false on purpose. The buffer only
+        # replaces the tracked baseline for files that have no baseline yet
+        # (new files). Passing reset_baseline: true here would overwrite the
+        # original baseline of an ALREADY-loaded file, defeating undo and
+        # conflict restoration — the buffer could never restore the file's
+        # true original state after a full overwrite.
+        @buffer_manager.write(path, content)
         "Successfully wrote to in-memory buffer: #{path}"
       rescue Errno::EACCES => e
         ToolOutput.error(DiagnosticReporter.render_permission_denied(path, operation: "write", reason: e.message))
@@ -186,7 +182,7 @@ module Rubik
         partial_note = IndexMessages.note_for(idx)
         # Path-filtered list drives the B9 explanation: an extension miss in
         # an INDEXED directory must read "no such files here", not "ignored".
-        path_filtered = filter.empty? ? files.keys : files.keys.select { |f| f.start_with?(filter) }
+        path_filtered = filter.empty? ? files.keys : files.keys.select { |f| f == filter || f.start_with?("#{filter}/") }
         file_list = ext_filter && !ext_filter.empty? ? path_filtered.select { |f| f.end_with?(ext_filter) } : path_filtered
 
         return with_note(ignored_directory_message(filter, ext_filter), partial_note) if path_filtered.empty? && existing_but_unindexed?(@root_dir, filter)

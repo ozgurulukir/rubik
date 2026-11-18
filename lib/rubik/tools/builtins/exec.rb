@@ -62,7 +62,7 @@ module Rubik
 
         clean_path = path.to_s.strip
         clean_path = nil if clean_path.empty?
-        eff_timeout = timeout.to_i if timeout&.to_i&.positive?
+        eff_timeout = timeout.to_i.clamp(1, 600) if timeout&.to_i&.positive?
 
         res = if clean_path || eff_timeout
                 begin
