@@ -144,84 +144,65 @@ module Rubik
       end
 
       def smart_context_for(symbol_name)
-        @mutex.synchronize do
+        target, dependencies = @mutex.synchronize do
           candidates = _symbol_candidate_pairs_unlocked(symbol_name)
-          return "" unless candidates.length == 1
+          next nil unless candidates.length == 1
 
           target = candidates.first.last
-          context_blocks = []
-          context_blocks << "# Target symbol: #{target.name} (#{target.file}:#{target.line_start}-#{target.line_end})"
-          context_blocks << target.body if target.body
-
+          target_scope = _symbol_scope(target.name)
+          deps = []
           target.calls.each do |called_name|
             dep_candidates = _symbol_candidate_pairs_unlocked(called_name).map(&:last)
-            target_scope = _symbol_scope(target.name)
             matching = dep_candidates.find { |s| s.file && target.file && Rubik::Platform.path_equal?(s.file, target.file) && _symbol_scope(s.name) == target_scope } ||
                        dep_candidates.find { |s| s.file && target.file && Rubik::Platform.path_equal?(s.file, target.file) } ||
                        (dep_candidates.first if dep_candidates.length == 1)
-            if matching
-              context_blocks << "# Dependency signature: #{matching.name}"
-              context_blocks << matching.signature
-            end
+            deps << matching if matching
           end
-
-          context_blocks.join("\n\n")
+          [target, deps]
         end
+        return "" unless target
+
+        # Symbol#body can fall back to File.readlines; keep that disk I/O
+        # outside the graph lock so it cannot serialize concurrent readers.
+        body = target.body
+        context_blocks = []
+        context_blocks << "# Target symbol: #{target.name} (#{target.file}:#{target.line_start}-#{target.line_end})"
+        context_blocks << body if body
+
+        dependencies.each do |matching|
+          context_blocks << "# Dependency signature: #{matching.name}"
+          context_blocks << matching.signature
+        end
+
+        context_blocks.join("\n\n")
       end
 
       def outline_for(file_path)
-        @mutex.synchronize do
-          syms = _get_file_symbols_unlocked(file_path)
-          syms = _index_file_unlocked(file_path) if syms.empty? && File.exist?(file_path)
+        # Snapshot under the lock, but do the parse/source read outside it:
+        # the extractor reads from disk and is the slowest path through here.
+        syms = @mutex.synchronize { _get_file_symbols_unlocked(file_path).dup }
+        if syms.empty?
+          return "No symbols found in '#{file_path}'." unless File.exist?(file_path)
 
-          return "No symbols found in '#{file_path}'." if syms.empty?
-
-          lines = ["=== Outline for #{file_path} (#{syms.size} symbols) ==="]
-          syms.sort_by(&:line_start).each do |sym|
-            indent = [:class, :struct, :module, :interface, :type].include?(sym.kind) ? "" : "  "
-            lines << "#{indent}• [#{sym.kind.to_s.upcase}] #{sym.name} (lines #{sym.line_start}-#{sym.line_end}) -> #{sym.signature}"
-          end
-          lines.join("\n")
+          result = Extractor.extract_result(file_path, nil)
+          # Re-acquire only to merge the parse into the in-memory maps.
+          syms = @mutex.synchronize { _merge_extraction_result_unlocked(file_path, result).dup }
         end
+
+        return "No symbols found in '#{file_path}'." if syms.empty?
+
+        lines = ["=== Outline for #{file_path} (#{syms.size} symbols) ==="]
+        syms.sort_by(&:line_start).each do |sym|
+          indent = [:class, :struct, :module, :interface, :type].include?(sym.kind) ? "" : "  "
+          lines << "#{indent}• [#{sym.kind.to_s.upcase}] #{sym.name} (lines #{sym.line_start}-#{sym.line_end}) -> #{sym.signature}"
+        end
+        lines.join("\n")
       end
 
       private
 
       def _index_file_unlocked(file_path, content = nil)
-        result = Extractor.extract_result(file_path, content)
-        @extraction_status[file_path] = result.status
-
-        # A failed extraction must not silently DELETE the file's previously
-        # indexed symbols (issue #147): stale-but-known beats unknown, and
-        # the log line makes the downgrade visible. The best-effort symbols
-        # are only indexed when there is nothing to protect.
-        if result.status == :failed
-          existing = _get_file_symbols_unlocked(file_path)
-          unless existing.empty?
-            Rubik::Log.warn(:ast, "extraction failed for #{file_path} (#{result.detail}); keeping previously indexed symbols")
-            return existing
-          end
-        end
-
-        _remove_file_unlocked(file_path)
-
-        ext = File.extname(file_path).downcase
-        lang = CacheStore::LANGUAGE_MAP[ext] || "code"
-
-        extracted = result.symbols
-        if result.status == :failed
-          # Truthful accounting: the fallback symbols ARE indexed when
-          # nothing pre-existing needed protection — even when there are
-          # none, the log must not claim otherwise.
-          Rubik::Log.warn(:ast, "extraction failed for #{file_path} (#{result.detail}); indexing #{extracted.length} best-effort fallback symbols")
-        end
-        extracted.each do |sym|
-          @symbols[sym.name] = sym
-          q_key = "#{lang}:#{file_path}##{sym.name}"
-          @qualified_symbols[q_key] = sym
-          @file_symbols[file_path] << sym
-        end
-        extracted
+        _merge_extraction_result_unlocked(file_path, Extractor.extract_result(file_path, content))
       end
 
       def _remove_file_unlocked(file_path, clear_status: false)
