@@ -150,7 +150,7 @@ class TestReplaceFileContent < Minitest::Test
 
     assert_includes res, "Successfully replaced content in in-memory buffer: windows.rb"
     updated = @buffer_manager.read("windows.rb")
-    assert_includes updated, "def foo\n  2\nend"
+    assert_includes updated, "def foo\r\n  2\r\nend"
   end
 
   def test_replacement_with_backslashes_preserved_verbatim

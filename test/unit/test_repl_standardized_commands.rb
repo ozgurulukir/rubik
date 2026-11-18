@@ -186,10 +186,10 @@ class TestReplStandardizedCommands < Minitest::Test
     assert_equal "puts 'hello world'\n", File.read(File.join(@temp_root, "test_file.rb"))
     refute @shell.buffer_manager.dirty?
 
-    # 3.4 !undo
+    # 3.4 !undo — writes now record snapshots, so undo is live (issue #544)
     @out.reopen
     @shell.execute_input("!undo")
-    assert_includes @out.string, "No snapshots to undo."
+    assert_includes @out.string, "Undo successful."
 
     # 3.5 !rollback without arg -> Usage
     @out.reopen
@@ -325,5 +325,15 @@ class TestReplStandardizedCommands < Minitest::Test
     @out.reopen
     @shell.execute_input("!context xyz")
     assert_includes @out.string, "Usage: !context <status | compact | stats | scan | add <file> | drop <file>>"
+  end
+
+  def test_undo_reverts_a_buffered_write
+    @shell.buffer_manager.write("undo_target.rb", "first")
+    @shell.buffer_manager.write("undo_target.rb", "second")
+
+    @out.reopen
+    @shell.execute_input("!undo")
+    assert_includes @out.string, "Undo successful."
+    assert_equal "first", @shell.buffer_manager.read("undo_target.rb")
   end
 end

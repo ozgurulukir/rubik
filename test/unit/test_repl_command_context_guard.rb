@@ -18,7 +18,9 @@ class TestReplCommandContextGuard < Minitest::Test
     [/def self\.register\w*\(\s*shell\s*\)/, "registration method declarations"],
     [/register_\w+\(\s*shell\s*\)/, "registration plumbing call lines"],
     [/Agent\w*\.register\(\s*shell\s*\)/, "Agent coordinator fan-out"],
-    [/shell\.register_command\(/, "spine metadata registrations"]
+    [/shell\.register_command\(/, "spine metadata registrations"],
+    [/shell\.(respond_to|buffer_manager|snapshot_store)/,
+     "registration-time snapshot producer wiring for !undo/!rollback (issue #544)"]
   ].freeze
 
   def test_no_shell_reach_through_in_command_modules

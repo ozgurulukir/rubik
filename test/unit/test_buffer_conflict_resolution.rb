@@ -22,7 +22,7 @@ class TestBufferConflictResolution < Minitest::Test
     rel_path = "src/app.cr"
     full_path = File.join(@tmp_dir, rel_path)
     FileUtils.mkdir_p(File.dirname(full_path))
-    File.write(full_path, "def run\n  puts 1\nend\n")
+    File.binwrite(full_path, "def run\n  puts 1\nend\n")
 
     # Step 1: Read and modify via buffer
     content = @manager.read(rel_path)
@@ -37,7 +37,7 @@ class TestBufferConflictResolution < Minitest::Test
     refute @manager.instance_variable_get(:@buffer).key?(rel_path)
 
     # Step 2: External tool (e.g. crystal tool format / prettier) formats disk file
-    File.write(full_path, "def run\n    puts 2\nend\n")
+    File.binwrite(full_path, "def run\n    puts 2\nend\n")
 
     # Step 3: Next read pulls formatted disk file and updates baseline hash
     new_content = @manager.read(rel_path)
@@ -77,13 +77,13 @@ class TestBufferConflictResolution < Minitest::Test
     rel_path = "lib/module.rb"
     full_path = File.join(@tmp_dir, rel_path)
     FileUtils.mkdir_p(File.dirname(full_path))
-    File.write(full_path, "module Old\nend\n")
+    File.binwrite(full_path, "module Old\nend\n")
 
     # Read to establish the original baseline
     @manager.read(rel_path)
 
     # External modification (e.g. a formatter) changes the disk away from baseline
-    File.write(full_path, "module Formatted\nend\n")
+    File.binwrite(full_path, "module Formatted\nend\n")
 
     # WriteFileTool writes new content (baseline is intentionally NOT reset)
     tool = Rubik::Tools::WriteFileTool.new(@manager)
@@ -100,11 +100,11 @@ class TestBufferConflictResolution < Minitest::Test
     rel_path = "src/icon.cr"
     full_path = File.join(@tmp_dir, rel_path)
     FileUtils.mkdir_p(File.dirname(full_path))
-    File.write(full_path, "A = 1\n")
+    File.binwrite(full_path, "A = 1\n")
 
     @manager.read(rel_path)
     # External modification
-    File.write(full_path, "A = 2\n")
+    File.binwrite(full_path, "A = 2\n")
 
     # Surgical replacement or write without reset_baseline
     @manager.write(rel_path, "A = 3\n", reset_baseline: false)
@@ -124,10 +124,10 @@ class TestBufferConflictResolution < Minitest::Test
     rel_path = "src/icon.cr"
     full_path = File.join(@tmp_dir, rel_path)
     FileUtils.mkdir_p(File.dirname(full_path))
-    File.write(full_path, "A = 1\n")
+    File.binwrite(full_path, "A = 1\n")
 
     @manager.read(rel_path)
-    File.write(full_path, "A = 2\n") # external modification
+    File.binwrite(full_path, "A = 2\n") # external modification
 
     @manager.write(rel_path, "A = 3\n", reset_baseline: false)
 
@@ -139,7 +139,7 @@ class TestBufferConflictResolution < Minitest::Test
     assert_equal "A = 3\n", File.read(full_path)
 
     # Also test string "true" and "overwrite" alias
-    File.write(full_path, "A = 4\n")
+    File.binwrite(full_path, "A = 4\n")
     @manager.write(rel_path, "A = 5\n", reset_baseline: false)
     res2 = tool.execute("overwrite" => "true")
     refute res2.respond_to?(:error?)
@@ -150,7 +150,7 @@ class TestBufferConflictResolution < Minitest::Test
     rel_path = "src/sample.rb"
     full_path = File.join(@tmp_dir, rel_path)
     FileUtils.mkdir_p(File.dirname(full_path))
-    File.write(full_path, "def greet\n  puts 'hello'\nend\n")
+    File.binwrite(full_path, "def greet\n  puts 'hello'\nend\n")
 
     tool = Rubik::Tools::ReplaceFileContentTool.new(@manager)
 

@@ -58,4 +58,77 @@ class TestBuffer < Minitest::Test
     assert_includes diff, "+++ b/test.txt"
     assert_includes diff, "+line 2"
   end
+
+  def test_read_and_write_preserve_crlf_bytes
+    crlf = "line one\r\nline two\r\n"
+    disk_path = File.join(@temp_dir, "crlf.txt")
+    File.binwrite(disk_path, crlf)
+
+    assert_equal crlf, @manager.read("crlf.txt"), "read must not normalize CRLF to LF"
+
+    edited = "line one edited\r\nline two\r\n"
+    @manager.write("crlf.txt", edited)
+    assert_equal edited, @manager.read("crlf.txt"), "write must keep the caller's raw bytes"
+
+    @manager.apply!
+    assert_equal edited, File.binread(disk_path), "apply must not rewrite line endings wholesale"
+  end
+
+  def test_buffer_reads_never_use_text_mode_file_read
+    crlf = "line one\r\nline two\r\n"
+    File.binwrite(File.join(@temp_dir, "crlf-binary.txt"), crlf)
+
+    forbid_text_mode = lambda do |*_args, **_kwargs|
+      raise "buffer must use File.binread, not text-mode File.read (CRLF would be normalized)"
+    end
+
+    File.stub(:read, forbid_text_mode) do
+      assert_equal crlf, @manager.read("crlf-binary.txt")
+      assert_equal Digest::SHA256.hexdigest(crlf), @manager.disk_hash("crlf-binary.txt")
+    end
+  end
+
+  def test_write_of_crlf_content_keeps_line_endings_on_disk
+    crlf = "alpha\r\nbeta\r\n"
+    @manager.write("new.txt", crlf)
+    @manager.apply!
+
+    assert_equal crlf, File.binread(File.join(@temp_dir, "new.txt"))
+  end
+
+  def test_diff_of_crlf_file_shows_only_the_edited_line
+    disk_path = File.join(@temp_dir, "crlf.txt")
+    File.binwrite(disk_path, "alpha\r\nbeta\r\n")
+    @manager.read("crlf.txt")
+    @manager.write("crlf.txt", "alpha\r\nBETA\r\n")
+
+    diff = @manager.diff_all
+    assert_includes diff, "-beta"
+    assert_includes diff, "+BETA"
+  end
+
+  def test_write_records_snapshot_when_store_is_attached
+    store = Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(@temp_dir, "snaps"))
+    @manager.snapshot_store = store
+
+    @manager.write("a.rb", "v1")
+    assert_equal 1, store.snapshots.size
+    @manager.write("a.rb", "v2")
+    assert_equal 2, store.snapshots.size
+
+    assert store.undo(@manager)
+    assert_equal "v1", @manager.read("a.rb")
+  end
+
+  def test_snapshot_failure_does_not_break_a_write
+    failing_store = Object.new
+    def failing_store.create_snapshot(_manager)
+      raise Errno::EACCES, "simulated snapshot failure"
+    end
+    @manager.snapshot_store = failing_store
+
+    _out, err = capture_io { @manager.write("a.rb", "v1") }
+    assert_includes err, "snapshot recording failed"
+    assert_equal "v1", @manager.read("a.rb")
+  end
 end
