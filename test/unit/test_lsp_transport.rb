@@ -144,6 +144,16 @@ class TestLSPTransport < Minitest::Test
     def kill = nil
   end
 
+  # Never makes write progress: write_until must hit its deadline instead of
+  # parking forever on @write_mutex (issue #555).
+  class StalledStdin
+    def closed? = false
+    def write_nonblock(*) = :wait_writable
+    def wait_writable(*) = true
+    def flush; end
+    def close; end
+  end
+
   def fake_waiter
     @fake_waiter ||= FakeWaiter.new
   end
@@ -161,5 +171,18 @@ class TestLSPTransport < Minitest::Test
     assert @to_server_w.closed?
     assert @from_server_r.closed?
     assert_nil @transport.instance_variable_get(:@reader_thr)
+  end
+
+  def test_write_message_uses_deadline_bounded_write
+    @transport.instance_variable_set(:@stdin, StalledStdin.new)
+
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    @transport.stub(:write_timeout, 0.05) do
+      refute @transport.write_message({ jsonrpc: "2.0", method: "ping", params: {} })
+    end
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+    assert_operator elapsed, :<, 2.0, "a full pipe must fail at the deadline, not park forever"
+    assert_match(/write failed/, @transport.instance_variable_get(:@reader_failure))
   end
 end

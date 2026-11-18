@@ -56,6 +56,10 @@ class TestLspClientErrorPaths < Minitest::Test
 
     def write(*) = 1
 
+    # write_until drives stdin through write_nonblock; report one byte written
+    # per call so the framed payload completes and the flush arm is reached.
+    def write_nonblock(*) = 1
+
     def flush
       raise IOError, "simulated flush failure"
     end
@@ -67,6 +71,8 @@ class TestLspClientErrorPaths < Minitest::Test
     def write(*)
       raise IOError, "simulated write failure"
     end
+
+    def write_nonblock(*) = raise IOError, "simulated write failure"
 
     def flush; end
   end
@@ -282,6 +288,17 @@ class TestLspClientErrorPaths < Minitest::Test
     @client.stop
 
     refute @client.running, "a failing io#close must not escape stop()"
+  end
+
+  def test_stop_reaches_shutdown_even_if_shutdown_write_is_interrupted
+    @fake_waiter = fake_running_client!
+    @client.transport.instance_variable_set(:@wait_thr, DeadWaiter.new)
+    shutdown_called = false
+    @client.transport.define_singleton_method(:shutdown) { shutdown_called = true }
+    @client.define_singleton_method(:send_request) { |*| raise Interrupt, "shutdown write interrupted" }
+
+    assert_raises(Interrupt) { @client.stop }
+    assert shutdown_called, "stop must tear the transport down even when shutdown is interrupted"
   end
 
   # Injects a publishDiagnostics payload directly, as the reader thread

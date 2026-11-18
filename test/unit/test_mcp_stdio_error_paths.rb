@@ -33,6 +33,10 @@ class TestMcpStdioErrorPaths < Minitest::Test
 
     def puts(*) = raise Errno::EPIPE, "broken pipe"
 
+    # write_until drives stdin through write_nonblock; a dead pipe raises
+    # EPIPE there instead of returning :wait_writable.
+    def write_nonblock(*) = raise Errno::EPIPE, "broken pipe"
+
     def flush; end
   end
 
@@ -160,5 +164,84 @@ class TestMcpStdioErrorPaths < Minitest::Test
 
     refute t.running?
     assert_nil t.instance_variable_get(:@wait_thr)
+  end
+
+  def test_server_request_with_colliding_id_is_not_stored_as_response
+    t = fake_running_transport
+    t.instance_variable_get(:@pending_requests).add(1)
+    t.instance_variable_get(:@pending_requests).add("1")
+
+    # A server-initiated ping reusing our pending id must never masquerade as
+    # the reply (issue #555): no method-bearing message is a response.
+    t.send(:handle_incoming_message, { "jsonrpc" => "2.0", "id" => 1, "method" => "ping", "params" => {} })
+
+    assert_empty t.instance_variable_get(:@responses),
+                 "a server request with a colliding id must not be stored as a response"
+  end
+
+  def test_response_without_result_or_error_is_not_stored
+    t = fake_running_transport
+    t.instance_variable_get(:@pending_requests).add(1)
+
+    t.send(:handle_incoming_message, { "jsonrpc" => "2.0", "id" => 1 })
+
+    assert_empty t.instance_variable_get(:@responses),
+                 "only messages carrying result or error can satisfy a waiter"
+  end
+
+  def test_valid_response_is_stored_for_pending_request
+    t = fake_running_transport
+    t.instance_variable_get(:@pending_requests).add(1)
+
+    t.send(:handle_incoming_message, { "jsonrpc" => "2.0", "id" => 1, "result" => { "ok" => true } })
+
+    assert_equal({ "ok" => true }, t.instance_variable_get(:@responses)[1]["result"])
+  end
+
+  def test_oversized_payload_against_non_draining_pipe_raises_instead_of_parking
+    read_end, write_end = IO.pipe
+    t = fake_running_transport(write_end)
+
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    t.stub(:stdin_write_timeout, 0.05) do
+      e = assert_raises(Rubik::MCP::ConnectionError) do
+        t.send_request("tools/call", { "blob" => "x" * (2 * 1024 * 1024) })
+      end
+      assert_includes e.message, "Failed to write to MCP server"
+    end
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+
+    refute t.running?, "a stalled write must tear the transport down so close can kill the child"
+    assert_operator elapsed, :<, 2.0, "a full pipe must raise at the deadline, not park forever"
+  ensure
+    read_end&.close unless read_end&.closed?
+    write_end&.close unless write_end&.closed?
+  end
+
+  def test_close_kills_child_without_waiting_for_a_stalled_write
+    t = fake_running_transport
+    write_mutex = t.instance_variable_get(:@write_mutex)
+    alive_calls = 0
+    fake_waiter = Object.new
+    fake_waiter.define_singleton_method(:alive?) do
+      alive_calls += 1
+      alive_calls <= 1
+    end
+    fake_waiter.define_singleton_method(:pid) { 99_997 }
+    fake_waiter.define_singleton_method(:join) { |_| self }
+    t.instance_variable_set(:@wait_thr, fake_waiter)
+
+    # A writer stalled in write_until holds the write lock. close must NOT
+    # take that lock — killing the child is what unblocks the writer.
+    write_mutex.lock
+    begin
+      killed = []
+      Rubik::Platform.stub(:kill_tree, ->(pid) { killed << pid }) do
+        Timeout.timeout(1.0) { t.close }
+      end
+      assert_equal [99_997], killed, "close must reach kill_tree while a write is stalled"
+    ensure
+      write_mutex.unlock if write_mutex.locked?
+    end
   end
 end

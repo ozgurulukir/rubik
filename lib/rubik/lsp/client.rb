@@ -177,13 +177,19 @@ module Rubik
         return unless running || @transport.resources?
 
         begin
-          send_request("shutdown", {}, timeout: 2) if running
-          send_notification("exit", {}) if running
+          if running
+            send_request("shutdown", {}, timeout: 2)
+            send_notification("exit", {})
+          end
         rescue StandardError
-          # ignore
+          # A failed/wedged shutdown write is not a reason to leave the server
+          # alive — bounded writes make this a deadline rather than a hang.
+        ensure
+          # Always retract the transport, even if an Interrupt/non-StandardError
+          # unwinds the graceful shutdown: kill_tree is the only thing that can
+          # unblock a writer parked on a full stdin pipe.
+          @transport.shutdown
         end
-
-        @transport.shutdown
       end
       alias dispose stop
 
