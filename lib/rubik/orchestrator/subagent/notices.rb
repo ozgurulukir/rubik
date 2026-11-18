@@ -74,7 +74,7 @@ module Rubik
         end
 
         def normalize(event_name, payload)
-          return nil if SILENT_ROLES.include?(payload[:role].to_s)
+          return nil if SILENT_ROLES.any? { |role| role.downcase == payload[:role].to_s.downcase.strip }
 
           kind = EVENTS[event_name.to_sym]
           return nil unless kind

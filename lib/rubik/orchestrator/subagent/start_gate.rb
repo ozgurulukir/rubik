@@ -86,7 +86,7 @@ module Rubik
             thread.join(0.5)
             if thread.alive?
               thread.kill
-              thread.join
+              thread.join(0.5) # bounded: a stuck inverse must not hang rollback (#553)
             end
           end
           cleanup_context

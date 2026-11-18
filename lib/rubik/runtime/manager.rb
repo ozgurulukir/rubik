@@ -72,13 +72,16 @@ module Rubik
       end
 
       def unregister_component(name)
-        @monitor.synchronize do
-          name_str = name.to_s
-          fiber = @fibers.delete(name_str)
-          @fiber_deps.delete(name_str)
-          @retry_gate.clear(name_str) # fresh-eye R2: disposed fibers must not leak their retry budget
-          fiber&.dispose!
-        end
+        name_str = name.to_s
+        fiber = detach_fiber(name_str)
+        return unless fiber
+        return if @monitor.synchronize { @fibers[name_str].equal?(fiber) }
+
+        fiber.dispose!
+        nil
+      rescue StandardError => e
+        Rubik::Log.warn(:runtime, "fiber '#{fiber&.name}' dispose failed: #{e.class}: #{e.message}")
+        nil
       end
 
       # Reactive retraction (AGENTS.md §5, Finding B): unlike Context#unprovide
@@ -111,15 +114,11 @@ module Rubik
         reconcile_all(changed_service: service_name)
       end
 
-      # Reentrant lock safety: Monitor#synchronize is explicitly reentrant (recursive),
-      # allowing swap_component to safely invoke unregister_component and register_component
-      # from within the same thread without deadlocking.
+      # Detach under the monitor; tear down outside it so a factory inverse cannot invert the lock order.
       def swap_component(name, inject: [], requires: [], provides: [], config: {}, &new_factory)
-        @monitor.synchronize do
-          name_str = name.to_s
-          unregister_component(name_str)
-          register_component(name_str, inject: inject, requires: requires, provides: provides, config: config, &new_factory)
-        end
+        name_str = name.to_s
+        unregister_component(name_str)
+        register_component(name_str, inject: inject, requires: requires, provides: provides, config: config, &new_factory)
       end
 
       def reconcile_all(changed_service: nil)
@@ -226,6 +225,15 @@ module Rubik
       end
 
       private
+
+      # Detach a fiber + bookkeeping under the monitor; teardown is deferred.
+      def detach_fiber(name_str)
+        @monitor.synchronize do
+          @fiber_deps.delete(name_str)
+          @retry_gate.clear(name_str)
+          @fibers.delete(name_str)
+        end
+      end
 
       # Marks the fiber while its factory runs so nested reconciles skip it;
       # ensure-based so a raising factory (→ :failed) never wedges the marker.

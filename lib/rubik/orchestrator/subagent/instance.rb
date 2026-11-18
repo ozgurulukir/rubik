@@ -111,6 +111,7 @@ module Rubik
           @budget_cond = @monitor.new_cond
           @error_cond = @monitor.new_cond
           @context_cleaned_up = false
+          @archive_retries = 0
           @thread = nil
           @start_gate = nil
           @start_aborted = false
@@ -252,6 +253,15 @@ module Rubik
           end
         end
 
+        # Deadline for the budget-exhausted park, mirroring error_wait_timeout
+        # (issue #553). A non-positive configured value falls back to the
+        # resilience default so a parked worker can never wait unbounded.
+        def budget_exhausted_ttl
+          raw = Rubik::Storage::Layout.config_get(@config, "subagents.error_wait_timeout", nil)
+          ttl = raw.nil? ? Resilience::DEFAULT_ERROR_WAIT_TIMEOUT : raw.to_f
+          ttl.positive? ? ttl : Resilience::DEFAULT_ERROR_WAIT_TIMEOUT
+        end
+
         def pause_and_await_budget_expansion!(wait_timeout = nil)
           timeout = wait_timeout || Rubik::Storage::Layout.config_get(@config, "subagents.budget_wait_timeout", 180) || 180
           payload = nil
@@ -283,7 +293,20 @@ module Rubik
           Notices.emit(@event_bus, Notices::COMPLETED_EVENT, exhausted_payload) if exhausted_payload
 
           @monitor.synchronize do
-            @budget_cond.wait while @state == :budget_exhausted
+            # Bounded parked pool (#553): an exhausted worker used to wait with
+            # NO deadline. While parked, active? excluded it from concurrency
+            # accounting and terminal_and_settled? excluded it from reaping, so
+            # an unanswered grant request leaked a live thread forever. Mirror
+            # the error-pause expiry: after error_wait_timeout with no grant,
+            # fail the run so it becomes terminal and reapable.
+            exhausted_ttl = budget_exhausted_ttl
+            @budget_cond.wait(exhausted_ttl) if @state == :budget_exhausted
+            if @state == :budget_exhausted
+              transition!(:failed)
+              @last_error ||= "Budget exhausted and no grant arrived within #{exhausted_ttl}s"
+              @unit&.sync_state!
+              return false
+            end
             return false if terminal?
 
             transition!(:running)
