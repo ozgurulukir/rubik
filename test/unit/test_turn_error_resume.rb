@@ -73,7 +73,7 @@ class TestTurnErrorResume < Minitest::Test
     assert_equal 1, calls.size
     assert_equal "llm_error_recovery", calls[0][:reason]
     assert calls[0][:on_step], "resume taze display kanalını sözleşmeye taşır"
-    # Dürüst provenance: recorder'a ve konuşma hafızasına "devam et" düşer.
+    # Dürüst provenance: recorder'a ve konuşma hafızasına "continue" düşer.
     assert(@shell.conversation_history.any? { |m| m[:role] == "user" && m[:content] == "continue" })
     assert(@shell.conversation_history.any? { |m| m[:role] == "assistant" && m[:content].to_s.include?("resumed ok") })
     # Tüketilen stash geri dönmez.

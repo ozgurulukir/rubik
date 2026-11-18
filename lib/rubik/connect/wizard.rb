@@ -427,15 +427,15 @@ module Rubik
                      "stored via secret store"
                    end
         summary = [
-          "#{@ui.paint('Provider', :bold)}  : #{plan[:id]} (#{plan[:type]})",
-          "#{@ui.paint('Endpoint', :bold)}   : #{plan[:base_url]}"
+          "#{@ui.paint('Provider', :bold)}       : #{plan[:id]} (#{plan[:type]})",
+          "#{@ui.paint('Endpoint', :bold)}       : #{plan[:base_url]}"
         ]
         summary << "#{@ui.paint('Session header', :bold)} : #{plan[:session_header]}" if plan[:session_header]
         summary += [
-          "#{@ui.paint('Model', :bold)}            : #{plan[:model][:name]} (#{compact_ctx(plan[:model][:context_limit])} ctx)",
-          "#{@ui.paint('Roles', :bold)}      : #{roles_desc}",
-          "#{@ui.paint('Key', :bold)}       : #{key_desc}",
-          "#{@ui.paint('Scope', :bold)}      : #{scope_persist_label}"
+          "#{@ui.paint('Model', :bold)}           : #{plan[:model][:name]} (#{compact_ctx(plan[:model][:context_limit])} ctx)",
+          "#{@ui.paint('Roles', :bold)}           : #{roles_desc}",
+          "#{@ui.paint('Key', :bold)}             : #{key_desc}",
+          "#{@ui.paint('Scope', :bold)}           : #{scope_persist_label}"
         ]
         @io.puts Rubik::UI::Frame.draw(summary, theme: @ui.theme, width: 78,
                                                 title: @ui.paint("⚙ CONNECTION SUMMARY", :accent))

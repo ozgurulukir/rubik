@@ -450,7 +450,7 @@ module Rubik
       # Duraklatılmış turn'in yeniden koşusu: taze turn yaşam döngüsünü
       # (arming → display → settle → rescue merdiveni → ensure teardown)
       # resume sözleşmesiyle birleştirir. Kullanıcının yazdığı satır
-      # recorder'a ve konuşma hafızasına "devam et" olarak düşer — dürüst
+      # recorder'a ve konuşma hafızasına "continue" olarak düşer — dürüst
       # provenance; orijinal görev metni Loop'un kendi @history'sinde
       # yaşamaya devam eder ve modele tekrar gönderilmez.
       def execute_resumed_turn!

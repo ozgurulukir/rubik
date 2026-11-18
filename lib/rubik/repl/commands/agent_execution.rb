@@ -195,10 +195,10 @@ module Rubik
               net_str = Rubik::Storage::Layout.config_get(ctx.config, "sandbox.allow_network", false) ? "allowed" : "blocked"
 
               ctx.out.puts "=== Sandbox Status ==="
-              ctx.out.puts "Status:       #{state_str}"
+              ctx.out.puts "Status:        #{state_str}"
               ctx.out.puts "Active Driver: #{driver_name}"
-              ctx.out.puts "Network:          #{net_str}"
-              ctx.out.puts "Registered:     #{registered_keys.join(', ')}"
+              ctx.out.puts "Network:       #{net_str}"
+              ctx.out.puts "Registered:    #{registered_keys.join(', ')}"
             elsif subcmd == "on"
               res = ctx.config.set("sandbox.enabled", true, persist: scope)
               driver_res = ctx.config.set("sandbox.driver", "bwrap", persist: scope) if Rubik::Platform.linux?

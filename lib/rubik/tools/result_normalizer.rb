@@ -20,7 +20,7 @@ module Rubik
       # StepExecutor::ERROR_PREFIXES (kept as an alias there).
       ERROR_PREFIXES = [
         "-- ", "Error:", "Error ", "Usage:", "Pre-flight verification failed",
-        "Unknown command", "Failed", "Security blocked", "Command error",
+        "Unknown command", "Bilinmeyen komut", "Failed", "Security blocked", "Command error",
         "[EXIT ", "Test run [FAILED]", "Lint [FAILED]", "[CONFLICT]", "[CONFLICT "
       ].freeze
 
