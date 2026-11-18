@@ -114,4 +114,46 @@ class TestSSEParserAndStreamResilience < Minitest::Test
     assert_equal 1, e2.size
     assert_equal "cafeé", e2[0][:data]
   end
+
+  # Issue #556: a provider that ignores `stream: true` answers with one plain
+  # JSON body and no SSE framing. SSE-mode must emit it as a single full-body
+  # event at flush instead of silently dropping it (empty turn, no error).
+  def test_plain_json_body_without_sse_fields_emits_full_body_event
+    body = '{"message":{"content":"Hello"},"done":true}'
+    assert_empty @parser.feed(body)
+
+    events = @parser.flush
+    assert_equal 1, events.size
+    assert_equal({ type: "message", data: body }, events[0])
+  end
+
+  def test_plain_json_body_split_across_chunks_emits_one_full_body_event
+    body = '{"message":{"content":"Hello world"},"done":true}'
+    assert_empty @parser.feed(body[0, 20])
+    assert_empty @parser.feed(body[20..])
+
+    events = @parser.flush
+    assert_equal 1, events.size
+    assert_equal body, events[0][:data]
+  end
+
+  def test_plain_json_body_terminated_by_blank_line_emits_full_body_on_flush
+    body = '{"message":{"content":"Hello"},"done":true}'
+    assert_empty @parser.feed("#{body}\r\n\r\n")
+
+    events = @parser.flush
+    assert_equal 1, events.size
+    assert_equal body, events[0][:data]
+  end
+
+  def test_valid_sse_stream_does_not_emit_full_body_fallback
+    events = @parser.feed("data: {\"chunk\":1}\n\n")
+    assert_equal 1, events.size
+    assert_empty @parser.flush, "a real SSE stream must not get a spurious fallback event"
+  end
+
+  def test_comment_only_body_does_not_emit_full_body_fallback
+    @parser.feed(": ping\r\n: pong\r\n\r\n")
+    assert_empty @parser.flush
+  end
 end

@@ -54,7 +54,7 @@ module Rubik
 
           process_raw_tool_calls(chunk.raw) if chunk.raw.is_a?(Hash)
 
-          @last_usage = chunk.usage if chunk.usage && !chunk.usage.empty?
+          @last_usage = merge_usage(chunk.usage)
           @last_raw = chunk.raw if chunk.raw && !chunk.raw.empty?
           @finish_raw = chunk.raw if chunk.raw.is_a?(Hash) && extract_finish_value(chunk.raw)
           self
@@ -215,6 +215,17 @@ module Rubik
 
           appended = degenerate.map { |a| "[Incomplete tool call — arguments: #{a.to_json}]" }.join(" ")
           @text.to_s.empty? ? appended : "#{@text}\n#{appended}"
+        end
+
+        # Streaming providers emit usage in pieces: Anthropic's message_start
+        # carries input_tokens while message_delta carries only output_tokens.
+        # Replacing the hash would drop the earlier field, so merge partial
+        # hashes (normalized to symbol keys) and let later chunks win per key.
+        def merge_usage(incoming)
+          return @last_usage if incoming.nil? || incoming.empty?
+
+          normalized = incoming.each_with_object({}) { |(key, value), out| out[key.to_sym] = value }
+          (@last_usage || {}).merge(normalized)
         end
 
         def resolve_usage(text, estimate_history, estimate_text)

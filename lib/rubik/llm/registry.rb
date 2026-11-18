@@ -170,15 +170,31 @@ module Rubik
         case provider_name
         when "ollama"
           ollama_headers = (custom.respond_to?(:headers) ? custom.headers : nil) || global_headers
+          # The model spec always carries an endpoint (config defaults it to
+          # localhost), so prefer the registered provider's endpoint first —
+          # otherwise a configured providers.ollama.endpoint is silently
+          # overwritten by that default on every routed request (issue #556).
+          ollama_endpoint = (custom.is_a?(OllamaProvider) ? custom.endpoint : nil) || endpoint || "http://localhost:11434"
           OllamaProvider.new(
-            endpoint: endpoint || "http://localhost:11434",
+            endpoint: ollama_endpoint,
             model: model_name || "llama3",
             num_ctx: spec["num_ctx"] || (custom.is_a?(OllamaProvider) ? custom.num_ctx : nil),
             headers: ollama_headers
           )
         when "openai"
           openai_headers = (custom.respond_to?(:headers) ? custom.headers : nil) || global_headers
-          OpenAIProvider.new(model: model_name || "gpt-4o", headers: openai_headers)
+          # Rebuilding a routed provider must not drop the registered
+          # credentials or its configured endpoint (issue #556). Only forward
+          # keys the registered instance actually has, so an absent provider
+          # still gets the constructor defaults.
+          openai_kwargs = {
+            model: model_name || "gpt-4o",
+            endpoint: (custom.respond_to?(:endpoint) ? custom.endpoint : nil) || endpoint || "https://api.openai.com/v1/chat/completions",
+            headers: openai_headers
+          }
+          openai_kwargs[:api_key] = custom.api_key if custom.respond_to?(:api_key)
+          openai_kwargs[:api_key_env] = custom.api_key_env if custom.respond_to?(:api_key_env)
+          OpenAIProvider.new(**openai_kwargs)
         when "anthropic"
           anthropic_headers = (custom.respond_to?(:headers) ? custom.headers : nil) || global_headers
           AnthropicProvider.new(
