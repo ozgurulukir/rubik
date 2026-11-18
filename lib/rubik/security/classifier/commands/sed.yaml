@@ -1,7 +1,7 @@
 # $schema: ../../../schemas/command.schema.json
 command: sed
 description: "Stream editor for filtering and transforming text"
-classification: READONLY
+classification: LOCAL_EFFECTS
 strict: false
 global_options:
   --help: {overrides: READONLY}
@@ -10,5 +10,5 @@ options:
   --in-place: {overrides: DANGEROUS, risk: HIGH, aliases: [-i]}
   -e: {takes_value: true}
   --expression: {takes_value: true, aliases: [-e]}
-  -f: {takes_value: true}
-  --file: {takes_value: true, aliases: [-f]}
+  -f: {overrides: DANGEROUS, risk: HIGH, takes_value: true}
+  --file: {overrides: DANGEROUS, risk: HIGH, takes_value: true, aliases: [-f]}
