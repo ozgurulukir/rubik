@@ -92,4 +92,29 @@ class TestBuffer < Minitest::Test
     assert_includes diff, "-beta"
     assert_includes diff, "+BETA"
   end
+
+  def test_write_records_snapshot_when_store_is_attached
+    store = Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(@temp_dir, "snaps"))
+    @manager.snapshot_store = store
+
+    @manager.write("a.rb", "v1")
+    assert_equal 1, store.snapshots.size
+    @manager.write("a.rb", "v2")
+    assert_equal 2, store.snapshots.size
+
+    assert store.undo(@manager)
+    assert_equal "v1", @manager.read("a.rb")
+  end
+
+  def test_snapshot_failure_does_not_break_a_write
+    failing_store = Object.new
+    def failing_store.create_snapshot(_manager)
+      raise Errno::EACCES, "simulated snapshot failure"
+    end
+    @manager.snapshot_store = failing_store
+
+    _out, err = capture_io { @manager.write("a.rb", "v1") }
+    assert_includes err, "snapshot recording failed"
+    assert_equal "v1", @manager.read("a.rb")
+  end
 end

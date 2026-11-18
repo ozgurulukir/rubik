@@ -17,11 +17,26 @@ module Rubik
         USAGE_AUTOAPPLY = "Usage: !autoapply <manual | on_test | on_finish | always | status> [--project|--global]"
 
         def self.register(shell)
+          register_snapshot_recording(shell)
           register_diff_command(shell)
           register_apply_command(shell)
           register_undo_command(shell)
           register_rollback_command(shell)
           register_autoapply_command(shell)
+        end
+
+        private_class_method def self.register_snapshot_recording(shell)
+          return unless shell.respond_to?(:buffer_manager) && shell.respond_to?(:snapshot_store)
+
+          manager = shell.buffer_manager
+          store = shell.snapshot_store
+          return unless manager.respond_to?(:snapshot_store=) && store
+
+          # The manager snapshots the post-write buffer state, so the
+          # !undo / !rollback commands registered below always have a
+          # producer (issue #544). Kept here so the dependency lives with
+          # the command module that advertises them.
+          manager.snapshot_store = store
         end
 
         private_class_method def self.register_diff_command(shell)

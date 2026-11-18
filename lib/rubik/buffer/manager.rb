@@ -38,7 +38,7 @@ module Rubik
     class Manager
       attr_reader :root_dir, :dirty_files, :additional_roots, :rw_roots, :allowed_external_dirs, :rw_allowed_dirs,
                   :guard, :last_conflicts, :last_skipped
-      attr_accessor :allow_external_writes, :config
+      attr_accessor :allow_external_writes, :config, :snapshot_store
 
       def initialize(root_dir: Dir.pwd, additional_roots: [], allowed_external_dirs: [], allow_external_writes: false,
                      event_bus: nil, guard: nil, config: nil)
@@ -231,6 +231,16 @@ module Rubik
           @buffer[rel_path] = content
           @dirty_files[rel_path] = true
           @event_bus&.emit(:buffer_changed, path: rel_path)
+
+          # Give the advertised !undo / !rollback commands a producer in
+          # the live write path (issue #544). Snapshotting is auxiliary:
+          # a storage failure must not turn a successful edit into a
+          # failed write.
+          begin
+            @snapshot_store&.create_snapshot(self)
+          rescue StandardError => e
+            warn "[Buffer] snapshot recording failed: #{e.class}: #{e.message}"
+          end
           content
         end
       end
