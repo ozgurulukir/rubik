@@ -177,6 +177,58 @@ class TestPlatform < Minitest::Test
     assert_equal "updated content", File.read(target)
   end
 
+  def test_atomic_write_preserves_restricted_mode
+    target = File.join(@temp_dir, "secret.txt")
+    File.binwrite(target, "old")
+    File.chmod(0o600, target)
+
+    Rubik::Platform.atomic_write(target, "new")
+
+    assert_equal "new", File.binread(target)
+    # Windows chmod only maps the read-only bit; exact Unix bits are unassertable there.
+    skip "Unix permission bits are not representable on Windows" if Rubik::Platform.windows?
+    assert_equal 0o600, (File.stat(target).mode & 0o7777),
+                 "a 0600 file must not become world-readable after a buffered edit"
+  end
+
+  def test_atomic_write_preserves_executable_mode
+    target = File.join(@temp_dir, "script.sh")
+    File.binwrite(target, "#!/bin/sh\n")
+    File.chmod(0o755, target)
+
+    Rubik::Platform.atomic_write(target, "#!/bin/sh\necho hi\n")
+
+    assert_equal "#!/bin/sh\necho hi\n", File.binread(target)
+    # Windows chmod only maps the read-only bit; exact Unix bits are unassertable there.
+    skip "Unix permission bits are not representable on Windows" if Rubik::Platform.windows?
+    assert_equal 0o755, (File.stat(target).mode & 0o7777),
+                 "a 0755 script must keep its executable bit after a buffered edit"
+  end
+
+  def test_atomic_write_refuses_preexisting_symlink_at_temp_path
+    target = File.join(@temp_dir, "symlink_target.txt")
+    victim = File.join(@temp_dir, "victim.txt")
+    File.binwrite(victim, "VICTIM-CONTENT")
+
+    hex = "deadbeefcafe"
+    temp_path = "#{target}.tmp.#{::Process.pid}.#{hex}"
+    begin
+      File.symlink(victim, temp_path)
+    rescue StandardError, NotImplementedError
+      skip "File.symlink not supported on this platform/privilege level"
+    end
+
+    SecureRandom.stub(:hex, hex) do
+      assert_raises(Errno::EEXIST) do
+        Rubik::Platform.atomic_write(target, "ATTACKER-CONTENT")
+      end
+    end
+
+    assert_equal "VICTIM-CONTENT", File.binread(victim), "victim must not be modified"
+    refute File.exist?(target), "target must not be created when the temp path is a symlink"
+    assert File.symlink?(temp_path), "pre-placed symlink must not be deleted"
+  end
+
   def test_atomic_write_retries_transient_rename_failures
     # G13: the Windows transient-lock retry arm — rename fails twice with a
     # SystemCallError, then the real rename succeeds on attempt three.
