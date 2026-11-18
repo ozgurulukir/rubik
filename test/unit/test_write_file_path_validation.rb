@@ -86,6 +86,25 @@ class TestWriteFilePathValidation < Minitest::Test
     assert_equal "puts 1", @manager.read("lib/app.rb")
   end
 
+  def test_write_does_not_retry_failed_write_with_same_arguments
+    spy = Class.new do
+      attr_reader :calls
+
+      def initialize
+        @calls = 0
+      end
+
+      def write(_path, _content)
+        @calls += 1
+        raise ArgumentError, "boom"
+      end
+    end.new
+    tool = Rubik::Tools::WriteFileTool.new(spy)
+
+    assert_raises(ArgumentError) { tool.execute("path" => "lib/app.rb", "content" => "puts 1") }
+    assert_equal 1, spy.calls, "a failed write must not be blindly retried with the same arguments"
+  end
+
   def test_valid_nested_path
     result = @tool.execute("path" => "src/main.go", "content" => "package main")
     assert_includes result, "Successfully wrote"

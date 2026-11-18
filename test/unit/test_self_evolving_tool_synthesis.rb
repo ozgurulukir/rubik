@@ -171,6 +171,25 @@ class TestSelfEvolvingToolSynthesis < Minitest::Test
     assert_equal "Original fetch", restored.description
   end
 
+  def test_repeated_hot_updates_keep_one_dispose_inverse_per_name
+    synthesizer = Rubik::Tools::SynthesizeToolTool.new(@tool_registry, @overlay_storage, nil, runtime_manager: @runtime_manager)
+    ctx = @runtime_manager.context
+    baseline = ctx.disposable_count
+
+    3.times do |i|
+      res = synthesizer.execute(
+        "name" => "reused_tool",
+        "description" => "version #{i}",
+        "code" => "->(args) { #{i} }"
+      )
+      assert_includes res, "Successfully synthesized"
+      assert_equal baseline + 1, ctx.disposable_count, "re-synthesizing must replace, not stack, the inverse"
+    end
+
+    ctx.dispose
+    refute_nil @tool_registry.get("reused_tool"), "latest inverse still restores the prior instance"
+  end
+
   def test_unsynthesize_tool_removes_live_and_disk
     synthesizer = Rubik::Tools::SynthesizeToolTool.new(@tool_registry, @overlay_storage)
     res = synthesizer.execute("name" => "ghost_tool", "description" => "d", "scope" => "project",

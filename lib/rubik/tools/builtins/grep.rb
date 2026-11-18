@@ -66,7 +66,7 @@ module Rubik
         path_filter, outside_error = BaseTool.normalize_path_filter(path_filter, @root_dir)
         return ToolOutput.error(BaseTool.traversal_blocked_message(param(args, :path), @root_dir, context_index)) if outside_error
 
-        case_sensitive = param(args, :case_sensitive, default: false)
+        case_sensitive = param(args, :case_sensitive, type: :flag, default: false)
         max_results = param(args, :max_results, type: :integer, default: 50)
         max_results = 50 if max_results <= 0
 
@@ -270,7 +270,8 @@ module Rubik
       def pass_path?(file_key, path_filter)
         return true if path_filter.empty?
 
-        file_key.start_with?(path_filter.sub(%r{^\./}, ""))
+        filter = path_filter.sub(%r{^\./}, "")
+        file_key == filter || file_key.start_with?("#{filter}/")
       end
 
       def pass_extension?(file_key, ext_filter)

@@ -28,6 +28,20 @@ class TestExecToolsDiagnostics < Minitest::Test
     end
   end
 
+  # Captures the timeout/path keyword arguments the tool forwards so the
+  # 1..600 clamp can be asserted without running a real test suite.
+  class TimeoutCapturingAdapter < Rubik::Adapter::BaseAdapter
+    attr_reader :captured_timeout, :captured_path
+
+    def available? = true
+
+    def run_tests(_root_dir, path: nil, timeout: nil)
+      @captured_path = path
+      @captured_timeout = timeout
+      { ok: true, output: "ok", duration: 0.1, exit_code: 0 }
+    end
+  end
+
   class MockRunner
     attr_accessor :mock_run_res
 
@@ -93,6 +107,19 @@ class TestExecToolsDiagnostics < Minitest::Test
     output = @run_tests_tool.execute(language: "ruby")
     assert_includes output, "Test run [FAILED]"
     assert_includes output, "ruby is unavailable on system"
+  end
+
+  def test_run_tests_timeout_clamped_to_sibling_contract
+    adapter = TimeoutCapturingAdapter.new("ruby", "ruby")
+    registry = Rubik::Adapter::Registry.new
+    registry.register("ruby", adapter)
+    tool = Rubik::Tools::RunTestsTool.new(registry)
+
+    tool.execute(language: "ruby", timeout: 86_400)
+    assert_equal 600, adapter.captured_timeout, "oversized timeout must clamp to 600"
+
+    tool.execute(language: "ruby", timeout: 45)
+    assert_equal 45, adapter.captured_timeout, "in-range timeout passes through"
   end
 
   # (4) run_command başarısızlığında teşhis bloğu
