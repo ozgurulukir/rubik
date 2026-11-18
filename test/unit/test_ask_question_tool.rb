@@ -259,4 +259,34 @@ class TestAskQuestionTool < Minitest::Test
     single_ans = dialog.ask_single("Test Question", ["Option 1", "Option 2"])
     assert_equal "Other (write-in): my_custom_value", single_ans
   end
+
+  def test_ui_dialog_empty_multi_select_returns_no_selection
+    mock_prompt = Class.new do
+      def select(_msg, _choices, _opts = {})
+        "Option 1"
+      end
+
+      def multi_select(_msg, _choices, _opts = {})
+        []
+      end
+    end.new
+
+    dialog = Rubik::UI::Dialog.new(prompt: mock_prompt)
+    assert_equal [], dialog.ask_multi("Pick", ["Option 1", "Option 2"])
+  end
+
+  def test_ui_dialog_empty_write_in_returns_no_selection
+    mock_prompt = Class.new do
+      def select(_msg, _choices, _opts = {})
+        "Other (write-in response)"
+      end
+
+      def ask(_msg)
+        "   "
+      end
+    end.new
+
+    dialog = Rubik::UI::Dialog.new(prompt: mock_prompt)
+    assert_nil dialog.ask_single("Pick", ["Option 1", "Option 2"])
+  end
 end

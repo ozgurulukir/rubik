@@ -120,4 +120,21 @@ class TestUIMarkdownStream < Minitest::Test
     assert_includes joined, "\e[1mhi\e[0m"
     assert_includes joined, "world"
   end
+
+  def test_render_document_strips_escapes_when_styling_disabled
+    dirty = "plain \e]52;c;YQ==\a\e[2Jtext"
+    out = Rubik::UI::MarkdownStream.render_document(dirty, plain_theme, enabled: true)
+    refute_includes out, "\e]52;"
+    refute_includes out, "\e[2J"
+    assert_equal "plain text", out
+  end
+
+  def test_render_document_strips_escapes_before_markdown_parsing
+    dirty = "**bo\e]52;c;YQ==\ald** \e[2Jtext"
+    out = Rubik::UI::MarkdownStream.render_document(dirty, color_theme, enabled: true)
+    refute_includes out, "\e]52;"
+    refute_includes out, "\e[2J"
+    assert_includes out, "bold"
+    assert_includes out, "text"
+  end
 end

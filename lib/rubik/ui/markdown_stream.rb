@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "tty-markdown"
+require_relative "capability"
 
 module Rubik
   module UI
@@ -56,9 +57,14 @@ module Rubik
       # command output). Falls back to the raw text when styling is off.
       def self.render_document(text, theme, enabled: true)
         return text if text.nil? || text.empty?
-        return text unless enabled && theme.color?
 
-        TTY::Markdown.parse(text, color: :always)
+        # Strip OSC/CSI from model text before it reaches the terminal (or
+        # TTY::Markdown, which preserves those sequences). The streaming
+        # instance path already strips per line; batch must match (#559).
+        safe_text = Rubik::UI::Capability.strip_ansi(text)
+        return safe_text unless enabled && theme.color?
+
+        TTY::Markdown.parse(safe_text, color: :always)
       end
 
       private

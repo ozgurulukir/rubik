@@ -59,4 +59,16 @@ class TestUIFrame < Minitest::Test
   def test_empty_draw_returns_empty_string
     assert_equal "", Rubik::UI::Frame.draw([], theme: theme)
   end
+
+  def test_truncate_plain_counts_display_cells_not_characters
+    truncated = Rubik::UI::Frame.truncate_plain(theme, "🎲" * 20, 8)
+    assert_operator Rubik::UI::Frame.display_width(truncated), :<=, 8
+    assert_includes truncated, "…"
+  end
+
+  def test_draw_keeps_uniform_width_with_overflowing_wide_content
+    frame = Rubik::UI::Frame.draw(["🎲" * 20], theme: theme, width: 20)
+    widths = frame.lines.map { |l| Rubik::UI::Frame.display_width(l.chomp) }
+    assert widths.uniq.one?, "wide-char truncation must keep uniform width, got #{widths.inspect}"
+  end
 end

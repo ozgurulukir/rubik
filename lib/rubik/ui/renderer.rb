@@ -142,13 +142,13 @@ module Rubik
 
         status = (step_info[:status] || :ok).to_sym
         duration = step_info[:duration_ms] || 0.0
-        output = step_info[:output].to_s
+        output = Rubik::UI::Capability.strip_ansi(step_info[:output].to_s)
         branch = "#{@theme.glyph(:branch)} "
 
         if status != :ok
-          err = step_info[:error]
-          err = output.lines.first.to_s.strip if err.nil? || err.to_s.empty?
-          err = "Command failed" if err.to_s.empty?
+          err = Rubik::UI::Capability.strip_ansi(step_info[:error].to_s)
+          err = output.lines.first.to_s.strip if err.empty?
+          err = "Command failed" if err.empty?
           if err.start_with?("Security blocked:") || output.start_with?("Security blocked:")
             sec_line = output.lines.first.to_s.strip
             hint = output[/!(?:allow-cmd|allow-dir)\s+[^\n]+/]&.strip
@@ -176,8 +176,8 @@ module Rubik
         return nil if level < Rubik::REPL::StepFormatter::LEVEL_VERBOSE
         return nil if step_info[:streamed] == true
 
-        first_line = @legacy.thought_first_line(step_info[:content])
-        return nil if first_line.nil? || first_line.empty?
+        first_line = Rubik::UI::Capability.strip_ansi(@legacy.thought_first_line(step_info[:content]).to_s)
+        return nil if first_line.empty?
 
         "  #{@theme.paint("#{@theme.glyph(:thought)} #{first_line}", :thought)}"
       end

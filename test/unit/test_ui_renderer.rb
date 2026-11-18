@@ -147,4 +147,39 @@ class TestUIRenderer < Minitest::Test
     refute_includes out, "\e[2J"
     assert_includes out, "ok done"
   end
+
+  def test_tool_result_verbose_preview_strips_escapes
+    ev = { type: :tool_result, tool: "run_command", status: :ok,
+           output: "ok \e]52;c;YQ==\a\e[2Jdone\nsecond", duration_ms: 1.0 }
+    out = renderer(verbosity: :verbose).render(ev)
+    refute_includes out, "\e]52;"
+    refute_includes out, "\e[2J"
+    assert_includes out, "ok done"
+  end
+
+  def test_tool_result_normal_summary_strips_escapes
+    ev = { type: :tool_result, tool: "run_command", status: :ok,
+           output: "ok \e]52;c;YQ==\a\e[2Jdone", duration_ms: 1.0 }
+    out = renderer.render(ev)
+    refute_includes out, "\e]52;"
+    refute_includes out, "\e[2J"
+    assert_includes out, "ok done"
+  end
+
+  def test_tool_result_error_line_strips_escapes
+    ev = { type: :tool_result, tool: "run_command", status: :error,
+           error: "bad \e[2Jthing", output: "boom", duration_ms: 8.4 }
+    out = renderer.render(ev)
+    refute_includes out, "\e[2J"
+    assert_includes out, "bad thing"
+  end
+
+  def test_llm_thought_strips_escapes
+    ev = { type: :llm_thought, content: "\e]52;c;YQ==\aInspecting \e[2Jconfig.rb first.",
+           step: 1, max_steps: 40 }
+    out = renderer(verbosity: :verbose).render(ev)
+    refute_includes out, "\e]52;"
+    refute_includes out, "\e[2J"
+    assert_includes out, "Inspecting config.rb first."
+  end
 end

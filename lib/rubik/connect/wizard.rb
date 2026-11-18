@@ -152,14 +152,24 @@ module Rubik
       end
 
       def ask_custom_provider
-        name = @ui.ask("Provider name:")
-        return :cancelled unless name.is_a?(String) && !ModelsDev.provider_key(name).empty?
+        # Re-ask on an unusable name like the other validated fields instead
+        # of aborting the whole wizard with a misleading "cancelled" (#559).
+        until (name = request_provider_name).is_a?(String) && !ModelsDev.provider_key(name).empty?
+          return :cancelled unless name.is_a?(String)
+
+          @ui.puts @ui.paint("⚠ Provider name must contain letters or digits", :error)
+        end
 
         type = @ui.select("Type:", ["openai_compatible", "anthropic", "ollama"], default: "openai_compatible")
         return :cancelled unless type.is_a?(String)
 
         { id: ModelsDev.provider_key(name), label: name.strip, type: type,
           base_url: nil, catalog_id: nil, catalog_entry: nil }
+      end
+
+      def request_provider_name
+        answer = @ui.ask("Provider name:")
+        answer.is_a?(String) ? answer.strip : answer
       end
 
       def pick_from_catalog(compatible)
@@ -493,7 +503,8 @@ module Rubik
 
           failures << role
           note("role write failed — complete it with `!model set #{role} #{plan[:id]}/#{plan[:model][:name]}`")
-          break
+          # Attempt every role: stopping at the first failure makes
+          # render_success report never-written roles as bound (#559).
         end
         failures
       end

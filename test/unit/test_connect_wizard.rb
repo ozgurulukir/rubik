@@ -478,4 +478,55 @@ class TestConnectWizard < Minitest::Test
     assert_equal :cancelled, res[:reason]
     assert_nil @config.provider_spec("openai")
   end
+
+  def test_invalid_custom_provider_name_reasks_then_succeeds
+    ui = ScriptedConnectPrompt.new([
+                                     pick("Custom endpoint"),
+                                     literal("!!!"),                # invalid: no letters/digits
+                                     literal("My Gateway"),         # valid retry
+                                     pick("openai_compatible"),
+                                     literal("http://localhost:8000"),
+                                     pick("No"),                    # session header
+                                     pick("Skip for now"),          # auth
+                                     pick("✎ Enter manually"),      # model
+                                     literal("llama3"),
+                                     literal("16384"),
+                                     pick("default only"),          # roles
+                                     literal(true)                  # confirm
+                                   ])
+    res = wizard(ui).run
+
+    assert res[:ok], res.inspect
+    assert_equal "my-gateway", res[:provider]
+    assert(ui.printed.any? { |l| l.include?("Provider name must contain") })
+  end
+
+  def test_role_write_failure_still_attempts_later_roles_and_reports_honestly
+    io = StringIO.new
+    ui = ScriptedConnectPrompt.new([
+                                     pick("OpenAI"),
+                                     accept_default,
+                                     pick("No"),
+                                     pick("API key"),
+                                     literal("fake-key-roles"),
+                                     pick("model-a"),
+                                     pick("default + fast + advanced"),
+                                     literal(true)
+                                   ])
+
+    attempted = []
+    original = @config.method(:set_model_spec)
+    @config.define_singleton_method(:set_model_spec) do |role, **kwargs|
+      attempted << role
+      role == "fast" ? { ok: false, error: "boom" } : original.call(role, **kwargs)
+    end
+
+    res = wizard(ui, io: io).run
+
+    assert res[:ok], res.inspect
+    assert_equal ["default", "fast", "advanced"], attempted, "every role must be attempted"
+    refute_nil @config.fetch("models.advanced"), "a later role must actually be written"
+    assert_includes io.string, "roles: default, advanced"
+    assert_includes io.string, "!model set fast"
+  end
 end
