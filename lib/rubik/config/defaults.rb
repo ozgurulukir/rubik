@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
 require_relative "../platform"
+require_relative "env_guard"
 
 module Rubik
   class Config
     module Defaults
+      include EnvGuard
+
       # llm.* transport-resilience fallbacks, reused by both orchestrator seams.
       LLM_RETRY_DEFAULTS = { "max_retries" => 2, "max_429_retries" => 5, "backoff_base" => 0.2,
                              "max_wall_clock" => 120, "rate_limit_max_delay" => 60 }.freeze
@@ -230,37 +233,6 @@ module Rubik
       }.freeze
 
       private
-
-      # Schema-backed keys must satisfy their spec wherever the merged tree is validated.
-      # Strict is the default for explicit writes (Config#set / Scoped#set). Boot-time
-      # env validation passes strict: false so a malformed RUBIK_* variable is dropped
-      # with a warning instead of crashing Config.new.
-      def validate_typed_value!(key, value, strict: true)
-        return true unless Schema::DEFINITIONS.key?(key.to_s)
-
-        Schema.validate_value!(key, value, strict: strict)
-      end
-
-      # Fail-soft boot validation of the env layer: walk its typed leaves and
-      # remove any schema-backed value that fails its spec, recording a warning
-      # instead of raising. Mutates and returns the layer so the merged config
-      # never sees the rejected value (and cannot resurrect it on a later set).
-      def validate_env_layer!(layer, warnings, prefix = "")
-        return layer unless layer.is_a?(Hash)
-
-        layer.each_key do |key|
-          full = prefix.empty? ? key.to_s : "#{prefix}.#{key}"
-          val = layer[key]
-          if val.is_a?(Hash)
-            validate_env_layer!(val, warnings, full)
-          elsif Schema::DEFINITIONS.key?(full) && !validate_typed_value!(full, val, strict: false)
-            warnings << "[CONFIG] Ignoring invalid environment value '#{full}=#{val.inspect}'; " \
-                        "using the configured default instead."
-            layer.delete(key)
-          end
-        end
-        layer
-      end
 
       def validate_schema(config, schema = DEFAULT_CONFIG, prefix = "", strict: false)
         raise ArgumentError, "Configuration must be a Hash, got #{config.class}" unless config.is_a?(Hash)
