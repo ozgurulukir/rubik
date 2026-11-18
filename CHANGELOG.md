@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-19
+
+The session-attribution minor: gateway plumbing that needed a stable
+per-conversation identity arrives as a provider-scoped `session_header`
+knob, subagent lanes learn provider-scoped retry knobs, the UI goes
+English — and a large fix wave hardens sandboxing, the security
+classifier, buffers, the AST graph, transports and the goal ledger.
+
 ### Added
 
 - **Dynamic session header (`providers.<name>.session_header`):** gateways
@@ -1844,7 +1852,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.13.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.14.0...HEAD
+[0.14.0]: https://github.com/ozgurulukir/rubik/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/ozgurulukir/rubik/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/ozgurulukir/rubik/compare/v0.11.0...v0.12.0
 [0.11.0]: https://github.com/ozgurulukir/rubik/compare/v0.10.0...v0.11.0
