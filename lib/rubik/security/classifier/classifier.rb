@@ -24,6 +24,16 @@ module Rubik
         READ_OPERATORS = ["<"].freeze
         # PERF: Hoist home token array to avoid per-path array allocations in system_path? check.
         HOME_TOKENS = ["~", "~/", "$HOME", "${HOME}"].freeze
+        # Variables whose VALUE the host command executes as a shell command
+        # (git ssh/editor/pager hooks, shell startup files, askpass helpers).
+        # An unclassifiable payload here must fail closed instead of hiding
+        # behind a clean outer allowlist entry (issue #540).
+        EXECUTED_ENV_VARS = [
+          "GIT_SSH_COMMAND", "GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_EXTERNAL_DIFF",
+          "GIT_PAGER", "GIT_ASKPASS", "EDITOR", "VISUAL", "PAGER", "SHELL", "BASH_ENV", "ENV",
+          "SSH_ASKPASS", "SSH_COMMAND", "LESSOPEN"
+        ].freeze
+        EXECUTED_ENV_PREFIXES = ["GIT_CONFIG_"].freeze
 
         def self.default_database
           @default_database ||= CommandDatabase.new
@@ -101,25 +111,36 @@ module Rubik
         def apply_assignment_payloads(result, inv, parse_warnings)
           return result if inv.assignments.empty?
 
-          inners = inv.assignments.filter_map do |assignment|
+          inners = inv.assignments.flat_map do |assignment|
             name, value = assignment.split("=", 2)
             value = Matcher::Delegation.strip_quotes(value.to_s)
-            next nil if value.strip.empty?
+            next [] if value.strip.empty?
 
             inner_invs, warnings = Parser.parse(value, shell: @shell)
             Matcher::Delegation.record_warnings(parse_warnings, warnings)
-            next nil unless command_shaped?(inner_invs)
+            next [] if inner_invs.empty?
+
+            executed = executed_env_var?(name)
+            shaped = command_shaped?(inner_invs)
+            # A host-executed variable whose payload we cannot classify is
+            # the #540 bypass: `GIT_SSH_COMMAND='nc ...' git push` used to
+            # read as a clean `git push`. Floor it to UNKNOWN so the gate
+            # fails closed instead of trusting the outer allowlist entry.
+            next [] if !shaped && !executed
+
+            floor = executed && !shaped ? Classification::UNKNOWN : nil
 
             inner_invs.map do |inner_inv|
               Matcher::Delegation.match_inner_command(
                 inner_inv.argv, @database,
                 delegation_mode: "env_assignment",
                 delegation_source: name,
+                min_classification: floor,
                 parse_warnings: parse_warnings,
                 redirects: inner_inv.redirects
               ) { |i, db, w| Matcher.match_command(i, db, w, shell: @shell) }
             end
-          end.flatten
+          end
           return result if inners.empty?
 
           classification = result.classification
@@ -136,21 +157,25 @@ module Rubik
                       classification: classification, risk: risk, classification_reason: reason)
         end
 
-        # False-positive firewall: env values are usually scalars (LANG=C)
-        # or config blobs (CFLAGS="-O2 -Wall", PS1="\u@\h"). A value counts
-        # as a command payload only when it parses into an invocation whose
-        # binary the database KNOWS or that is invoked by path — the same
-        # trust boundary the matcher applies to any other argv[0].
-        # Known residual: unknown-binary payloads (a DB-less interpreter
-        # spelled without a path) stay unclassified, at parity with typing
-        # that binary directly (UNKNOWN). Closing that would need a
-        # known-env-exec-binaries list (GIT_SSH_COMMAND, GIT_EDITOR, SHELL).
+        # False-positive firewall for ORDINARY env values: they are usually
+        # scalars (LANG=C) or config blobs (CFLAGS="-O2 -Wall", PS1="\u@\h").
+        # A value counts as a command payload only when it parses into an
+        # invocation whose binary the database KNOWS or that is invoked by
+        # path — the same trust boundary the matcher applies to any argv[0].
+        # Host-executed variables (EXECUTED_ENV_VARS / EXECUTED_ENV_PREFIXES)
+        # bypass this firewall in apply_assignment_payloads and fail closed
+        # with an UNKNOWN floor when their payload cannot be classified.
         def command_shaped?(inner_invs)
           inner_invs.any? do |inv|
             binary = inv.argv.first.to_s
             !binary.empty? && !binary.start_with?("-") &&
               (@database.get(binary, shell: @shell) || binary.include?("/") || binary.include?("\\"))
           end
+        end
+
+        def executed_env_var?(name)
+          n = name.to_s
+          EXECUTED_ENV_VARS.include?(n) || EXECUTED_ENV_PREFIXES.any? { |prefix| n.start_with?(prefix) }
         end
 
         def extract_paths(redirects)
@@ -361,6 +386,13 @@ module Rubik
 
           p = p[1..-2] if (p.start_with?('"') && p.end_with?('"')) || (p.start_with?("'") && p.end_with?("'"))
           return false if p.empty? || p.start_with?("-")
+
+          # The current user's home is a system path however it is spelled —
+          # ~, $HOME/... and a literal /home/<user>/... must agree (#540).
+          # Checked before the temp exemption so a HOME under /tmp (test
+          # harnesses, containers) cannot slip through as a "temp path".
+          return true if home_path?(p)
+
           return false if !p.include?("..") && (temp_path?(p) || DEV_PATHS.any? { |dev| p == dev || p.start_with?(dev) })
 
           # Bare drive prefix without separator is NOT a drive root or system path
@@ -400,6 +432,30 @@ module Rubik
           false
         end
         public :system_path?
+
+        # Prefix containment against the current user's home. HOME_TOKENS
+        # covers ~/$HOME spellings; this covers the literal absolute spelling
+        # that dangerous_system_roots only matched exactly (#540). Any
+        # expansion/containment failure (EACCES/EPERM, malformed HOME) is
+        # unprovable, so skip this elevation and let the other checks decide.
+        def home_path?(path)
+          p = path.to_s
+          # Only absolute spellings: ~/$HOME are covered by HOME_TOKENS, and
+          # expanding relative paths would flag every path under a home-rooted cwd.
+          return false unless p.start_with?("/") || p.match?(%r{\A[a-zA-Z]:[\\/]})
+
+          home = Rubik::Platform.home_dir
+          return false if home.nil? || home.to_s.empty?
+
+          home_abs = safe_expand_path(home.to_s)
+          return false unless home_abs.to_s.match?(%r{\A/}) || home_abs.to_s.match?(%r{\A[a-zA-Z]:[\\/]})
+
+          path_abs = safe_expand_path(path)
+          Rubik::Platform.path_under?(Rubik::Platform.normalize_path(path_abs),
+                                      Rubik::Platform.normalize_path(home_abs))
+        rescue StandardError
+          false
+        end
 
         def safe_expand_path(path)
           File.expand_path(path)

