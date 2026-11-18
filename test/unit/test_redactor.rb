@@ -1,11 +1,24 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
+require "timeout"
 require_relative "../../lib/rubik/security/redactor"
 require_relative "../../lib/rubik/security/guard"
 require_relative "../../lib/rubik/ui/diff_viewer"
 
 class TestRedactor < Minitest::Test
+  def test_normalize_key_is_linear_on_long_uppercase_runs
+    long_key = "A" * 20_000
+    result = Timeout.timeout(2) { Rubik::Security::Redactor.normalize_key(long_key) }
+    assert_equal long_key.downcase, result, "a long uppercase run has no camelCase boundary to split"
+  end
+
+  def test_redact_handles_long_adversarial_assignment_quickly
+    payload = "key=#{'A' * 20_000}"
+    result = Timeout.timeout(2) { Rubik::Security::Redactor.redact(payload) }
+    assert_equal "key=#{Rubik::Security::Redactor::MASK_STRING}", result
+  end
+
   def test_redacts_api_keys
     assert_equal "***MASKED***", Rubik::Security::Redactor.redact("sk-1234567890abcdef1234567890")
     assert_equal "***MASKED***", Rubik::Security::Redactor.redact("sk-ant-1234567890abcdef1234567890")

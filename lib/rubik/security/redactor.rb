@@ -92,9 +92,14 @@ module Rubik
 
       # camelCase / SCREAMING_SNAKE -> lower snake_case, so one vocabulary
       # recognizes `apiKey`, `APIKey`, `OPENAI_API_KEY` and `api_key` alike.
+      # Both patterns are FIXED-LENGTH: the old `([A-Z]+)([A-Z][a-z])` had a
+      # repeated class immediately followed by an overlapping class, which
+      # backtracks polynomially on a long uppercase run (CodeQL rb/polynomial-
+      # redos). Matching a single uppercase before the boundary is equivalent
+      # — the preceding uppercase chars are simply copied — and linear.
       def self.normalize_key(key)
         key.to_s
-           .gsub(/([A-Z]+)([A-Z][a-z])/, '\1_\2')
+           .gsub(/([A-Z])([A-Z][a-z])/, '\1_\2')
            .gsub(/([a-z\d])([A-Z])/, '\1_\2')
            .downcase
       end
