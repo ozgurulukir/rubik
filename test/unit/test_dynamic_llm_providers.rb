@@ -381,4 +381,45 @@ class TestDynamicLLMProviders < Minitest::Test
     assert_nil shell.config.fetch("providers.ghost-provider")
     assert_nil shell.llm_registry.get("ghost")
   end
+
+  # Issue #556: routed turns rebuild builtin providers via Registry#get_for.
+  # The registered endpoint/credentials must survive that rebuild even though
+  # the model spec always carries a (defaulted) localhost endpoint.
+  def test_registry_get_for_preserves_registered_ollama_endpoint
+    registry = Rubik::LLM::Registry.new
+    registered = Rubik::LLM::OllamaProvider.new(endpoint: "http://myhost:11434", model: "qwen2.5-coder:7b")
+    registry.register("ollama", registered)
+
+    routed = registry.get_for(
+      "provider" => "ollama", "name" => "qwen2.5-coder:7b", "endpoint" => "http://localhost:11434"
+    )
+    assert_kind_of Rubik::LLM::OllamaProvider, routed
+    assert_equal "http://myhost:11434", routed.endpoint,
+                 "registered endpoint must win over the spec's defaulted localhost"
+  end
+
+  def test_registry_get_for_preserves_configured_ollama_endpoint
+    @config.set("providers.ollama", { "type" => "ollama", "endpoint" => "http://configured:11434" })
+    registry = Rubik::LLM::Registry.new(@config)
+
+    routed = registry.get_for(
+      "provider" => "ollama", "name" => "qwen2.5-coder:7b", "endpoint" => "http://localhost:11434"
+    )
+    assert_equal "http://configured:11434", routed.endpoint
+  end
+
+  def test_registry_get_for_preserves_registered_openai_credentials
+    registry = Rubik::LLM::Registry.new
+    registered = Rubik::LLM::OpenAIProvider.new(
+      model: "gpt-4o", api_key: "sk-custom-123", api_key_env: "CUSTOM_OPENAI_KEY",
+      endpoint: "https://custom.example/v1/chat/completions"
+    )
+    registry.register("openai", registered)
+
+    routed = registry.get_for("provider" => "openai", "name" => "gpt-4o")
+    assert_kind_of Rubik::LLM::OpenAIProvider, routed
+    assert_equal "sk-custom-123", routed.api_key
+    assert_equal "CUSTOM_OPENAI_KEY", routed.api_key_env
+    assert_equal "https://custom.example/v1/chat/completions", routed.endpoint
+  end
 end

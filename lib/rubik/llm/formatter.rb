@@ -412,6 +412,20 @@ module Rubik
         return nil if data.empty?
 
         parsed = JSON.parse(data)
+        # Ollama reports failures inside an HTTP 200 body (both /api/chat and
+        # legacy /api/generate): {"error":"..."} or
+        # {"error":{"message":"...","type":"..."}}. Without this check the body
+        # degrades into a bare chunk with no text/done/error, so the turn ends
+        # empty with nothing to report (issue #556).
+        if (error = parsed["error"])
+          message = if error.is_a?(Hash)
+                      error["message"] || error[:message] || error.to_s
+                    else
+                      error.to_s
+                    end
+          raise ClientError, message.to_s.empty? ? "Ollama streaming error" : message.to_s
+        end
+
         chat_msg = parsed["message"].is_a?(Hash) ? parsed["message"] : {}
 
         text = chat_msg["content"]

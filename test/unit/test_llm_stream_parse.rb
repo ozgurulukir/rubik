@@ -193,4 +193,22 @@ class TestLLMStreamParse < Minitest::Test
     chunk = Rubik::LLM::OllamaFormatter.parse_stream_event(type: "message", data: "")
     assert_nil chunk
   end
+
+  # Issue #556: Ollama reports failures inside an HTTP 200 body. They must
+  # surface as ClientError instead of degrading into a bare, textless chunk.
+  def test_ollama_error_string_field_raises_client_error
+    data = JSON.dump("error" => "model 'foo' not found")
+    error = assert_raises(Rubik::LLM::ClientError) do
+      Rubik::LLM::OllamaFormatter.parse_stream_event(type: "message", data: data)
+    end
+    assert_includes error.message, "model 'foo' not found"
+  end
+
+  def test_ollama_error_object_field_raises_client_error
+    data = JSON.dump("error" => { "type" => "not_found", "message" => "no such model" })
+    error = assert_raises(Rubik::LLM::ClientError) do
+      Rubik::LLM::OllamaFormatter.parse_stream_event(type: "message", data: data)
+    end
+    assert_includes error.message, "no such model"
+  end
 end

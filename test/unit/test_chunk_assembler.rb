@@ -288,4 +288,34 @@ class TestChunkAssembler < Minitest::Test
       assert_equal via_build.streamed, via_incremental.streamed, "#{label}: streamed"
     end
   end
+
+  # Issue #556: Anthropic message_start carries input_tokens while
+  # message_delta carries only output_tokens. Last-writer-wins dropped the
+  # input count; partial usages must merge with later chunks winning per key.
+  def test_partial_usage_hashes_merge_instead_of_last_writer_wins
+    chunks = [
+      Rubik::LLM::Chunk.new(usage: { input_tokens: 42, output_tokens: 0 }),
+      Rubik::LLM::Chunk.new(usage: { output_tokens: 17 })
+    ]
+    res = Rubik::LLM::ChunkAssembler.build(chunks)
+    assert_equal({ input_tokens: 42, output_tokens: 17 }, res.usage)
+  end
+
+  def test_partial_usage_hashes_merge_with_string_keys
+    chunks = [
+      Rubik::LLM::Chunk.new(usage: { "input_tokens" => 42, "output_tokens" => 0 }),
+      Rubik::LLM::Chunk.new(usage: { "output_tokens" => 17 })
+    ]
+    res = Rubik::LLM::ChunkAssembler.build(chunks)
+    assert_equal({ input_tokens: 42, output_tokens: 17 }, res.usage)
+  end
+
+  def test_later_usage_value_wins_when_key_reappears
+    chunks = [
+      Rubik::LLM::Chunk.new(usage: { input_tokens: 10, output_tokens: 2 }),
+      Rubik::LLM::Chunk.new(usage: { input_tokens: 12, output_tokens: 5 })
+    ]
+    res = Rubik::LLM::ChunkAssembler.build(chunks)
+    assert_equal({ input_tokens: 12, output_tokens: 5 }, res.usage)
+  end
 end
