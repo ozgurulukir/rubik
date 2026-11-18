@@ -232,10 +232,34 @@ module Rubik
       private
 
       # Schema-backed keys must satisfy their spec wherever the merged tree is validated.
-      def validate_typed_value!(key, value)
-        return unless Schema::DEFINITIONS.key?(key.to_s)
+      # Strict is the default for explicit writes (Config#set / Scoped#set). Boot-time
+      # env validation passes strict: false so a malformed RUBIK_* variable is dropped
+      # with a warning instead of crashing Config.new.
+      def validate_typed_value!(key, value, strict: true)
+        return true unless Schema::DEFINITIONS.key?(key.to_s)
 
-        Schema.validate_value!(key, value, strict: true)
+        Schema.validate_value!(key, value, strict: strict)
+      end
+
+      # Fail-soft boot validation of the env layer: walk its typed leaves and
+      # remove any schema-backed value that fails its spec, recording a warning
+      # instead of raising. Mutates and returns the layer so the merged config
+      # never sees the rejected value (and cannot resurrect it on a later set).
+      def validate_env_layer!(layer, warnings, prefix = "")
+        return layer unless layer.is_a?(Hash)
+
+        layer.each_key do |key|
+          full = prefix.empty? ? key.to_s : "#{prefix}.#{key}"
+          val = layer[key]
+          if val.is_a?(Hash)
+            validate_env_layer!(val, warnings, full)
+          elsif Schema::DEFINITIONS.key?(full) && !validate_typed_value!(full, val, strict: false)
+            warnings << "[CONFIG] Ignoring invalid environment value '#{full}=#{val.inspect}'; " \
+                        "using the configured default instead."
+            layer.delete(key)
+          end
+        end
+        layer
       end
 
       def validate_schema(config, schema = DEFAULT_CONFIG, prefix = "", strict: false)

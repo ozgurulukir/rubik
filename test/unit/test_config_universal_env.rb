@@ -63,6 +63,27 @@ class TestConfigUniversalEnv < Minitest::Test
     assert_empty warnings
   end
 
+  def test_invalid_env_values_are_dropped_without_crashing_boot
+    snapshot = snapshot_env("RUBIK_UI_VERBOSITY", "RUBIK_SECURITY_COMMAND_ALLOWLIST",
+                            "RUBIK_LLM_BACKOFF_BASE", "RUBIK_AGENT_MAX_STEPS")
+    ENV["RUBIK_UI_VERBOSITY"] = "warning" # invalid enum
+    ENV["RUBIK_SECURITY_COMMAND_ALLOWLIST"] = "ls,cat" # comma list -> array
+    ENV["RUBIK_LLM_BACKOFF_BASE"] = ".2" # leading-dot float
+    ENV["RUBIK_AGENT_MAX_STEPS"] = "abc" # invalid integer
+
+    config = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+
+    # Invalid typed values are dropped with a warning; the valid coercions survive.
+    assert_equal "normal", config.fetch("ui.verbosity")
+    assert_equal 40, config.fetch("agent.max_steps")
+    assert_equal ["ls", "cat"], config.fetch("security.command_allowlist")
+    assert_equal 0.2, config.fetch("llm.backoff_base")
+    assert(config.warnings.any? { |w| w.include?("ui.verbosity") && w.include?("Ignoring invalid environment") })
+    assert(config.warnings.any? { |w| w.include?("agent.max_steps") && w.include?("Ignoring invalid environment") })
+  ensure
+    restore_env(snapshot)
+  end
+
   def test_legacy_map_targets_are_real_config_keys
     # Every legacy variable must map to a key that actually exists in
     # DEFAULT_CONFIG — a phantom target deep-sets a value no consumer reads

@@ -297,6 +297,9 @@ module Rubik
       end
 
       @env_layer = EnvLoader.load_env(ENV, DEFAULT_CONFIG, @warnings)
+      # Fail-soft: a malformed RUBIK_* value is dropped with a warning rather
+      # than raising out of Config.new (documented env policy).
+      validate_env_layer!(@env_layer, @warnings)
       @session_layer = {}
 
       warn_plaintext_project_secrets

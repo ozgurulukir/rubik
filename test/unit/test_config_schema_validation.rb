@@ -44,6 +44,22 @@ class TestConfigSchemaValidation < Minitest::Test
     assert_includes err.message, "must be a float between 0.0 and 1.0"
   end
 
+  def test_array_coercion_from_comma_separated_string
+    assert_equal ["ls", "cat"], Rubik::Config::Schema.coerce("security.command_allowlist", "ls,cat")
+    assert_equal ["ls", "cat", "echo"], Rubik::Config::Schema.coerce("security.command_allowlist", " ls , cat ,echo ")
+    assert_equal [], Rubik::Config::Schema.coerce("security.command_allowlist", " , ")
+    assert Rubik::Config::Schema.validate_value!("security.command_allowlist", ["ls", "cat"], strict: true)
+  end
+
+  def test_float_coercion_accepts_leading_dot_and_exponent_forms
+    assert_equal 0.2, Rubik::Config::Schema.coerce("llm.backoff_base", ".2")
+    assert_equal 0.001, Rubik::Config::Schema.coerce("llm.backoff_base", "1e-3")
+    assert_equal(-0.5, Rubik::Config::Schema.coerce("llm.backoff_base", "-.5"))
+    assert_equal 1.0, Rubik::Config::Schema.coerce("llm.backoff_base", "1")
+    # Still rejects non-numeric junk (left as a String, then strict validation fails).
+    assert_equal "abc", Rubik::Config::Schema.coerce("llm.backoff_base", "abc")
+  end
+
   def test_enum_coercion_and_validation
     assert_equal "on_finish", Rubik::Config::Schema.coerce("buffer.auto_apply", "ON_FINISH")
 

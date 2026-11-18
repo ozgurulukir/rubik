@@ -166,7 +166,13 @@ module Rubik
         when :integer
           val.strip =~ /^-?\d+$/ ? val.strip.to_i : val
         when :float
-          val.strip =~ /^-?\d+(\.\d+)?$/ ? val.strip.to_f : val
+          # Accept leading-dot (.2), trailing-dot (2.) and exponent (1e-3,
+          # -2.5E+2) forms that Ruby's Float() understands.
+          val.strip =~ /\A[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?\z/ ? val.strip.to_f : val
+        when :array
+          # Comma-separated env values (e.g. "ls,cat") become a typed list;
+          # blank entries are dropped so trailing commas stay harmless.
+          val.strip.split(",").map(&:strip).reject(&:empty?)
         when :enum
           val.strip.downcase
         else

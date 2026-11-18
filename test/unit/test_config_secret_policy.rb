@@ -153,15 +153,34 @@ class TestConfigSecretPolicy < Minitest::Test
     assert_equal "rubik-secret:providers.acme.api_key.project", @config.project_layer.dig("providers", "acme", "api_key")
   end
 
-  def test_delete_drops_both_scope_names
+  def test_delete_drops_only_the_target_scope_name
+    @config.set("security.allow_project_secrets", true, persist: :global) # operator override: allow project plaintext
     @config.set("providers.acme.api_key", "sk-test-global-scope-value", persist: :global)
     @config.set("providers.acme.api_key", "sk-test-project-scope-value", persist: :project)
 
     res = @config.delete("providers.acme.api_key", persist: :global)
 
     assert res[:ok]
+    # Only the removed scope's keyring entry is dropped.
     assert_nil @backend.read("providers.acme.api_key")
+    # The sibling scope's entry survives, so its config pointer still resolves.
+    assert_equal "sk-test-project-scope-value", @backend.read("providers.acme.api_key.project")
+    assert_equal "rubik-secret:providers.acme.api_key.project",
+                 @config.project_layer.dig("providers", "acme", "api_key")
+  end
+
+  def test_deleting_project_scope_leaves_global_reference_intact
+    @config.set("security.allow_project_secrets", true, persist: :global)
+    @config.set("providers.acme.api_key", "sk-test-global-scope-value", persist: :global)
+    @config.set("providers.acme.api_key", "sk-test-project-scope-value", persist: :project)
+
+    res = @config.delete("providers.acme.api_key", persist: :project)
+
+    assert res[:ok]
+    assert_equal "sk-test-global-scope-value", @backend.read("providers.acme.api_key")
     assert_nil @backend.read("providers.acme.api_key.project")
+    assert_equal "rubik-secret:providers.acme.api_key",
+                 @config.global_layer.dig("providers", "acme", "api_key")
   end
 
   def test_deleting_secret_path_also_drops_stored_secret
