@@ -170,7 +170,11 @@ module Rubik
         rel_or_exp
       end
 
-      # Reads a file from the buffer (if dirty) or from disk, normalizing newlines.
+      # Reads a file from the buffer (if dirty) or from disk. Raw bytes —
+      # including CRLF line endings — are preserved end-to-end: a read/edit/
+      # write cycle on a CRLF file must not rewrite every line ending to LF
+      # (issue #544). Newline normalization is confined to conflict-detection
+      # hashing, never to the content that is buffered or applied to disk.
       #
       # @param path [String] file path relative to the root directory
       # @param reload [Boolean] force reload from disk, discarding in-memory buffer if present
@@ -190,7 +194,7 @@ module Rubik
             full_path = File.expand_path(rel_path, @root_dir)
             return nil unless File.exist?(full_path)
 
-            return Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path))
+            return Rubik::Platform.read_text(full_path)
           elsif @buffer.key?(rel_path)
             return @buffer[rel_path]
           end
@@ -198,7 +202,7 @@ module Rubik
           full_path = File.expand_path(rel_path, @root_dir)
           return nil unless File.exist?(full_path)
 
-          content = Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path))
+          content = Rubik::Platform.read_text(full_path)
           @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
           content
         end
@@ -219,17 +223,15 @@ module Rubik
       def write(path, content, reset_baseline: false)
         @monitor.synchronize do
           rel_path = sanitize_path(path, for_write: true)
-          normalized_content = Rubik::Platform.normalize_newlines(content)
-
           if reset_baseline || !@original_hashes.key?(rel_path)
             full_path = File.expand_path(rel_path, @root_dir)
-            @original_hashes[rel_path] = (Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path))) if File.exist?(full_path))
+            @original_hashes[rel_path] = (Digest::SHA256.hexdigest(Rubik::Platform.read_text(full_path)) if File.exist?(full_path))
           end
 
-          @buffer[rel_path] = normalized_content
+          @buffer[rel_path] = content
           @dirty_files[rel_path] = true
           @event_bus&.emit(:buffer_changed, path: rel_path)
-          normalized_content
+          content
         end
       end
 
@@ -309,7 +311,7 @@ module Rubik
 
         diffs = snapshot.map do |rel_path, new_content|
           full_path = File.expand_path(rel_path, @root_dir)
-          orig_content = File.exist?(full_path) ? Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path)) : ""
+          orig_content = File.exist?(full_path) ? Rubik::Platform.read_text(full_path) : ""
           Diff.unified_diff(rel_path, orig_content, new_content)
         end
 
@@ -420,7 +422,7 @@ module Rubik
         full_path = File.expand_path(rel_path, @root_dir)
         return nil unless File.exist?(full_path)
 
-        Digest::SHA256.hexdigest(Rubik::Platform.normalize_newlines(Rubik::Platform.read_text(full_path)))
+        Digest::SHA256.hexdigest(Rubik::Platform.read_text(full_path))
       rescue Errno::ENOENT, Errno::EACCES
         nil
       end

@@ -52,4 +52,46 @@ class TestSnapshot < Minitest::Test
     assert @store.rollback(s1.id, @manager)
     assert_equal "v1", @manager.read("a.rb")
   end
+
+  def test_undo_to_empty_then_new_snapshot_does_not_resurrect_discarded_edit
+    @manager.write("a.rb", "discarded")
+    @store.create_snapshot(@manager)
+
+    assert @store.undo(@manager)
+    refute @manager.dirty?, "undo must return the buffer to the empty baseline"
+
+    @manager.write("a.rb", "kept")
+    @store.create_snapshot(@manager)
+
+    assert @store.undo(@manager)
+    refute @manager.dirty?, "undo must not restore the edit discarded before the new snapshot"
+  end
+
+  def test_recorded_baseline_is_restored_by_undo
+    @manager.write("a.rb", "pending edit")
+    @store.record_baseline(@manager)
+    @store.create_snapshot(@manager)
+
+    @manager.write("a.rb", "proposed fix")
+    assert @store.undo(@manager)
+    assert_equal "pending edit", @manager.read("a.rb")
+  end
+
+  def test_snapshot_preserves_crlf_bytes
+    crlf = "a\r\nb\r\n"
+    snapshot = Rubik::Buffer::Snapshot.new(files: { "a.rb" => crlf })
+
+    assert_equal crlf, Rubik::Buffer::Snapshot.decompress(snapshot.compress).files["a.rb"]
+  end
+
+  def test_default_storage_dir_uses_platform_home_dir
+    fake_home = Dir.mktmpdir
+    Rubik::Platform.stub(:home_dir, fake_home) do
+      store = Rubik::Buffer::SnapshotStore.new
+
+      assert_equal File.join(fake_home, ".rubik", "snapshots", "default"), store.storage_dir
+    end
+  ensure
+    FileUtils.remove_entry(fake_home) if fake_home && File.directory?(fake_home)
+  end
 end

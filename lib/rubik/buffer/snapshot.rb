@@ -4,6 +4,7 @@ require "zlib"
 require "json"
 require "fileutils"
 require "securerandom"
+require_relative "../platform"
 
 module Rubik
   module Buffer
@@ -45,11 +46,24 @@ module Rubik
     class SnapshotStore
       attr_reader :storage_dir, :snapshots
 
-      def initialize(storage_dir: File.join(ENV.fetch("HOME", nil), ".rubik", "snapshots", "default"))
+      def initialize(storage_dir: File.join(Rubik::Platform.home_dir, ".rubik", "snapshots", "default"))
         @storage_dir = storage_dir
         @snapshots = []
         @current_index = -1
+        # The state undo-to-beginning restores. Defaults to a clean
+        # buffer; consumers that snapshot a pre-existing dirty buffer
+        # (e.g. Repair::Loop) record that state explicitly so an aborted
+        # operation restores the pending edits instead of wiping them
+        # (issue #544).
+        @baseline = {}
         FileUtils.mkdir_p(@storage_dir)
+      end
+
+      # Records the state that a full undo should restore. Call once,
+      # before the first snapshot, when the buffer already holds edits
+      # that must survive an aborted operation.
+      def record_baseline(buffer_manager)
+        @baseline = buffer_manager.snapshot_state
       end
 
       def create_snapshot(buffer_manager)
@@ -63,7 +77,13 @@ module Rubik
         file_path = File.join(@storage_dir, "#{snapshot.id}.zdeflate")
         File.binwrite(file_path, snapshot.compress)
 
-        @snapshots = @snapshots[0..@current_index] if @current_index < @snapshots.size - 1
+        # Clamp the redo truncation: with @current_index == -1 the range
+        # [0..-1] is the WHOLE array, so a fresh snapshot after undoing
+        # to empty would be appended after stale snapshots and a later
+        # undo would resurrect the discarded edit (issue #544).
+        if @current_index < @snapshots.size - 1
+          @snapshots = @current_index.negative? ? [] : @snapshots[0..@current_index]
+        end
 
         @snapshots << snapshot
         @current_index = @snapshots.size - 1
@@ -74,7 +94,7 @@ module Rubik
         return false if @current_index.negative?
 
         if @current_index.zero?
-          buffer_manager.restore_snapshot_state({})
+          buffer_manager.restore_snapshot_state(@baseline)
           @current_index = -1
           return true
         end

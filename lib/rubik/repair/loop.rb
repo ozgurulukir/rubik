@@ -25,9 +25,17 @@ module Rubik
       def repair(diagnostics, target_file, lang = :ruby)
         @attempts_made = 0
         current_diag = diagnostics
+        baseline_recorded = false
 
         while @attempts_made < @max_attempts
           @attempts_made += 1
+
+          # Capture the pre-repair state once so an aborted attempt restores
+          # pending edits instead of an empty buffer (issue #544).
+          unless baseline_recorded
+            @snapshot_store.record_baseline(@buffer_manager)
+            baseline_recorded = true
+          end
 
           @snapshot_store.create_snapshot(@buffer_manager)
 
