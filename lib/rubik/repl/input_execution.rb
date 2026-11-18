@@ -324,18 +324,18 @@ module Rubik
         res
       end
 
-      # Settle phase: merges the turn's tool history, then records and
-      # reports the outcome (success render / incomplete report). theme and
-      # md_enabled arrive from the display phase for the batch render.
+      # Settle phase: records the outcome FIRST, then merges the turn's tool
+      # history and reports the result. theme and md_enabled arrive from the
+      # display phase for the batch render.
       def settle_free_text_result!(text, res, orchestrator:, theme:, md_enabled:)
-        # Plan 85 D-7 (kök neden): turn içi @history'deki tool ara adımlarını
-        # conversation_history'ye kopyala — böylece continue'da model turn sırasındaki
-        # bağlamı görür ve "sıfırdan keşfe" başlamaz. res[:loop_instance].history,
-        # turn_result'ın döndürdüğü Loop örneğinin @history'sidir.
-        merge_unseen_turn_tool_history!(res[:loop_instance])
-
         if res[:ok]
           record_turn_outcome!(text, res[:output].to_s, tokens: res[:tokens], streamed: res[:streamed] == true)
+          # Plan 85 D-7: copy in-turn tool steps into conversation_history so
+          # a follow-up sees them. This MUST follow record_turn_outcome! —
+          # its trim drops leading rows until a user row leads the window,
+          # so merging first evicts every tool row on a fresh/cleared window
+          # (issue #557). All rescue paths already use this ordering.
+          merge_unseen_turn_tool_history!(res[:loop_instance])
 
           # Only print the final answer when it was not already streamed
           # live; batch answers get full markdown rendering on capable TTYs.
@@ -358,6 +358,7 @@ module Rubik
         else
           @output.puts "Task could not be completed: #{res[:error]}"
           record_failed_turn!(text, "incomplete", res[:error], orchestrator)
+          merge_unseen_turn_tool_history!(res[:loop_instance])
         end
       end
 

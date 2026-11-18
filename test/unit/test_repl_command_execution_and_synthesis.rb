@@ -130,6 +130,21 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
     assert_includes @output.string, "mocked output from sandbox runner"
   end
 
+  def test_sh_preserves_shell_quoting_from_the_original_input
+    mock_runner = Object.new
+    executed_command = nil
+    mock_runner.define_singleton_method(:run) do |cmd|
+      executed_command = cmd
+      { output: "ok", exit_code: 0 }
+    end
+    @shell.instance_variable_set(:@sandbox_runner, mock_runner)
+
+    @shell.execute_input('!sh grep "foo bar" file')
+
+    assert_equal "grep foo\\ bar file", executed_command,
+                 "quotes consumed by CommandParser must be restored for the runner and safety gate (issue #557)"
+  end
+
   def test_sh_warns_on_unapplied_buffer_in_manual_mode
     mock_runner = Object.new
     mock_runner.define_singleton_method(:run) { |_cmd| { output: "ran", exit_code: 0 } }

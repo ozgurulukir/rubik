@@ -49,7 +49,7 @@ module Rubik
 
         finish_call = (tool_instance.respond_to?(:terminal?) && tool_instance.terminal?) ||
                       canonical_name == "finish" # unresolved case variant degrades to the name compare
-        return handle_finish_tool(tool_args, text_resp, auto_apply_mode) if finish_call
+        return handle_finish_tool(tool_args, text_resp, auto_apply_mode, call_id) if finish_call
 
         # Maestro gate: maestro'nun doğrudan yürütme araçları reddedilir
         # (detay ve config semantics: maestro_gate.rb).
@@ -64,7 +64,7 @@ module Rubik
         end
       end
 
-      def handle_finish_tool(tool_args, text_resp, auto_apply_mode = nil)
+      def handle_finish_tool(tool_args, text_resp, auto_apply_mode = nil, call_id = nil)
         if AutoApply.apply?(@deps.config, trigger: :finish, mode: auto_apply_mode) && @deps.buffer_manager&.dirty?
           applied = AutoApply.apply_and_sync(@deps.buffer_manager, @deps.shell)
           @deps.on_step&.call(type: :auto_apply, reason: "finish", files: applied, step: @deps.step_count, max_steps: @deps.max_steps)
@@ -81,6 +81,15 @@ module Rubik
         # turns already printed it above, batch turns render right below.
         @deps.on_step&.call(type: :finish, message: final_msg, streamed: @deps.last_turn_streamed == true,
                             step: @deps.step_count, max_steps: @deps.max_steps)
+        # The assistant row carries the finish tool_use; it needs a pairing
+        # tool row or strict providers reject the next request (issue #548).
+        # The deferred-goal path in UserChannel writes the same shape.
+        if call_id
+          Rubik::Orchestrator::ToolHistory.write(
+            @deps.history, tool_call_id: call_id, tool_name: "finish",
+                           status: :ok, duration_ms: 0.0, content: final_msg.to_s
+          )
+        end
         # streamed must reflect the FINISHING turn's reality: its text may
         # have been streamed as chunks before the finish call. A hardcoded
         # false made the free-text render treat an already-printed answer as
@@ -127,6 +136,12 @@ module Rubik
         @deps.record_invalid_tool!
         @deps.activity.record(tool_name, {}, :error) if @deps.respond_to?(:activity)
         if @deps.invalid_tool_count >= 2
+          # The first strike wrote its row; the terminal strike must too, or
+          # the invalid tool_use id stays orphaned in the assistant row (#548).
+          Rubik::Orchestrator::ToolHistory.write(
+            @deps.history, tool_call_id: call_id, tool_name: tool_name,
+                           status: :error, duration_ms: 0.0, content: "Repeated invalid tool call '#{tool_name}'"
+          )
           return { ok: false, error: "Repeated invalid tool call '#{tool_name}'", steps: @deps.step_count,
                    tokens: @deps.total_tokens, loop_instance: @deps.loop_instance }
         end

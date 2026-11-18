@@ -64,6 +64,19 @@ class TestReplProviderCommands < Minitest::Test
     assert_equal [{ "name" => "gpt-4o", "context_limit" => 65_536 }], prov_spec["models"]
   end
 
+  def test_provider_key_never_reaches_transcript_or_conversation_history
+    secret = "gsk_super_secret_key_1234567890"
+    @shell.execute_input("!provider add myprov https://api.example.com --key=#{secret}")
+
+    recorder = @shell.instance_variable_get(:@recorder)
+    transcript = File.read(recorder.session_file)
+    refute_includes transcript, secret, "raw provider key must not be persisted to the session JSONL"
+    assert_includes transcript, "***MASKED***"
+
+    history = @shell.conversation_history.map { |row| row[:content].to_s }.join("\n")
+    refute_includes history, secret, "raw provider key must not be sent to the LLM on later turns"
+  end
+
   def test_provider_add_and_remove_model
     # First add a provider
     @shell.execute_input("!provider add myprov https://api.example.com")

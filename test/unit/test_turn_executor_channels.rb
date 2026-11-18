@@ -29,10 +29,13 @@ class TestTurnExecutorChannels < Minitest::Test
     File.write(File.join(@ws_root, "note.txt"), "shared scenario")
     obs = run_scripted_through_both_channels(root_dir: @ws_root, responses: tool_call_then_finish)
 
-    [obs.user_loop, obs.subagent].each do |channel|
-      rows = channel.history.select { |m| m[:role] == "tool" }
-      assert_equal 1, rows.size, "exactly one scripted tool row on each channel"
-      row = rows.first
+    user_rows = obs.user_loop.history.select { |m| m[:role] == "tool" }
+    assert_equal 2, user_rows.size, "read_file plus the pairing finish row on the user channel (issue #548)"
+    assert_equal(["read_file", "finish"], user_rows.map { |r| r[:tool_name] })
+
+    subagent_rows = obs.subagent.history.select { |m| m[:role] == "tool" }
+    assert_equal 1, subagent_rows.size, "exactly one scripted tool row on the subagent channel"
+    [user_rows.first, subagent_rows.first].each do |row|
       assert_equal Rubik::Orchestrator::ToolHistory::ROW_KEYS, row.keys, "the canonical row on both channels"
       assert_equal "read_file", row[:tool_name]
       assert_equal :ok, row[:status]
@@ -48,10 +51,10 @@ class TestTurnExecutorChannels < Minitest::Test
     assert obs.user_result[:ok], "the user channel completes via the finish tool"
     assert_equal :completed, obs.subagent.state, "the subagent completes via the finish tool"
     assert_equal "scenario done", obs.subagent.result
-    [obs.user_loop, obs.subagent].each do |channel|
-      refute channel.history.any? { |m| m[:role] == "tool" && m[:tool_name] == "finish" },
-             "the finish call executes; it never produces a tool result row"
-    end
+    assert obs.user_loop.history.any? { |m| m[:role] == "tool" && m[:tool_name] == "finish" },
+           "user-channel finish now writes its pairing tool row (issue #548)"
+    refute obs.subagent.history.any? { |m| m[:role] == "tool" && m[:tool_name] == "finish" },
+           "the subagent channel keeps its own finish path"
   end
 
   def test_both_channels_recover_from_context_overflow_via_their_own_announce_channel

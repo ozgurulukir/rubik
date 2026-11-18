@@ -83,6 +83,21 @@ class TestOrchestratorContinuationManager < Minitest::Test
     assert_empty @manager.continuation_buffer
   end
 
+  def test_reset_strikes_preserves_the_continuation_buffer
+    @manager.handle_truncation(
+      finish_reason: "length", text_resp: "thinking cut off", tool_calls: [], max_tokens: 4096
+    )
+    @manager.handle_truncation(
+      finish_reason: "length", text_resp: "partial text ", tool_calls: [], max_tokens: 4096
+    )
+    assert_equal 2, @manager.auto_continue_count
+
+    @manager.reset_strikes!
+
+    assert_equal 0, @manager.auto_continue_count, "successful turns close the consecutive truncation chain (#549)"
+    assert_equal "thinking cut offpartial text ", @manager.continuation_buffer, "the partial answer must survive a strike reset"
+  end
+
   def test_ceiling_enforcement_aborts_with_diagnostic
     3.times do |i|
       action = @manager.handle_truncation(

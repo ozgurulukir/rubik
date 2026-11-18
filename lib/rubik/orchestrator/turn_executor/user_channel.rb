@@ -55,9 +55,23 @@ module Rubik
         # accumulated partial text and resets the buffer.
         def final_text(res, text)
           cm = @deps.loop_instance.continuation_manager
-          return text if cm.continuation_buffer.empty?
+          # `text` is the executor's already-sanitized (and stripped)
+          # response. Use it as-is for a normal turn; the stitching branch
+          # below sanitizes raw res.text separately (issue #547).
+          safe_text = Platform.safe_utf8(text).to_s
+          if cm.continuation_buffer.empty?
+            # A response without a pending truncation closes the consecutive
+            # truncation chain (issue #549). stitch_and_reset covers the other
+            # branch; this keeps the buffer itself intact.
+            cm.reset_strikes!
+            return safe_text
+          end
 
-          cm.stitch_and_reset(res.text.to_s)
+          # Stitch the RAW response (sanitized): `text` was already stripped
+          # by TurnExecutor#call, which would eat the leading indentation of
+          # the continuation chunk (issue #547).
+          raw_text = res.respond_to?(:text) ? res.text : text
+          cm.stitch_and_reset(Platform.safe_utf8(raw_text).to_s)
         end
 
         def track_usage(res) = @deps.budget_manager.track_token_usage!(res)
@@ -66,13 +80,20 @@ module Rubik
         # truncation, append the partial thought/text rows plus the
         # targeted nudge, or return the diagnostic terminal when
         # auto-continue is disabled or the ceiling is exhausted.
-        def handle_truncation(res, _text_resp, tool_calls, finish_reason)
+        def handle_truncation(res, text_resp, tool_calls, finish_reason)
           cm = @deps.loop_instance.continuation_manager
           return nil unless cm.truncation?(finish_reason)
 
+          # Sanitize the RAW response here rather than reusing the already
+          # stripped `text_resp`: the continuation buffer must keep the exact
+          # partial text (including its trailing newline) while invalid bytes
+          # echoed with finish_reason=length must not raise in
+          # ContinuationManager#classify_truncation (issue #547).
+          raw_text = res.respond_to?(:text) ? res.text : text_resp
+          safe_text = Platform.safe_utf8(raw_text).to_s
           trunc_action = cm.handle_truncation(
             finish_reason: finish_reason,
-            text_resp: res.text.to_s,
+            text_resp: safe_text,
             tool_calls: tool_calls,
             res: res,
             max_tokens: @deps.max_output_tokens || @deps.safe_config("llm.default_max_output_tokens", 4096)
@@ -81,7 +102,8 @@ module Rubik
           if trunc_action[:continue]
             nudge_policy.reset!
             if trunc_action[:thought]
-              @deps.history << { role: "assistant", content: nil, thought: trunc_action[:thought] }
+              thought = Platform.safe_utf8(trunc_action[:thought])
+              @deps.history << { role: "assistant", content: nil, thought: thought }
             elsif trunc_action[:partial_text]
               @deps.history << { role: "assistant", content: trunc_action[:partial_text] }
             end

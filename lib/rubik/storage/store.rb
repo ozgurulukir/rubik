@@ -84,7 +84,7 @@ module Rubik
                 "version" => existing["version"].to_i + 1, "updated_at" => now
               )
             else
-              row = meta_next_row(meta, type)
+              row = allocate_row(meta, records, type)
               hash = content_hash(type, title, body, tags, links)
               { "id" => "#{type}.#{row}.#{hash[0, 16]}", "type" => type, "project" => @project,
                 "row" => row, "hash" => hash, "title" => title.to_s, "body" => body.to_s,
@@ -94,10 +94,14 @@ module Rubik
 
           records = records.reject { |r| r["row"] == record["row"] } << record
           ensure_project_dirs
-          write_records(type, records.sort_by { |r| r["row"].to_i })
           meta_bump_counts(meta, type) unless existing
           meta_set_ref(meta, ref, record["id"]) if ref
+          # Journal order (issue #562): commit the allocator state BEFORE the
+          # entity row. A crash between the two writes then costs a row number
+          # (harmless gap) instead of leaving a row on disk with a stale
+          # next_row — which the next put would reallocate and silently evict.
           save_meta(meta)
+          write_records(type, records.sort_by { |r| r["row"].to_i })
           touch_index(meta)
           record.dup
         end
@@ -318,11 +322,21 @@ module Rubik
         links.to_h { |k, v| [k.to_s, v.to_s] }.sort.to_h
       end
 
-      def meta_next_row(meta, type)
+      # Row allocation reads BOTH the meta cursor and the on-disk rows.
+      # load_meta deliberately degrades to {} on corrupt/missing meta.json;
+      # deriving the next row from meta alone then reused row 1 and evicted
+      # the record already stored there (issue #562). A create is refused if
+      # the computed row is somehow already occupied — eviction is never an
+      # acceptable allocation strategy.
+      def allocate_row(meta, records, type)
         rows = (meta["next_row"] ||= {})
-        rows[type] = rows[type].to_i + 1
+        disk_max = records.map { |r| r["row"].to_i }.max || 0
+        row = [rows[type].to_i, disk_max].max + 1
+        raise ArgumentError, "row #{row} already exists in #{type}; refusing to overwrite" if records.any? { |r| r["row"].to_i == row }
+
+        rows[type] = row
         meta["updated_at"] = Time.now.utc.iso8601
-        rows[type]
+        row
       end
 
       def meta_bump_counts(meta, type)

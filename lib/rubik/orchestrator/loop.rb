@@ -50,8 +50,6 @@ module Rubik
         # in between would make prompt and execution disagree.
         @shell = shell
         @buffer_manager = shell&.buffer_manager
-        @snapshot_store = shell&.snapshot_store
-        @context_index = shell&.context_index
         @lsp_manager = shell&.lsp_manager
         @config = shell&.config
         @root_dir = File.expand_path(shell&.buffer_manager&.root_dir || Dir.pwd)

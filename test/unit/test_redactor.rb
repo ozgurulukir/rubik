@@ -56,6 +56,36 @@ class TestRedactor < Minitest::Test
     assert_equal "tokens = 10", Rubik::Security::Redactor.redact("tokens = 10")
   end
 
+  def test_redacts_provider_cli_credential_forms
+    secret = "gsk_abc1234567890"
+    assert_equal "!provider add p http://x --key=***MASKED***",
+                 Rubik::Security::Redactor.redact("!provider add p http://x --key=#{secret}")
+    assert_equal "!provider add p http://x --api-key=***MASKED***",
+                 Rubik::Security::Redactor.redact("!provider add p http://x --api-key=#{secret}")
+    assert_equal "!provider set p key ***MASKED***",
+                 Rubik::Security::Redactor.redact("!provider set p key #{secret}")
+  end
+
+  def test_redacts_env_style_and_camelcase_assignments
+    assert_equal "OPENAI_API_KEY=***MASKED*** MY_SECRET=***MASKED***",
+                 Rubik::Security::Redactor.redact("OPENAI_API_KEY=sk-abcdefghijklmnopqrstuvwxyz1234 MY_SECRET=hunter2")
+    assert_equal "apiKey=***MASKED*** accessToken=***MASKED***",
+                 Rubik::Security::Redactor.redact("apiKey=abc123 accessToken=abc123")
+  end
+
+  def test_mask_value_normalizes_keys_and_anchors_counter_exclusion
+    payload = {
+      "apiKey" => "secret-one", "accessToken" => "secret-two",
+      "auth_tokens" => "secret-three", "max_tokens" => 100, "tokens" => 10
+    }
+    masked = Rubik::Security::Redactor.mask_value(payload)
+    assert_equal "***MASKED***", masked["apiKey"]
+    assert_equal "***MASKED***", masked["accessToken"]
+    assert_equal "***MASKED***", masked["auth_tokens"], "auth_tokens is a secret, not a counter"
+    assert_equal 100, masked["max_tokens"]
+    assert_equal 10, masked["tokens"]
+  end
+
   def test_guard_mask_text_delegates_to_redactor
     guard = Rubik::Security::Guard.new(audit_log_path: nil)
     assert_equal "***MASKED***", guard.mask_text("sk-ant-1234567890abcdef1234567890")

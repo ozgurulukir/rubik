@@ -15,7 +15,7 @@ class TestPromptGracePTY < Minitest::Test
   def test_escape_restores_editable_unicode_multiline_without_executing
     probe do |reader, writer|
       read_until(reader, "PROMPT>")
-      writer.write("<<EOF\r")
+      writer.write("<< EOF\r")
       read_until(reader, "PROMPT>")
       writer.write("  İstanbul\r")
       read_until(reader, "PROMPT>")

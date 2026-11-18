@@ -186,6 +186,36 @@ class TestStorageStore < Minitest::Test
     assert_equal 1, @store.search(query: "healthy").length, "healthy rows keep working alongside malformed ones"
   end
 
+  def test_corrupt_meta_does_not_reuse_an_on_disk_row
+    first = @store.put(type: "note", title: "first")
+    @store.put(type: "note", title: "second")
+
+    meta_path = Rubik::Storage::Layout.meta_path(@store.project_dir)
+    File.write(meta_path, "{ corrupt meta")
+
+    third = @store.put(type: "note", title: "third")
+    assert_equal 3, third["row"], "next row must come from max(meta, on-disk) + 1"
+    assert_equal "first", @store.get(type: "note", id: first["id"])["title"],
+                 "the row-1 record must survive a meta failure"
+    assert_equal 3, @store.list(type: "note").size
+  end
+
+  def test_partial_write_failure_leaves_no_stale_allocator_state
+    calls = 0
+    @store.stub(:write_records, lambda { |*|
+      calls += 1
+      raise IOError, "simulated disk failure" if calls == 1
+    }) do
+      assert_raises(IOError) { @store.put(type: "note", title: "failed write") }
+    end
+    refute File.exist?(Rubik::Storage::Layout.entities_path(@store.project_dir, "note")),
+           "a failed entity write must not leave a row on disk"
+
+    third = @store.put(type: "note", title: "after failure")
+    assert_equal 2, third["row"], "the journal advanced first: a harmless gap, never a reused row"
+    assert_equal 1, @store.list(type: "note").size
+  end
+
   def test_load_meta_returns_empty_hash_on_corrupted_json
     meta_path = Rubik::Storage::Layout.meta_path(@store.project_dir)
     FileUtils.mkdir_p(File.dirname(meta_path))

@@ -114,8 +114,54 @@ class TestTurnExecutor < Minitest::Test
 
     assert result[:ok]
     assert_equal "wrapped up", result[:output]
-    refute @loop.history.any? { |m| m[:role] == "tool" }, "the finish call executes, no tool result row lands"
+    tool_row = @loop.history.find { |m| m[:role] == "tool" }
+    refute_nil tool_row, "the finish tool_use needs a pairing tool row (issue #548)"
+    assert_equal "finish", tool_row[:tool_name]
+    assert_equal "wrapped up", tool_row[:content]
     assert_nil @events.find { |e| e[:type] == :llm_thought }, "finish calls announce no llm_thought"
+  end
+
+  def test_invalid_utf8_with_length_finish_reason_auto_continues
+    bad_text = "partial \xFF text".dup.force_encoding("ASCII-8BIT")
+    res = response(text: bad_text, raw: { "finish_reason" => "length" })
+
+    result = @executor.call(res)
+
+    assert_nil result, "a malformed echo must not kill the truncation path (issue #547)"
+    buffer = @loop.continuation_manager.continuation_buffer
+    assert buffer.valid_encoding?, "the buffered partial must be sanitized UTF-8"
+    refute_includes buffer, "\xFF".dup.force_encoding("ASCII-8BIT")
+  end
+
+  def test_bare_finish_after_text_truncation_outputs_the_buffered_partial
+    truncated = response(text: "The partial answer ", raw: { "finish_reason" => "length" })
+    assert_nil @executor.call(truncated)
+
+    finish = response(text: "", tool_calls: [{ "tool" => "finish", "args" => {} }])
+    result = @executor.call(finish)
+
+    assert result[:ok]
+    assert_equal "The partial answer", result[:output], "the finish fallback must see the stitched partial (issue #547)"
+  end
+
+  def test_finish_and_repeated_invalid_tool_leave_no_orphan_tool_use_ids
+    finish_res = @executor.call(response(text: "", tool_calls: [{ "tool" => "finish", "args" => { "message" => "done" } }]))
+    assert finish_res[:ok]
+
+    used = @loop.history.flat_map { |m| (m[:tool_calls] || []).map { |tc| tc["id"] } }.compact
+    answered = @loop.history.select { |m| m[:role] == "tool" }.map { |m| m[:tool_call_id] }
+    refute_empty used
+    assert_equal used.sort, answered.sort, "every tool_use id must have a pairing tool row (issue #548)"
+
+    @loop.instance_variable_set(:@invalid_tool_count, 0)
+    first = @executor.call(response(text: '{"tool": "nope_tool", "args": {}}'))
+    second = @executor.call(response(text: '{"tool": "nope_tool_again", "args": {}}'))
+    assert_nil first
+    refute second[:ok]
+
+    used = @loop.history.flat_map { |m| (m[:tool_calls] || []).map { |tc| tc["id"] } }.compact
+    answered = @loop.history.select { |m| m[:role] == "tool" }.map { |m| m[:tool_call_id] }
+    assert_equal used.sort, answered.sort, "both invalid-tool strikes must be paired (issue #548)"
   end
 
   def test_json_tool_call_in_text_executes_when_native_calls_are_absent
