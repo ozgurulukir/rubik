@@ -100,7 +100,7 @@ subcommands:
         classification: READONLY
         strict: false
       up:
-        classification: EXTERNAL_EFFECTS
+        classification: DANGEROUS
         strict: false
       down:
         classification: EXTERNAL_EFFECTS

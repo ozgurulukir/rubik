@@ -48,6 +48,13 @@ subcommands:
   ls-remote:
     classification: READONLY
     strict: false
+    # Transport/config options that spawn a shell or hijack execution (issue #539).
+    options:
+      --upload-pack: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --receive-pack: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --exec: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      -c: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --config: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
   ls-tree:
     classification: READONLY
     strict: false
@@ -307,16 +314,33 @@ subcommands:
   pull:
     classification: LOCAL_EFFECTS
     strict: false
+    options:
+      --upload-pack: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --receive-pack: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --exec: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      -c: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --config: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
   fetch:
     classification: LOCAL_EFFECTS
     risk: LOW
     strict: false
     options:
       --prune: {overrides: LOCAL_EFFECTS}
+      --upload-pack: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --receive-pack: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --exec: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      -c: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --config: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
   clone:
     classification: LOCAL_EFFECTS
     risk: LOW
     strict: false
+    options:
+      --upload-pack: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --receive-pack: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --exec: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      -c: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --config: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
   init:
     classification: LOCAL_EFFECTS
     risk: LOW
@@ -436,7 +460,9 @@ subcommands:
         classification: READONLY
         strict: false
       foreach:
-        classification: READONLY
+        # git evaluates the argument as a shell command in every submodule;
+        # typing the payload directly would be DANGEROUS (issue #539).
+        classification: DANGEROUS
         strict: false
       init:
         classification: LOCAL_EFFECTS
