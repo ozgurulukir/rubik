@@ -126,6 +126,42 @@ class TestLSPManagerAndDiagnostics < Minitest::Test
     assert_includes all_output, "main.go"
   end
 
+  # Issue #546: one shared severity mapper drives both the tool output and
+  # the prompt builder; Information/Hint must not be reported as WARN.
+  def test_shared_lsp_severity_mapper
+    m = Rubik::Tools::LSPSeverity
+    assert_equal "error", m.label(1)
+    assert_equal "warning", m.label(2)
+    assert_equal "info", m.label(3)
+    assert_equal "hint", m.label(4)
+    assert_equal "ERROR", m.display(1)
+    assert_equal "WARN", m.display(2)
+    assert_equal "INFO", m.display(3)
+    assert_equal "HINT", m.display(4)
+    assert_equal "hint", m.label(nil)
+    assert_equal "hint", m.label(99)
+  end
+
+  def test_lsp_diagnostics_tool_workspace_view_maps_all_severities
+    snapshots = {
+      "a.rb" => {
+        state: :fresh,
+        diagnostics: (1..4).map do |sev|
+          { "severity" => sev, "message" => "msg#{sev}", "range" => { "start" => { "line" => sev - 1 } } }
+        end
+      }
+    }
+    mgr = Object.new
+    mgr.define_singleton_method(:enabled?) { true }
+    mgr.define_singleton_method(:all_diagnostic_snapshots) { snapshots }
+
+    out = Rubik::Tools::LSPDiagnosticsTool.new(mgr).execute({})
+    assert_includes out, "[ERROR] Line 1: msg1"
+    assert_includes out, "[WARN] Line 2: msg2"
+    assert_includes out, "[INFO] Line 3: msg3"
+    assert_includes out, "[HINT] Line 4: msg4"
+  end
+
   def test_lsp_hover_and_definition_tools_disabled_and_validation
     tool_hover = Rubik::Tools::LSPHoverTool.new(@manager)
     tool_def = Rubik::Tools::LSPDefinitionTool.new(@manager)

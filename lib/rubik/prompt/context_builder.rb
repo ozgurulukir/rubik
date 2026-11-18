@@ -7,6 +7,7 @@ require_relative "../context/repo_context_reader"
 # this module is the assembler: structure + service data only.
 require_relative "doctrine"
 require_relative "services"
+require_relative "../tools/builtins/lsp"
 
 module Rubik
   module Prompt
@@ -250,7 +251,7 @@ module Rubik
 
         all_diags.each do |fpath, diags|
           diags.each do |d|
-            sev = d["severity"] == 1 ? "error" : "warning"
+            sev = Rubik::Tools::LSPSeverity.label(d["severity"])
             total_errors += 1 if sev == "error"
             start_line = (d.dig("range", "start", "line") || 0) + 1
             msg = Rubik::Platform.xml_escape(d["message"])
