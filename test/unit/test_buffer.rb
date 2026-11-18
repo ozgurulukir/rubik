@@ -74,6 +74,20 @@ class TestBuffer < Minitest::Test
     assert_equal edited, File.binread(disk_path), "apply must not rewrite line endings wholesale"
   end
 
+  def test_buffer_reads_never_use_text_mode_file_read
+    crlf = "line one\r\nline two\r\n"
+    File.binwrite(File.join(@temp_dir, "crlf-binary.txt"), crlf)
+
+    forbid_text_mode = lambda do |*_args, **_kwargs|
+      raise "buffer must use File.binread, not text-mode File.read (CRLF would be normalized)"
+    end
+
+    File.stub(:read, forbid_text_mode) do
+      assert_equal crlf, @manager.read("crlf-binary.txt")
+      assert_equal Digest::SHA256.hexdigest(crlf), @manager.disk_hash("crlf-binary.txt")
+    end
+  end
+
   def test_write_of_crlf_content_keeps_line_endings_on_disk
     crlf = "alpha\r\nbeta\r\n"
     @manager.write("new.txt", crlf)

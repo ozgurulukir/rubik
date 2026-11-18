@@ -194,7 +194,7 @@ module Rubik
             full_path = File.expand_path(rel_path, @root_dir)
             return nil unless File.exist?(full_path)
 
-            return Rubik::Platform.read_text(full_path)
+            return read_bytes_as_utf8(full_path)
           elsif @buffer.key?(rel_path)
             return @buffer[rel_path]
           end
@@ -202,7 +202,7 @@ module Rubik
           full_path = File.expand_path(rel_path, @root_dir)
           return nil unless File.exist?(full_path)
 
-          content = Rubik::Platform.read_text(full_path)
+          content = read_bytes_as_utf8(full_path)
           @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
           content
         end
@@ -225,7 +225,7 @@ module Rubik
           rel_path = sanitize_path(path, for_write: true)
           if reset_baseline || !@original_hashes.key?(rel_path)
             full_path = File.expand_path(rel_path, @root_dir)
-            @original_hashes[rel_path] = (Digest::SHA256.hexdigest(Rubik::Platform.read_text(full_path)) if File.exist?(full_path))
+            @original_hashes[rel_path] = (Digest::SHA256.hexdigest(read_bytes_as_utf8(full_path)) if File.exist?(full_path))
           end
 
           @buffer[rel_path] = content
@@ -321,7 +321,7 @@ module Rubik
 
         diffs = snapshot.map do |rel_path, new_content|
           full_path = File.expand_path(rel_path, @root_dir)
-          orig_content = File.exist?(full_path) ? Rubik::Platform.read_text(full_path) : ""
+          orig_content = File.exist?(full_path) ? read_bytes_as_utf8(full_path) : ""
           Diff.unified_diff(rel_path, orig_content, new_content)
         end
 
@@ -432,9 +432,19 @@ module Rubik
         full_path = File.expand_path(rel_path, @root_dir)
         return nil unless File.exist?(full_path)
 
-        Digest::SHA256.hexdigest(Rubik::Platform.read_text(full_path))
+        Digest::SHA256.hexdigest(read_bytes_as_utf8(full_path))
       rescue Errno::ENOENT, Errno::EACCES
         nil
+      end
+
+      private
+
+      # Platform.read_text uses File.read (text mode), which translates
+      # CRLF to LF on Windows and would silently break the raw-byte
+      # newline contract (issue #544). File.binread keeps the bytes;
+      # safe_utf8 re-tags and scrubs exactly as read_text does.
+      def read_bytes_as_utf8(full_path)
+        Rubik::Platform.safe_utf8(File.binread(full_path))
       end
     end
   end
