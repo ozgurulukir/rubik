@@ -154,10 +154,17 @@ module Rubik
         def kill_all(parent_id: nil)
           cancelled = []
           @monitor.synchronize do
-            cancelled.concat(cancel_dependents_of(parent_id ? [] : @instances.keys + @deferred.keys))
+            # Route through kill_locked (not a bare Instance#kill) so the
+            # cascade reaches children and the dependency DAG's queued
+            # dependents are cancelled to a fixed point (#553) — otherwise a
+            # killed predecessor leaves its dependents stuck in @deferred.
+            ids = if parent_id
+                    @instances.values.select { |i| i.parent_id == parent_id.to_s }.map(&:id)
+                  else
+                    @instances.keys + @deferred.keys
+                  end
+            ids.each { |id| kill_locked(id.to_s, true, cancelled) }
             @deferred.clear if parent_id.nil?
-            targets = parent_id ? @instances.values.select { |i| i.parent_id == parent_id.to_s } : @instances.values
-            targets.each(&:kill)
             true
           end
           announce_cancellations(cancelled)

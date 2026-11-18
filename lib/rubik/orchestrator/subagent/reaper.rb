@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../../log"
 require_relative "../../platform"
 require_relative "../../storage/layout"
 
@@ -13,13 +14,31 @@ module Rubik
       # ASLA reap edilmez: thread canlıdır (condvar park), resume hakları
       # bozulmaz.
       module Reaper
+        # Bounded transcript-save retry policy (#553): a failed save! returns
+        # nil and leaves no file, which previously made archive! return false
+        # forever — the instance was unreapable and its history leaked. After
+        # this many failed sweeps we reap WITH A WARNING; the save failure is
+        # still observable via last_error, and liveness beats a stuck tombstone.
+        TRANSCRIPT_ARCHIVE_MAX_RETRIES = 3
+
         def archived? = !!@archived
 
         # History yalnız transcript diske DURABLY yazıldıysa silinir —
-        # dosya yoksa reap sonraki süpürmeye kalır (yarım tasfiye yok).
+        # dosya yoksa reap sonraki süpürmeye kalır (yarım tasfiye yok). After
+        # TRANSCRIPT_ARCHIVE_MAX_RETRIES the durability gate is released with
+        # a warning so a permanently-failing save cannot strand the instance.
         def archive!
           @monitor.synchronize do
-            return false unless File.exist?(@transcript_uri.to_s)
+            unless File.exist?(@transcript_uri.to_s)
+              @archive_retries = (@archive_retries || 0) + 1
+              if @archive_retries < TRANSCRIPT_ARCHIVE_MAX_RETRIES
+                return false # transient: leave it for the next sweep
+              end
+
+              Rubik::Log.warn(:orchestrator,
+                              "[Reaper] reaping #{@id} without a durable transcript after #{@archive_retries} attempts " \
+                              "(last_error: #{@last_error.inspect})")
+            end
 
             @history.replace([])
             @archived = true

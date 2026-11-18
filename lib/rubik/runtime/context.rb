@@ -46,12 +46,14 @@ module Rubik
         inverse = cleanup_fn || block
         return unless inverse
 
+        # Resolve dmesg before the monitor: walking to the parent while held is a child→parent inversion (#552).
+        dmesg = disposed? ? resolve_dmesg : nil
         @monitor.synchronize do
           if @disposed
             # Ω is sealed: the context is already torn down, so there is no
             # later drain that would run this inverse. Execute it now instead
             # of silently storing it in a dead accumulator (leaked cleanup).
-            run_inverse(inverse)
+            run_inverse(inverse, dmesg: dmesg)
           else
             @disposables << inverse
           end
@@ -231,8 +233,7 @@ module Rubik
         # Resolve dmesg outside monitor to preserve parent→child lock order (F3).
         dmesg = resolve_dmesg
         parent = nil
-        deferred_interrupt = nil
-        @monitor.synchronize do
+        children, inverses = @monitor.synchronize do
           return if @disposed
 
           @disposed = true
@@ -246,12 +247,24 @@ module Rubik
           # "beginning" log reports).
           dmesg&.log(:context, :info, "Beginning context dispose with #{@disposables.size} inverse(s)")
 
-          deferred_interrupt = dispose_children
-          drained, drain_signal = drain_inverses(dmesg: dmesg)
-          deferred_interrupt ||= drain_signal
-
-          dmesg&.log(:context, :info, "Context dispose complete; #{drained} inverse(s) executed")
+          # Detach under the monitor, then drain UNLOCKED so a teardown inverse may re-enter this context (#552).
+          detached = [@children.dup, @disposables.dup]
+          @children.clear
+          @disposables.clear
+          detached
         end
+
+        deferred_interrupt = dispose_children(children)
+        drained, drain_signal = drain_inverses(inverses, dmesg: dmesg)
+        deferred_interrupt ||= drain_signal
+
+        @monitor.synchronize do
+          @services.clear
+          @service_inverses.clear
+          @child_inverses.clear
+        end
+
+        dmesg&.log(:context, :info, "Context dispose complete; #{drained} inverse(s) executed")
         # Release the child's monitor before reaching the parent (lock
         # order), then prune the parent's record of this child.
         parent&.prune_child(self)
@@ -271,15 +284,14 @@ module Rubik
       # so the descending iteration never observes mutation. A child's
       # deferred Interrupt/SystemExit is adopted as (possibly) the FIRST
       # signal of this cascade; returns the first deferred child signal.
-      def dispose_children
+      def dispose_children(children)
         deferred = nil
-        @children.reverse_each do |child|
+        children.reverse_each do |child|
           child.dispose unless child.disposed?
         rescue Interrupt, SystemExit => e
           record_deferred_signal(e)
           deferred ||= e
         end
-        @children.clear
         deferred
       end
 
@@ -291,23 +303,17 @@ module Rubik
       # by dispose after bookkeeping and the parent prune. Late registration
       # racing the drain is monitor-serialized (pop loop, or the sealed
       # immediate-run path). Returns [drained, first_signal].
-      def drain_inverses(dmesg:)
+      def drain_inverses(inverses, dmesg:)
         drained = 0
         deferred = nil
-        begin
-          while (inverse = @disposables.pop)
-            begin
-              run_inverse(inverse, dmesg: dmesg)
-              drained += 1
-            rescue Interrupt, SystemExit => e
-              record_deferred_signal(e)
-              deferred ||= e
-            end
+        while (inverse = inverses.pop)
+          begin
+            run_inverse(inverse, dmesg: dmesg)
+            drained += 1
+          rescue Interrupt, SystemExit => e
+            record_deferred_signal(e)
+            deferred ||= e
           end
-        ensure
-          @services.clear
-          @service_inverses.clear
-          @child_inverses.clear
         end
         [drained, deferred]
       end
@@ -320,7 +326,7 @@ module Rubik
       end
 
       def record_deferred_signal(exception)
-        @last_dispose_errors << exception
+        @monitor.synchronize { @last_dispose_errors << exception }
         Rubik::Log.warn(:runtime, "dispose inverse raised #{exception.class} (deferred until drain completes): #{exception.message}")
       end
 
@@ -333,9 +339,9 @@ module Rubik
       def run_inverse(inverse, dmesg: nil)
         inverse.call
       rescue StandardError => e
-        @last_dispose_errors << e
+        @monitor.synchronize { @last_dispose_errors << e }
         Rubik::Log.warn(:runtime, "dispose inverse failed: #{e.class}: #{e.message}")
-        dmesg ||= resolve_dmesg
+        # dmesg is pre-resolved by the caller; resolving here would re-walk the parent (#552).
         dmesg&.log(:context, :err, "Dispose inverse failed: #{e.class}: #{e.message}")
       end
     end
