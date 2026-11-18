@@ -80,7 +80,7 @@ module Rubik
 
         private_class_method def self.render_diagnostics(ctx, diags)
           diags.each do |d|
-            sev = d["severity"] == 1 ? "ERROR" : "WARN"
+            sev = Rubik::Tools::LSPSeverity.display(d["severity"])
             line = (d.dig("range", "start", "line") || 0) + 1
             ctx.out.puts "  • [#{sev}] Line #{line}: #{d['message']}"
           end
