@@ -197,6 +197,59 @@ class TestASTIssue560 < Minitest::Test
     end
   end
 
+  def test_symbol_definition_does_not_hold_mutex_during_source_read
+    graph = Rubik::AST::Graph.new
+    file = File.join(@temp_dir, "definition_slow.rb")
+    File.write(file, "def disk_target; 42; end\n")
+
+    # No in-memory body and no body_loader: Symbol#body must fall back to
+    # File.readlines, which we block to observe whether the graph lock is held.
+    sym = Rubik::AST::Symbol.new(
+      name: "disk_target",
+      kind: :function,
+      file: file,
+      line_start: 1,
+      line_end: 1
+    )
+    result = Rubik::AST::ExtractionResult.new(symbols: [sym], status: :ok, source: :ruby)
+
+    read_started = Queue.new
+    read_release = Queue.new
+    real_readlines = File.method(:readlines)
+    blocking_readlines = lambda do |*args, **kwargs|
+      read_started << true
+      read_release.pop
+      real_readlines.call(*args, **kwargs)
+    end
+
+    Rubik::AST::Extractor.stub(:extract_result, ->(_path, _content = nil) { result }) do
+      graph.index_file(file, "def disk_target; 42; end\n")
+      File.stub(:readlines, blocking_readlines) do
+        worker = Thread.new { graph.symbol_definition("disk_target") }
+        probe = nil
+        begin
+          Timeout.timeout(2) { read_started.pop }
+          probed = Queue.new
+          probe = Thread.new do
+            graph.symbols
+            probed << true
+          end
+          acquired = begin
+            Timeout.timeout(2) { probed.pop }
+          rescue Timeout::Error
+            false
+          end
+          assert acquired, "symbol_definition must not hold the graph mutex while reading source from disk"
+        ensure
+          read_release << true
+          worker.join
+          probe&.join
+        end
+        assert_equal "def disk_target; 42; end\n", worker.value[:body]
+      end
+    end
+  end
+
   def test_outline_for_still_indexes_unindexed_files
     graph = Rubik::AST::Graph.new
     file = File.join(@temp_dir, "outline.c")

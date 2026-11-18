@@ -191,23 +191,27 @@ module Rubik
       end
 
       def symbol_definition(symbol_name)
-        @mutex.synchronize do
+        target = @mutex.synchronize do
           candidates = _symbol_candidate_pairs_unlocked(symbol_name)
-          return nil unless candidates.length == 1
+          next nil unless candidates.length == 1
 
-          target = candidates.first.last
-          {
-            name: target.name,
-            kind: target.kind,
-            file: target.file,
-            line_start: target.line_start,
-            line_end: target.line_end,
-            signature: target.signature,
-            body: target.body,
-            docstring: target.docstring,
-            calls: target.calls
-          }
+          candidates.first.last
         end
+        return nil unless target
+
+        # Symbol#body can fall back to File.readlines; read it outside the
+        # graph lock so it cannot serialize concurrent readers (issue #560).
+        {
+          name: target.name,
+          kind: target.kind,
+          file: target.file,
+          line_start: target.line_start,
+          line_end: target.line_end,
+          signature: target.signature,
+          body: target.body,
+          docstring: target.docstring,
+          calls: target.calls
+        }
       end
 
       private
