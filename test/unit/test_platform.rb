@@ -185,6 +185,8 @@ class TestPlatform < Minitest::Test
     Rubik::Platform.atomic_write(target, "new")
 
     assert_equal "new", File.binread(target)
+    # Windows chmod only maps the read-only bit; exact Unix bits are unassertable there.
+    skip "Unix permission bits are not representable on Windows" if Rubik::Platform.windows?
     assert_equal 0o600, (File.stat(target).mode & 0o7777),
                  "a 0600 file must not become world-readable after a buffered edit"
   end
@@ -197,6 +199,8 @@ class TestPlatform < Minitest::Test
     Rubik::Platform.atomic_write(target, "#!/bin/sh\necho hi\n")
 
     assert_equal "#!/bin/sh\necho hi\n", File.binread(target)
+    # Windows chmod only maps the read-only bit; exact Unix bits are unassertable there.
+    skip "Unix permission bits are not representable on Windows" if Rubik::Platform.windows?
     assert_equal 0o755, (File.stat(target).mode & 0o7777),
                  "a 0755 script must keep its executable bit after a buffered edit"
   end
