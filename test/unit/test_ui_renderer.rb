@@ -182,4 +182,16 @@ class TestUIRenderer < Minitest::Test
     refute_includes out, "\e[2J"
     assert_includes out, "Inspecting config.rb first."
   end
+
+  # Issue #592: tool args are model-controlled — the non-verbose summary
+  # must strip CSI/OSC escapes like every sibling render path.
+  def test_tool_call_summary_strips_escapes
+    ev = { type: :tool_call, tool: "write_file",
+           args: { "path" => "\e]52;c;YQ==\aevil\e[2J.rb" },
+           step: 1, max_steps: 40, call_id: "call_esc" }
+    out = renderer.render(ev)
+    refute_includes out, "\e]52;"
+    refute_includes out, "\e[2J"
+    assert_includes out, "evil.rb"
+  end
 end

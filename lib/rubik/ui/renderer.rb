@@ -105,7 +105,10 @@ module Rubik
         if level >= Rubik::REPL::StepFormatter::LEVEL_VERBOSE
           "#{header} #{@theme.paint(Rubik::Platform.safe_json_generate(args), :dim)}"
         else
-          summary = pretty_storage_arg(@legacy.primary_arg_value(args).to_s)
+          # Tool args are model-controlled; strip CSI/OSC escapes the same way
+          # the sibling render paths do (issue #592) so prompt-injected
+          # sequences cannot reach the raw terminal.
+          summary = pretty_storage_arg(Rubik::UI::Capability.strip_ansi(@legacy.primary_arg_value(args).to_s))
           summary.empty? ? header : "#{header} #{theme_dim_dash(summary)}"
         end
       end

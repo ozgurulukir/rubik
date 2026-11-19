@@ -289,4 +289,41 @@ class TestAskQuestionTool < Minitest::Test
     dialog = Rubik::UI::Dialog.new(prompt: mock_prompt)
     assert_nil dialog.ask_single("Pick", ["Option 1", "Option 2"])
   end
+
+  # Issue #592: question text and options are model-controlled; escapes must
+  # be stripped before they reach the dialog card or the echoed response.
+  def test_question_text_and_options_strip_ansi_escapes
+    res = @tool.execute(
+      "questions" => [
+        {
+          "question" => "\e]0;title hijack\aWhich DB?\e[2J",
+          "options" => ["PostgreSQL", "\e[31mSQLite\e[0m"]
+        }
+      ]
+    )
+    refute res.error?
+    text = res.to_s
+    refute_includes text, "\e]0;"
+    refute_includes text, "\e[2J"
+    refute_includes text, "\e[31m"
+    assert_includes text, "Which DB?"
+
+    # Options are stripped at validation, before any rendering path.
+    parsed = @tool.send(:validate_question,
+                        { "question" => "Q", "options" => ["\e[31mSQLite\e[0m", "Postgres"] }, index: 1)
+    assert_equal ["SQLite", "Postgres"], parsed[:options]
+  end
+
+  def test_dialog_render_card_strips_ansi_escapes
+    out = StringIO.new
+    shell = Struct.new(:output, :input).new(out, StringIO.new)
+    dialog = Rubik::UI::Dialog.new(shell: shell, theme: Rubik::UI::Theme.new(enabled: false))
+
+    dialog.send(:render_card, "\e]0;title hijack\aPick one\e[2J")
+
+    card = out.string
+    refute_includes card, "\e]0;"
+    refute_includes card, "\e[2J"
+    assert_includes card, "Pick one"
+  end
 end

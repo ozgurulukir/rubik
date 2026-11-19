@@ -83,9 +83,13 @@ module Rubik
       def render_card(question, multi: false)
         return unless @shell&.output
 
+        # The question is model-authored; strip CSI/OSC escapes before they
+        # are painted (issue #592) — Frame.draw strips only for width
+        # measurement, so raw sequences would reach the terminal.
+        safe_question = Capability.strip_ansi(question.to_s)
         subtitle = multi ? "Multi-Select (Space: Select/Deselect · Enter: Confirm)" : "Single-Select (Arrow keys: Navigate · Enter: Confirm)"
         card = Frame.draw(
-          [@theme.paint(question, :bold), @theme.paint(subtitle, :dim)],
+          [@theme.paint(safe_question, :bold), @theme.paint(subtitle, :dim)],
           theme: @theme,
           title: @theme.paint("#{@theme.glyph(:action)} AGENT QUESTION", :accent)
         )
