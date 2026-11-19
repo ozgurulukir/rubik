@@ -63,6 +63,12 @@ module Rubik
         @document_contents[path]
       end
 
+      # The version the server currently knows for an open document, nil
+      # when the document is not open. Callers hold the document mutex.
+      def version_for(path)
+        @open_documents[path]
+      end
+
       def next_version
         @version_counter += 1
       end

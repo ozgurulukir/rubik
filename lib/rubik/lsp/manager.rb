@@ -301,6 +301,20 @@ module Rubik
         result
       end
 
+      # Re-issues textDocument/diagnostic pulls for every document still
+      # pending (issue #583). Delegates per client; bounded by the client's
+      # pull timeout so this can never hang the caller.
+      def refresh_pending_diagnostic_snapshots
+        @monitor.synchronize do
+          @clients.each_value do |client|
+            next unless client.running
+
+            client.refresh_pending_diagnostic_snapshots
+          end
+        end
+        nil
+      end
+
       def hover(file_path, line, character)
         client = client_for(file_path)
         return { ok: false, error: inactive_client_error(file_path, client) } unless client&.running
