@@ -89,8 +89,7 @@ module Rubik
             notice[:reason] = raw_err.to_s.slice(0, kind == :question ? 300 : 120)
           end
           notice[:timeout] = payload[:timeout] if kind == :question
-          # Answer pairing (#595-4 follow-up): the reply echoes this id via
-          # send_message(in_reply_to: ...) so only the answer is consumed.
+          # Answer pairing (#595-4 follow-up): the reply echoes this id via send_message(in_reply_to: ...).
           notice[:question_id] = payload[:question_id].to_s if kind == :question && payload[:question_id]
           # Kanonik referanslar (#122/#129): sonuç + transcript okuma adresleri bildirimle taşınır.
           notice[:result_ref] = payload[:result_ref].to_s if payload[:result_ref]
@@ -176,7 +175,7 @@ module Rubik
                        "A late send_message(recipient: '#{notice[:id]}') lands as a regular message."
             blocking = "Answer NOW via send_message(recipient: '#{notice[:id]}', message: '<your answer>', " \
                        "in_reply_to: '#{notice[:question_id]}') — the subagent is blocked waiting " \
-                       "(#{notice[:timeout] || 300}s timeout). A message without the matching in_reply_to is treated as steering."
+                       "(#{notice[:timeout] || 300}s timeout); unpaired messages land as regular steering."
             notice[:state] == "question_timed_out" ? answered : blocking
           else
             if notice[:state] == "budget_exhausted"
