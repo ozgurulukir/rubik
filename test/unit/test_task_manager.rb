@@ -425,4 +425,61 @@ class TestTaskManager < Minitest::Test
   ensure
     manager&.kill_all
   end
+
+  # Issue #586: the ring buffer bounds line COUNT not BYTES — a single huge
+  # line (binary dump, minified JSON, no trailing newline) must be truncated
+  # to MAX_LINE_BYTES.
+  def test_ring_buffer_truncates_oversized_lines_to_byte_cap
+    buf = Rubik::Runtime::RingBuffer.new(5)
+    buf.push("x" * (Rubik::Runtime::RingBuffer::MAX_LINE_BYTES * 4))
+
+    lines = buf.lines
+    assert_equal 1, lines.size
+    assert_operator lines[0].bytesize, :<=, Rubik::Runtime::RingBuffer::MAX_LINE_BYTES
+  end
+
+  # Issue #586: every pushed line passes through Security::Redactor — the
+  # single choke point covering logs/list consumers.
+  def test_ring_buffer_redacts_secret_shaped_lines
+    buf = Rubik::Runtime::RingBuffer.new(5)
+    secret = "sk-#{'a' * 30}"
+    buf.push("token #{secret} end")
+
+    stored = buf.lines[0]
+    refute_includes stored, secret
+    assert_includes stored, Rubik::Security::Redactor::MASK_STRING
+  end
+
+  # Issue #586: spawned children must not inherit credential-shaped host env
+  # vars (task logs are model-visible; readonly `env` children would dump
+  # them into the output).
+  def test_start_strips_credential_env_from_child
+    ENV["RUBIK_TEST_API_KEY"] = "supersecret-value"
+    ENV["RUBIK_TEST_BENIGN"] = "benign-ok"
+    cmd = "ruby -e \"puts 'KEYSIZE=' + ENV['RUBIK_TEST_API_KEY'].to_s.size.to_s; puts 'BENIGN=' + ENV['RUBIK_TEST_BENIGN'].to_s\""
+    task = @task_manager.start(cmd)
+
+    assert wait_until(5.0, step: 0.01) { !task.running? }
+
+    logs = @task_manager.logs(task.id).join("\n")
+    refute_includes logs, "supersecret-value"
+    assert_includes logs, "KEYSIZE=0", "credential-shaped env var must be stripped from the child"
+    assert_includes logs, "BENIGN=benign-ok", "benign env vars must stay inheritable"
+  ensure
+    ENV.delete("RUBIK_TEST_API_KEY")
+    ENV.delete("RUBIK_TEST_BENIGN")
+  end
+
+  # Issue #586: child output containing credential-shaped strings is
+  # redacted at push time, so model-visible `task logs` never carries it.
+  def test_task_logs_redact_secret_shaped_output
+    cmd = "ruby -e \"puts 'sk-' + 'a' * 30\""
+    task = @task_manager.start(cmd)
+
+    assert wait_until(5.0, step: 0.01) { !task.running? }
+
+    logs = @task_manager.logs(task.id)
+    refute logs.join("\n").include?("a" * 30)
+    assert_includes logs.join("\n"), Rubik::Security::Redactor::MASK_STRING
+  end
 end

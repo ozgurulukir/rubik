@@ -6,12 +6,14 @@ require "time"
 require_relative "../log"
 require_relative "../platform"
 require_relative "../security/guard" unless defined?(Rubik::Security::Guard)
+require_relative "../security/redactor" unless defined?(Rubik::Security::Redactor)
 
 module Rubik
   module Runtime
-    # Bounded thread-safe ring buffer for capturing child process stdout/stderr
-    # without risk of unbounded memory growth (Plan 93).
+    # Bounded ring buffer for child stdout/stderr (Plan 93): bounded by entry
+    # count AND per-line bytes; lines are Redactor-redacted at push time (#586).
     class RingBuffer
+      MAX_LINE_BYTES = 64 * 1024 # byte cap per line (scrub re-validates cut chars)
       attr_reader :capacity
 
       def initialize(capacity = 500)
@@ -21,8 +23,11 @@ module Rubik
       end
 
       def push(line)
+        text = line.to_s
+        text = text.byteslice(0, MAX_LINE_BYTES).scrub if text.bytesize > MAX_LINE_BYTES
+        clean = Rubik::Security::Redactor.redact(text)
         @monitor.synchronize do
-          @buffer << line.to_s
+          @buffer << clean
           @buffer.shift while @buffer.size > @capacity
         end
         self
@@ -76,9 +81,8 @@ module Rubik
       end
     end
 
-    # Manages asynchronous long-running background processes (servers, builders,
-    # watchers) with deadlock-immune streaming, AST guard verification, and
-    # context-mediated LIFO rollback (AGENTS.md §1.A/B, Plan 93).
+    # Manages asynchronous long-running background processes with
+    # deadlock-immune streaming, AST guard verification and LIFO rollback.
     class TaskManager
       attr_reader :guard, :context, :root_dir, :max_buffer_lines
       attr_accessor :init
@@ -151,11 +155,10 @@ module Rubik
         # #444): that core is the synchronous drain-to-string capture shape
         # (Timeout-wrapped, stdin closed immediately, whole-output strings).
         # This spawn is the async/interactive shape — stdin stays open for
-        # send_input, the readers stream chomped lines into the per-task
-        # RingBuffer, and completion is watched by a dedicated thread with
-        # no Timeout — so parameterizing the sink alone cannot unify them.
+        # send_input, readers stream chomped lines into the per-task
+        # RingBuffer, completion is watched by a dedicated thread.
         begin
-          stdin, stdout, stderr, wait_thr = Open3.popen3(cmd_str, chdir: chdir)
+          stdin, stdout, stderr, wait_thr = Open3.popen3(Rubik::Platform.credential_free_env, cmd_str, chdir: chdir)
         rescue StandardError => e
           rollback_failed_start(target_ctx, nil, e)
           raise e

@@ -161,8 +161,14 @@ module Rubik
         done = false
         if parsed["usage"].is_a?(Hash)
           u = parsed["usage"].dup
-          u[:input_tokens] = u.delete("prompt_tokens") || u[:input_tokens] || 0
-          u[:output_tokens] = u.delete("completion_tokens") || u[:output_tokens] || 0
+          # JSON.parse yields string keys only, so both spellings must be
+          # looked up by string (issue #588): input_tokens/output_tokens
+          # gateways otherwise normalize to 0 and win the last-writer merge
+          # in Chunk::Assembler#merge_usage.
+          input = u.delete("prompt_tokens") || u.delete("input_tokens") || u[:input_tokens] || 0
+          output = u.delete("completion_tokens") || u.delete("output_tokens") || u[:output_tokens] || 0
+          u[:input_tokens] = input
+          u[:output_tokens] = output
           usage = u
           done = true
         end

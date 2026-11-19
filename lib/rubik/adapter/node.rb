@@ -81,7 +81,10 @@ module Rubik
                 elsif Runtime::Discovery.binary_available?("npx")
                   "npx tsc --noEmit #{escaped}"
                 else
-                  "node --check #{escaped}"
+                  # `node --check` cannot parse TypeScript — falling back to
+                  # it reported a false syntax error for every TS file
+                  # (issue #588). Report unavailability like the .vue branch.
+                  return unavailable_result(reason: "No syntax checker available for TypeScript files. Install tsc or npx.")
                 end
               when ".vue"
                 if Runtime::Discovery.binary_available?("vue-tsc")
