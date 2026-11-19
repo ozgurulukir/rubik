@@ -24,6 +24,10 @@ module Rubik
           properties: {
             recipient: { type: "string", description: "The recipient subagent conversation ID (e.g. 'subagent-1')" },
             message: { type: "string", description: "The message content to deliver" },
+            in_reply_to: { type: "string",
+                           description: "Question id this message answers — REQUIRED when replying to a subagent " \
+                                        "ask_question notification (echo the question_id from the notification); " \
+                                        "omit for ordinary steering" },
             steps: { type: "integer", description: "Optional additional step budget to grant alongside message" }
           },
           required: ["recipient", "message"]
@@ -63,11 +67,12 @@ module Rubik
         return ToolOutput.error("Missing required parameter 'message'.") if msg.empty?
 
         steps = args["steps"] || args[:steps]
+        in_reply_to = args["in_reply_to"] || args[:in_reply_to]
         sender = subagent_sender_id
         delivered = if sender
-                      sup.send_message(recipient, msg, additional_steps: steps, _sender_id: sender)
+                      sup.send_message(recipient, msg, additional_steps: steps, _sender_id: sender, in_reply_to: in_reply_to)
                     else
-                      sup.send_message(recipient, msg, additional_steps: steps)
+                      sup.send_message(recipient, msg, additional_steps: steps, in_reply_to: in_reply_to)
                     end
         return delivery_text(recipient) if delivered == true
         return queued_text(recipient, steps) if delivered == :queued

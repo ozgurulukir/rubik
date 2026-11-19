@@ -201,8 +201,9 @@ module Rubik
             "dedicated notification-evaluation turn — evaluate the pending notifications, act (extend budget, steer with " \
             "send_message, retrieve results, wrap up, or report to the user), and conclude your turn again. Subagents can " \
             "ask YOU questions mid-flight via `ask_question` — a question notification means that subagent is BLOCKED until " \
-            "you reply: answer it promptly with `send_message(recipient: '<id>', message: '<your answer>')` (it times out " \
-            "otherwise). Call `#{Rubik::Orchestrator::Subagent::Notices.wait_hint_template}` only when synchronous waiting " \
+            "you reply: answer it promptly with `send_message(recipient: '<id>', message: '<your answer>', " \
+            "in_reply_to: '<question_id>')` — echo the question_id from the notification, it times out otherwise. " \
+            "Call `#{Rubik::Orchestrator::Subagent::Notices.wait_hint_template}` only when synchronous waiting " \
             "is strictly required. Never poll 'status' repeatedly in a loop."
         end
       end

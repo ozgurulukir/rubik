@@ -89,6 +89,9 @@ module Rubik
             notice[:reason] = raw_err.to_s.slice(0, kind == :question ? 300 : 120)
           end
           notice[:timeout] = payload[:timeout] if kind == :question
+          # Answer pairing (#595-4 follow-up): the reply echoes this id via
+          # send_message(in_reply_to: ...) so only the answer is consumed.
+          notice[:question_id] = payload[:question_id].to_s if kind == :question && payload[:question_id]
           # Kanonik referanslar (#122/#129): sonuç + transcript okuma adresleri bildirimle taşınır.
           notice[:result_ref] = payload[:result_ref].to_s if payload[:result_ref]
           notice[:transcript_ref] = payload[:transcript_ref].to_s if payload[:transcript_ref]
@@ -142,6 +145,7 @@ module Rubik
           reason_kinds = [:context_compacted, :auto_apply_failed, :error_paused, :message, :task, :question]
           attrs[:reason] = notice[:reason] if reason_kinds.include?(notice[:kind]) && !notice[:reason].to_s.empty?
           attrs[:timeout] = notice[:timeout] if notice[:kind] == :question && notice[:timeout]
+          attrs[:question_id] = notice[:question_id] if notice[:kind] == :question && notice[:question_id]
           attrs[:guidance] = guidance_for(notice)
           rendered = attrs.map { |k, v| %(#{k}="#{Rubik::Platform.xml_escape(v)}") }.join(" ")
           "<notification #{rendered} />"
@@ -170,8 +174,9 @@ module Rubik
           when :question
             answered = "No answer is needed anymore: it timed out and the subagent proceeded on its own judgment. " \
                        "A late send_message(recipient: '#{notice[:id]}') lands as a regular message."
-            blocking = "Answer NOW via send_message(recipient: '#{notice[:id]}', message: '<your answer>') — " \
-                       "the subagent is blocked waiting (#{notice[:timeout] || 300}s timeout)."
+            blocking = "Answer NOW via send_message(recipient: '#{notice[:id]}', message: '<your answer>', " \
+                       "in_reply_to: '#{notice[:question_id]}') — the subagent is blocked waiting " \
+                       "(#{notice[:timeout] || 300}s timeout). A message without the matching in_reply_to is treated as steering."
             notice[:state] == "question_timed_out" ? answered : blocking
           else
             if notice[:state] == "budget_exhausted"

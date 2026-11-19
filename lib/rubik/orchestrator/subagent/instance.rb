@@ -115,6 +115,7 @@ module Rubik
           @thread = nil
           @start_gate = nil
           @start_aborted = false
+          @pending_question_id = nil
         end
 
         def uptime = @started_at ? ((@ended_at || Time.now) - @started_at).to_f : 0.0
@@ -151,15 +152,27 @@ module Rubik
         # (iki-düzlem adlandırma sözleşmesi) — subagent gönderenler kendi
         # id'leriyle görünür (drain: StepRunner#sender_label). `answer`
         # bayrağı (issue #595-4): push anında instance :waiting_input'taysa
-        # mesaj bir ask_question CEVABI olarak etiketlenir — questioner
-        # yalnız bayraklı mesajı cevap olarak tüketir; etiketsizler (soru
-        # duyurulmadan yolda olan steering) inbox'a geri konur ve drain ile
-        # normal mesaj satırı olarak history'ye gider.
-        InboxMessage = Struct.new(:text, :from, :answer)
+        # VE `in_reply_to` bekleyen sorunun id'siyle eşleşiyorsa mesaj bir
+        # ask_question CEVABI olarak etiketlenir — questioner yalnız eşleşen
+        # mesajı cevap olarak tüketir; eşleşmeyenler (soru penceresinde gelen
+        # steering dahil) inbox'a geri konur ve drain ile normal mesaj
+        # satırı olarak history'ye gider (#595-4 follow-up).
+        InboxMessage = Struct.new(:text, :from, :answer, :in_reply_to)
 
-        def post_message(message, sender: nil, additional_steps: nil)
+        # The currently open ask_question id (nil outside a :waiting_input
+        # window). Questioner opens/closes it around the question; senders
+        # pair their reply against it via send_message(in_reply_to: ...).
+        def pending_question_id
+          @monitor.synchronize { @pending_question_id }
+        end
+
+        def post_message(message, sender: nil, additional_steps: nil, in_reply_to: nil)
           @monitor.synchronize do
-            @inbox.push(InboxMessage.new(message, sender, awaiting_human?))
+            # Answer pairing (#595-4 follow-up): only a reply that echoes the
+            # id of the question currently waiting poses as the answer — a
+            # bare steering message pushed mid-window stays untagged.
+            answer = awaiting_human? && !in_reply_to.to_s.empty? && in_reply_to == @pending_question_id
+            @inbox.push(InboxMessage.new(message, sender, answer, in_reply_to))
             if error_paused?
               resume!(additional_steps: additional_steps)
             elsif awaiting_budget? || additional_steps

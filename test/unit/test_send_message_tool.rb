@@ -12,8 +12,8 @@ class TestSendMessageTool < Minitest::Test
       @sent = []
     end
 
-    def send_message(recipient, message, additional_steps: nil, _sender_id: nil) # rubocop:disable Lint/UnderscorePrefixedVariableName -- tool _sender_id: gonderir (Supervisor **kwargs yutar); stub gercek cagriyi yansitir
-      @sent << { recipient: recipient, message: message, steps: additional_steps, sender_id: _sender_id }
+    def send_message(recipient, message, additional_steps: nil, _sender_id: nil, in_reply_to: nil) # rubocop:disable Lint/UnderscorePrefixedVariableName -- tool _sender_id: gonderir (Supervisor **kwargs yutar); stub gercek cagriyi yansitir
+      @sent << { recipient: recipient, message: message, steps: additional_steps, sender_id: _sender_id, in_reply_to: in_reply_to }
       @result
     end
   end
@@ -78,7 +78,7 @@ class TestSendMessageTool < Minitest::Test
     tool = Rubik::Tools::SendMessageTool.new(supervisor: sup)
     res = tool.execute("recipient" => "subagent-1", "message" => " do work ", "steps" => 5)
     assert_equal "Message successfully delivered to subagent 'subagent-1'.", res.to_s
-    assert_equal [{ recipient: "subagent-1", message: "do work", steps: 5, sender_id: nil }], sup.sent
+    assert_equal [{ recipient: "subagent-1", message: "do work", steps: 5, sender_id: nil, in_reply_to: nil }], sup.sent
   end
 
   def test_successful_delivery_to_maestro_root_alias
@@ -86,7 +86,7 @@ class TestSendMessageTool < Minitest::Test
     tool = Rubik::Tools::SendMessageTool.new(supervisor: sup)
     res = tool.execute("recipient" => "agent-0", "message" => "status update")
     assert_equal "Message successfully delivered to the maestro supervisor.", res.to_s
-    assert_equal [{ recipient: "agent-0", message: "status update", steps: nil, sender_id: nil }], sup.sent
+    assert_equal [{ recipient: "agent-0", message: "status update", steps: nil, sender_id: nil, in_reply_to: nil }], sup.sent
   end
 
   def test_queued_delivery_with_steps_note
@@ -138,7 +138,7 @@ class TestSendMessageTool < Minitest::Test
     tool = Rubik::Tools::SendMessageTool.new(runtime_context: ctx)
     res = tool.execute("recipient" => "subagent-1", "message" => "hello from subagent-2")
     assert_equal "Message successfully delivered to subagent 'subagent-1'.", res.to_s
-    assert_equal [{ recipient: "subagent-1", message: "hello from subagent-2", steps: nil, sender_id: "subagent-2" }], sup.sent
+    assert_equal [{ recipient: "subagent-1", message: "hello from subagent-2", steps: nil, sender_id: "subagent-2", in_reply_to: nil }], sup.sent
   end
 
   def test_supports_symbol_keys_in_args
@@ -146,6 +146,6 @@ class TestSendMessageTool < Minitest::Test
     tool = Rubik::Tools::SendMessageTool.new(supervisor: sup)
     res = tool.execute(recipient: "subagent-1", message: "hello", steps: 2)
     assert_equal "Message successfully delivered to subagent 'subagent-1'.", res.to_s
-    assert_equal [{ recipient: "subagent-1", message: "hello", steps: 2, sender_id: nil }], sup.sent
+    assert_equal [{ recipient: "subagent-1", message: "hello", steps: 2, sender_id: nil, in_reply_to: nil }], sup.sent
   end
 end
