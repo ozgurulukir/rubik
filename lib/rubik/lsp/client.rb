@@ -110,6 +110,7 @@ module Rubik
           @document_store.reset
         end
         @transport.reset_correlation
+        @pull_mutex.synchronize { @pull_in_flight.clear }
 
         cmd_parts = @server_argv.dup
         bin = cmd_parts.first
@@ -208,6 +209,7 @@ module Rubik
           # unwinds the graceful shutdown: kill_tree is the only thing that can
           # unblock a writer parked on a full stdin pipe.
           @transport.shutdown
+          @pull_mutex.synchronize { @pull_in_flight.clear }
         end
       end
       alias dispose stop
@@ -429,21 +431,27 @@ module Rubik
         nil
       end
 
-      # Applies a textDocument/diagnostic response. `kind: "unchanged"` and
-      # non-hash results carry no items to install; the payload is applied
-      # only when the document still sits at the pulled version, so stale
-      # async results (a slow server answering after a further edit) are
+      # Applies a textDocument/diagnostic response. Non-hash results carry
+      # no items to install; `kind: "unchanged"` confirms previously recorded
+      # diagnostics remain valid for the current document version. Payloads are
+      # applied only when the document still sits at the pulled version, so
+      # stale async results (a slow server answering after a further edit) are
       # discarded instead of clobbering the newer snapshot. relatedDocuments
       # is ignored — this client pulls per document.
       def apply_pull_diagnostics_result(abs_path, pulled_version, result)
         return unless result.is_a?(Hash)
-        return if result["kind"] == "unchanged"
 
-        items = result["items"].is_a?(Array) ? result["items"] : []
         @document_mutex.synchronize do
           current = @document_store.version_for(abs_path)
           return unless current == pulled_version
 
+          if result["kind"] == "unchanged"
+            existing = @document_store.diagnostic_snapshot(abs_path)[:diagnostics]
+            @document_store.record_diagnostics(abs_path, existing, current)
+            return
+          end
+
+          items = result["items"].is_a?(Array) ? result["items"] : []
           @document_store.record_diagnostics(abs_path, items, current)
         end
         nil
@@ -605,16 +613,23 @@ module Rubik
       # LSP Position for the exclusive end of content: last line index and
       # the line's length in UTF-16 code units (the spec's offset unit —
       # Ruby String#length counts characters, which diverges for astral-plane
-      # code points that encode as surrogate pairs).
+      # code points that encode as surrogate pairs). Empty or nil content
+      # resolves to line 0 character 0 (preventing invalid negative line indices).
       def end_position_for(content)
+        return { line: 0, character: 0 } if content.nil? || content.empty?
+
         lines = content.split(/\r\n|\n|\r/, -1)
-        last_line = lines.length - 1
+        last_line = [lines.length - 1, 0].max
         last_text = lines.last.to_s
         { line: last_line, character: utf16_length(last_text) }
       end
 
       def utf16_length(text)
-        text.each_char.sum { |char| char.ord > 0xFFFF ? 2 : 1 }
+        str = text.to_s
+        str = str.encode("UTF-16LE", invalid: :replace, undef: :replace) unless str.encoding == Encoding::UTF_16LE
+        str.bytesize / 2
+      rescue StandardError
+        text.to_s.length
       end
 
       def normalize_sync_capabilities(value)

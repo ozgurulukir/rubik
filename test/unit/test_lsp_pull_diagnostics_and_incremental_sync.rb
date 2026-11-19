@@ -89,6 +89,30 @@ class TestLspPullDiagnosticsAndIncrementalSync < Minitest::Test
     assert_equal({ "line" => 0, "character" => 7 }, edit["range"]["end"])
   end
 
+  def test_incremental_ranged_edit_on_empty_content_does_not_produce_negative_line
+    client, log = start_fake_server("textDocumentSync" => 2)
+    assert client.did_open("empty.rb", "")
+    assert client.did_change("empty.rb", "initial content")
+    wait_until do
+      messages_from(log).any? { |m| m["method"] == "textDocument/didChange" }
+    end
+    edit = messages_from(log).find { |m| m["method"] == "textDocument/didChange" }
+                             .dig("params", "contentChanges", 0)
+    # Empty old content must end at line 0 character 0, never negative line index.
+    assert_equal({ "line" => 0, "character" => 0 }, edit["range"]["start"])
+    assert_equal({ "line" => 0, "character" => 0 }, edit["range"]["end"])
+    assert_equal "initial content", edit["text"]
+  end
+
+  def test_utf16_length_handles_invalid_byte_sequences_safely
+    client, _log = start_fake_server("textDocumentSync" => 2)
+    invalid_seq = [0xFF, 0xFE, 0xFD].pack("C*")
+    # Must not raise ArgumentError: invalid byte sequence in UTF-8
+    len = client.send(:utf16_length, invalid_seq)
+    assert len.is_a?(Integer)
+    assert len.positive?
+  end
+
   # --- Fix 1: pull diagnostics ----------------------------------------------
 
   def test_diagnostic_provider_capabilities_enable_pull_and_record_items
@@ -130,6 +154,44 @@ class TestLspPullDiagnosticsAndIncrementalSync < Minitest::Test
     snapshot = client.diagnostics_snapshot_for("doc.rb")
     refute_equal :fresh, snapshot[:state]
     assert_empty snapshot[:diagnostics]
+  end
+
+  def test_pull_diagnostics_unchanged_report_transitions_pending_to_fresh
+    client, _log = start_fake_server(
+      "textDocumentSync" => 1,
+      "diagnosticProvider" => true
+    )
+    assert client.did_open("doc.rb", "v1")
+    # First pull delivers an item
+    script_pull_response(client, "doc.rb", DIAGNOSTIC_ITEM)
+    snapshot1 = client.diagnostics_snapshot_for("doc.rb")
+    assert_equal :fresh, snapshot1[:state]
+    assert_equal 1, snapshot1[:diagnostics].size
+
+    # did_change sets state back to :pending
+    assert client.did_change("doc.rb", "v2")
+    abs = client.send(:normalized_document_path, "doc.rb")
+    version2 = client.instance_variable_get(:@document_store).version_for(abs)
+    # Server returns unchanged: previous diagnostics remain valid
+    client.send(:apply_pull_diagnostics_result, abs, version2, { "kind" => "unchanged" })
+    snapshot2 = client.diagnostics_snapshot_for("doc.rb")
+    assert_equal :fresh, snapshot2[:state]
+    assert_equal 1, snapshot2[:diagnostics].size
+  end
+
+  def test_client_stop_and_start_clear_pull_in_flight_registry
+    client, _log = start_fake_server(
+      "textDocumentSync" => 1,
+      "diagnosticProvider" => true
+    )
+    abs = client.send(:normalized_document_path, "doc.rb")
+    client.instance_variable_get(:@pull_mutex).synchronize do
+      client.instance_variable_get(:@pull_in_flight)[abs] = 99
+    end
+    assert_equal 99, client.instance_variable_get(:@pull_in_flight)[abs]
+
+    client.stop
+    assert_empty client.instance_variable_get(:@pull_in_flight)
   end
 
   def test_push_only_server_never_pulls_and_push_still_records

@@ -159,7 +159,7 @@ module Rubik
           end
         else
           snapshot = if mgr.respond_to?(:wait_for_diagnostics)
-                       mgr.wait_for_diagnostics(path, timeout: 0.5)
+                       mgr.wait_for_diagnostics(path, timeout: diagnostic_refresh_timeout)
                      else
                        mgr.diagnostics_snapshot_for(path)
                      end
