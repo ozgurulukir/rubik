@@ -231,18 +231,23 @@ module Rubik
           @buffer[rel_path] = content
           @dirty_files[rel_path] = true
           @event_bus&.emit(:buffer_changed, path: rel_path)
-
-          # Give the advertised !undo / !rollback commands a producer in
-          # the live write path (issue #544). Snapshotting is auxiliary:
-          # a storage failure must not turn a successful edit into a
-          # failed write.
-          begin
-            @snapshot_store&.create_snapshot(self)
-          rescue StandardError => e
-            warn "[Buffer] snapshot recording failed: #{e.class}: #{e.message}"
-          end
           content
         end
+
+        # Give the advertised !undo / !rollback commands a producer in
+        # the live write path (issue #544). Snapshotting is auxiliary:
+        # a storage failure must not turn a successful edit into a
+        # failed write. The deflate+disk write runs OUTSIDE the monitor
+        # (issue #589) so the whole-buffer snapshot no longer serializes
+        # concurrent buffer operations behind its IO; the store reads
+        # state through the monitor-protected snapshot_state, and its
+        # debouncing coalesces bursts into one write per interval.
+        begin
+          @snapshot_store&.create_snapshot(self)
+        rescue StandardError => e
+          warn "[Buffer] snapshot recording failed: #{e.class}: #{e.message}"
+        end
+        content
       end
 
       # Returns whether the buffer has any unapplied file modifications,

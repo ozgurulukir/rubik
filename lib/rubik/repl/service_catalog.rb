@@ -138,8 +138,12 @@ module Rubik
         DEFINITION.new(
           name: :snapshot_store,
           builder: lambda do |s|
-            Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(s.home_dir, ".rubik", "snapshots",
-                                                                    File.basename(s.root_dir)))
+            # Issue #589: debounced snapshot persistence (undo granularity
+            # stays in memory) + on-disk retention cap.
+            Rubik::Buffer::SnapshotStore.new(
+              storage_dir: File.join(s.home_dir, ".rubik", "snapshots", File.basename(s.root_dir)),
+              min_interval: 1.0, max_snapshots: 200
+            )
           end,
           provide: Rubik::Coeffects::SNAPSHOT_STORE
         ),
