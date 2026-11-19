@@ -60,21 +60,23 @@ module Rubik
       end
 
       # PERF: Fast-path deep UTF-8 cleaner. Performs zero-allocation Symbol
-      # validation via Symbol#name and tracks cycle object IDs in a Hash to
-      # eliminate Set instance allocations (~3.3x speedup, ~70% faster).
+      # validation via Symbol#name and tracks cycle object IDs in a path
+      # stack: ids are added on descent and removed after the children are
+      # visited, so only objects currently on the traversal path (genuine
+      # cycles) are cut — a shared object referenced from two sibling places
+      # is emitted in full both times (issue #597).
       def clean_utf8_deep(obj, seen = nil)
+        stack = seen.is_a?(Array) ? seen : []
         case obj
         when String
           clean_utf8(obj)
         when Symbol
           fast_clean_symbol(obj)
         when Hash
-          seen ||= {}
           obj_id = obj.object_id
-          return "{...}" if seen.is_a?(Hash) ? seen.key?(obj_id) : seen.include?(obj_id)
+          return "{...}" if stack.include?(obj_id)
 
-          seen.is_a?(Hash) ? (seen[obj_id] = true) : seen.add(obj_id)
-
+          stack << obj_id
           res = {}
           obj.each do |k, v|
             cleaned_k = if k.is_a?(Symbol)
@@ -82,27 +84,24 @@ module Rubik
                         elsif k.is_a?(String)
                           clean_utf8(k)
                         else
-                          clean_utf8_deep(k, seen)
+                          clean_utf8_deep(k, stack)
                         end
-            res[cleaned_k] = clean_utf8_deep(v, seen)
+            res[cleaned_k] = clean_utf8_deep(v, stack)
           end
+          stack.pop
           res
         when Array
-          seen ||= {}
           obj_id = obj.object_id
-          return "[...]" if seen.is_a?(Hash) ? seen.key?(obj_id) : seen.include?(obj_id)
+          return "[...]" if stack.include?(obj_id)
 
-          seen.is_a?(Hash) ? (seen[obj_id] = true) : seen.add(obj_id)
-
-          obj.map { |item| clean_utf8_deep(item, seen) }
+          stack << obj_id
+          obj.map { |item| clean_utf8_deep(item, stack) }.tap { stack.pop }
         when Set
-          seen ||= {}
           obj_id = obj.object_id
-          return Set.new(["[...]"]) if seen.is_a?(Hash) ? seen.key?(obj_id) : seen.include?(obj_id)
+          return Set.new(["[...]"]) if stack.include?(obj_id)
 
-          seen.is_a?(Hash) ? (seen[obj_id] = true) : seen.add(obj_id)
-
-          obj.to_set { |item| clean_utf8_deep(item, seen) }
+          stack << obj_id
+          obj.to_set { |item| clean_utf8_deep(item, stack) }.tap { stack.pop }
         else
           obj
         end

@@ -50,6 +50,7 @@ module Rubik
         pid = nil
         watchdog = nil
         deadline_hit = false
+        timed_out = false
 
         begin
           Open3.popen3(*, chdir: chdir) do |stdin, stdout, stderr, wait_thr|
@@ -66,10 +67,13 @@ module Rubik
             # into a recycled pid after normal exit.
             watchdog = Thread.new(pid, timeout.to_f) do |w_pid, w_deadline|
               sleep w_deadline
-              deadline_hit = true
+              # Race guard (issue #597): only flag a timeout when the kill
+              # actually targets a still-live process — a child that completes
+              # exactly as the deadline fires keeps its real exit status
+              # instead of being relabeled exit 124.
+              deadline_hit = true if process_alive?(w_pid)
               kill_tree(w_pid)
             rescue StandardError
-              deadline_hit = true
               nil
             end
             begin
@@ -114,6 +118,7 @@ module Rubik
           end
           raise Timeout::Error, "execution expired" if deadline_hit
         rescue Timeout::Error
+          timed_out = true
           kill_tree(pid) if pid
           stderr_str = timeout_message || "Execution timed out after #{timeout} seconds"
           exit_code = 124
@@ -134,7 +139,11 @@ module Rubik
           stderr: stderr_str,
           output: [stdout_str, stderr_str].reject(&:empty?).join("\n"),
           duration: duration.round(4),
-          pid: pid
+          pid: pid,
+          # Explicit timeout flag (issue #597): exit code 124 is also a
+          # legitimate exit code of timeout(1) and other workloads, so the
+          # tool layer must not re-derive `timed_out` from the exit code.
+          timed_out: timed_out || deadline_hit
         }
       end
 

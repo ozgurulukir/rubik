@@ -309,4 +309,29 @@ class TestPlatformProcess < Minitest::Test
       nil
     end
   end
+  # ── Issue #597: explicit timeout flag + watchdog race ──
+
+  def test_capture_carries_explicit_timeout_flag_on_timeout
+    res = Rubik::Platform.popen_capture("sleep", "5", timeout: 1)
+
+    refute res[:ok]
+    assert_equal 124, res[:exit_code]
+    assert_equal true, res[:timed_out]
+  end
+
+  def test_capture_success_is_not_mislabeled_as_timeout
+    res = Rubik::Platform.popen_capture(RbConfig.ruby, "-e", "print 'done'", timeout: 10)
+
+    assert res[:ok]
+    assert_equal false, res[:timed_out]
+  end
+
+  def test_capture_exit_124_from_child_is_not_reported_as_timeout
+    # timeout(1)-style workloads legitimately exit 124 without our watchdog firing.
+    res = Rubik::Platform.popen_capture(RbConfig.ruby, "-e", "exit 124", timeout: 10)
+
+    refute res[:ok]
+    assert_equal 124, res[:exit_code]
+    assert_equal false, res[:timed_out], "exit 124 alone must not be classified as a timeout"
+  end
 end
