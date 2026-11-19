@@ -73,4 +73,30 @@ class TestSessionRecorder < Minitest::Test
     assert_equal Rubik::Session::Recorder::MAX_RECENT_EVENTS, @recorder.events.size
     assert_equal "session_resumed", @recorder.events.last["type"]
   end
+  # ── Issue #598: save provenance + durability barrier ──
+
+  def test_switch_session_file_records_pre_save_session_id_as_parent
+    @recorder.record("input", "before switch")
+    pre_save_id = @recorder.session_id
+
+    target = File.join(@temp_dir, "saved_copy.jsonl")
+    @recorder.switch_session_file(target, cleanup_empty_current: false, parent_session_id: pre_save_id)
+
+    resumed = @recorder.events.last
+    assert_equal "session_resumed", resumed["type"]
+    assert_equal pre_save_id, resumed["payload"]["parent_session_id"]
+    refute_equal File.basename(target, ".jsonl"), resumed["payload"]["parent_session_id"]
+  end
+
+  def test_flush_is_safe_without_a_file
+    recorder = Rubik::Session::Recorder.new(sessions_dir: @temp_dir, session_name: "never_recorded.jsonl")
+    recorder.flush # no exception, no file created
+    refute File.exist?(recorder.session_file)
+  end
+
+  def test_flush_after_record_keeps_file_consistent
+    @recorder.record("input", "x")
+    @recorder.flush
+    assert_equal 1, File.readlines(@recorder.session_file).size
+  end
 end

@@ -127,6 +127,12 @@ module Rubik
             FileUtils.mkdir_p(target_dir)
             target_file = File.join(target_dir, "#{safe_name}.jsonl")
 
+            # Durability barrier before the copy so the copied JSONL can
+            # never carry a torn tail from the recorder's append stream
+            # (issue #598). Both branches write the same JSONL content; the
+            # fallback only fires when no live file exists yet, in which
+            # case @events holds the same (recent) events.
+            ctx.recorder.flush
             if ctx.recorder.session_file && File.exist?(ctx.recorder.session_file)
               FileUtils.cp(ctx.recorder.session_file, target_file)
             else
@@ -134,7 +140,11 @@ module Rubik
                 ctx.recorder.events.each { |ev| f.puts(JSON.dump(ev)) }
               end
             end
-            ctx.recorder.switch_session_file(target_file, cleanup_empty_current: false)
+            # Provenance: the saved copy's parent is the session it was
+            # copied FROM (captured before the switch), not the target's
+            # own basename (issue #598).
+            ctx.recorder.switch_session_file(target_file, cleanup_empty_current: false,
+                                                          parent_session_id: ctx.recorder.session_id)
             ctx.out.puts "[Rubik::Session] Session saved to #{target_file}"
           end
 

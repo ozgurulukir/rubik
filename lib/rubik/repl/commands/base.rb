@@ -29,12 +29,16 @@ module Rubik
 
         # One honest line for a failed disk write; returns true when it fired
         # so callers can step past their success report. The in-memory change
-        # stands — only persistence failed.
+        # stands — only persistence failed. `ctx` is the REPL context, but an
+        # IO/output stream is also accepted (workspace_approval passes @out
+        # directly — issue #598): anything responding to #out is unwrapped,
+        # anything else is written to via #puts.
         def self.report_persist_failure(ctx, res, scope)
           return false if res.nil? || res[:ok]
 
-          ctx.out.puts "Error: could not save to #{scope_label(scope)}: #{res[:error]} " \
-                       "(change kept for this session only)."
+          out = ctx.respond_to?(:out) ? ctx.out : ctx
+          out.puts "Error: could not save to #{scope_label(scope)}: #{res[:error]} " \
+                   "(change kept for this session only)."
           true
         end
 
