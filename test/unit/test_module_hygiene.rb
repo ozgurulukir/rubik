@@ -183,7 +183,9 @@ class TestModuleHygiene < Minitest::Test
     # vocabulary home (user-approved stretch, 2026-10-03).
     # 210 (was 200): session-review 2026-10-07 (fffcr B11) — grant/step cycle
     # markers on repeated budget pauses.
-    assert line_count("orchestrator/subagent/notices.rb") < 210, "notices.rb must stay under 210 lines"
+    # 220 (was 210): review follow-up (#595-4) — in_reply_to question-answer
+    # pairing vocabulary (question_id notice attr + pairing guidance).
+    assert line_count("orchestrator/subagent/notices.rb") < 220, "notices.rb must stay under 220 lines"
     assert line_count("orchestrator/subagent/resilience.rb") < 150, "resilience.rb must stay under 150 lines"
     assert line_count("orchestrator/subagent/concurrency_gate.rb") < 100, "concurrency_gate.rb must stay under 100 lines"
     assert line_count("orchestrator/subagent/type_registry.rb") < 200, "type_registry.rb must stay under 200 lines"

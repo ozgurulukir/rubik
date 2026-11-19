@@ -66,15 +66,31 @@ module Rubik
             # Cancelled in the inner ensure to keep the watchdog from firing
             # into a recycled pid after normal exit.
             watchdog = Thread.new(pid, timeout.to_f) do |w_pid, w_deadline|
-              sleep w_deadline
-              # Race guard (issue #597): only flag a timeout when the kill
-              # actually targets a still-live process — a child that completes
-              # exactly as the deadline fires keeps its real exit status
-              # instead of being relabeled exit 124.
-              deadline_hit = true if process_alive?(w_pid)
-              kill_tree(w_pid)
-            rescue StandardError
-              nil
+              slept = false
+              begin
+                sleep w_deadline
+                slept = true
+                # Race guard (issue #597): only flag a timeout when the kill
+                # actually targets a still-live process — a child that completes
+                # exactly as the deadline fires keeps its real exit status
+                # instead of being relabeled exit 124.
+                deadline_hit = true if process_alive?(w_pid)
+                kill_tree(w_pid)
+              rescue StandardError => e
+                # Issue #597-2 follow-up: a kill-path failure at the deadline
+                # must never silently drop the timeout — the deadline has
+                # fired, so mark it (the caller below raises Timeout::Error
+                # and still attempts its own kill) and log the failure.
+                # `slept` guards against a spurious mark if the thread itself
+                # dies before the deadline. Thread#kill lands as an
+                # uncatchable KillError, so a normal-exit cancellation never
+                # reaches this rescue.
+                if slept
+                  deadline_hit = true
+                  Rubik::Log.warn(:platform, "popen_capture deadline kill failed for pid #{w_pid}: " \
+                                             "#{e.class}: #{e.message}")
+                end
+              end
             end
             begin
               stdin.close

@@ -54,9 +54,10 @@ class TestSubagentQuestion < Minitest::Test
     assert_equal "subagent-q", payloads.first[:id]
     assert_includes payloads.first[:reason], "Which DB?"
     assert_includes payloads.first[:reason], "PostgreSQL / SQLite"
+    assert payloads.first[:question_id].to_s.start_with?("q-"), "the notice carries the pairing question id"
     assert_includes @inst.to_h[:state_note].to_s, "clarifying question", "status carries the wait story (derived from state)"
 
-    @inst.post_message("PostgreSQL")
+    @inst.post_message("PostgreSQL", in_reply_to: payloads.first[:question_id])
     thread.join(5)
     refute_nil result, "tool must return after the answer"
     refute result.error?, result.to_s
@@ -74,6 +75,8 @@ class TestSubagentQuestion < Minitest::Test
   end
 
   def test_pre_question_steer_is_drained_to_history_not_consumed_as_answer
+    payloads = []
+    @bus.subscribe(Rubik::Orchestrator::Subagent::Notices::QUESTION_EVENT) { |p| payloads << p }
     @inst.post_message("old steer: use Redis")
     result = nil
     thread = Thread.new do
@@ -85,7 +88,7 @@ class TestSubagentQuestion < Minitest::Test
 
     steer = @inst.history.find { |m| m[:content].to_s.include?("old steer") }
     refute_nil steer, "the pre-question steer drains into history at ask time"
-    @inst.post_message("PostgreSQL")
+    @inst.post_message("PostgreSQL", in_reply_to: payloads.first[:question_id])
     thread.join(5)
     assert_includes result.to_s, "Maestro answered: PostgreSQL", "the answer slot is reserved for post-question replies"
   end
@@ -124,9 +127,9 @@ class TestSubagentQuestion < Minitest::Test
     assert Time.now - t0 < 0.8, "kill must break the poll within a couple of ticks"
   end
 
-  # Issue #595-4: a steering message that lost the race against the ask's
-  # pre-drain (pushed after the drain, before the :waiting_input flip — so
-  # tagged answer=false) must not pose as the question's answer — the
+  # Issue #595-4 (follow-up): answer pairing is keyed to the pending question
+  # id — a message that does not echo it (in-flight steering, or a mid-window
+  # push with a foreign/absent in_reply_to) must not pose as the answer; the
   # questioner re-queues it so the next step-top drain delivers it as a
   # normal message row.
   def test_unclaimed_steering_is_not_consumed_as_the_answer
@@ -144,13 +147,20 @@ class TestSubagentQuestion < Minitest::Test
     thread = Thread.new { returned = inst.ask_init0("Stuck?", options: ["A", "B"], timeout: 5) }
     wait_until { inst.state == :waiting_input } # steering pushed inside the flip
     wait_until { inst.instance_variable_get(:@inbox).empty? } # poller popped and stashed it
-    inst.post_message("the real answer")
+    # Mid-window pushes cannot pose as the answer without the pairing id:
+    # bare text AND a foreign in_reply_to are both re-queued untouched.
+    inst.post_message("steer mid-window")
+    inst.post_message("steer with foreign id", in_reply_to: "q-not-this-question")
+    wait_until { inst.instance_variable_get(:@inbox).empty? } # poller popped and stashed both
+    inst.post_message("the real answer", in_reply_to: inst.pending_question_id)
 
     thread.join(3)
-    assert_equal "the real answer", returned, "only answer-tagged messages pose as the answer"
+    assert_equal "the real answer", returned, "only messages paired to the pending question id pose as the answer"
     inbox = inst.instance_variable_get(:@inbox)
-    assert_equal 1, inbox.size, "the steering message is re-queued, never dropped"
+    assert_equal 3, inbox.size, "the unpaired messages are re-queued, never dropped (incl. the race-window steer)"
     assert_equal "switch lanes", inbox.pop.text
+    assert_equal "steer mid-window", inbox.pop.text
+    assert_equal "steer with foreign id", inbox.pop.text
   end
 
   def test_scoped_registry_rebinds_ask_question_to_child_context
@@ -211,7 +221,7 @@ class TestSubagentQuestion < Minitest::Test
   def test_question_notice_vocabulary
     notice = Rubik::Orchestrator::Subagent::Notices.normalize(
       Rubik::Orchestrator::Subagent::Notices::QUESTION_EVENT,
-      { id: "subagent-3", role: "Explorer", state: :waiting_input,
+      { id: "subagent-3", role: "Explorer", state: :waiting_input, question_id: "q-abcd1234",
         reason: "Depth-first or breadth-first? (options: DFS / BFS)", timeout: 300 }
     )
 
@@ -221,8 +231,10 @@ class TestSubagentQuestion < Minitest::Test
     assert_includes line, "DFS / BFS"
     element = Rubik::Orchestrator::Subagent::Notices.model_element(notice)
     assert_includes element, 'reason="Depth-first or breadth-first? (options: DFS / BFS)"'
+    assert_includes element, 'question_id="q-abcd1234"', "the pairing id reaches the maestro's model surface"
     guidance = Rubik::Orchestrator::Subagent::Notices.guidance_for(notice)
     assert_includes guidance, "send_message(recipient: 'subagent-3'"
+    assert_includes guidance, "in_reply_to: 'q-abcd1234'"
     assert_includes guidance, "blocked waiting"
   end
 
@@ -326,7 +338,7 @@ class TestSubagentQuestion < Minitest::Test
     assert Time.now - t0 < 2, "a question-blocked subagent must not burn the wait timeout"
     assert_equal "waiting_input", rows.first[:state]
 
-    inst.post_message("A")
+    inst.post_message("A", in_reply_to: inst.pending_question_id)
     asker.join(2)
   end
 

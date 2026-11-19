@@ -69,6 +69,30 @@ class TestOrchestratorContinuationManager < Minitest::Test
     assert_includes action[:nudge], "Continue directly and seamlessly"
   end
 
+  # Issue #595-1 follow-up: absorb matches only rows anchored to their own
+  # continuation nudge — an unrelated earlier assistant row that coincidentally
+  # repeats a partial verbatim must survive.
+  def test_absorb_partial_rows_spares_unrelated_identical_assistant_row
+    @manager.handle_truncation(
+      finish_reason: "length",
+      text_resp: "dup content",
+      tool_calls: [],
+      max_tokens: 4096
+    )
+
+    history = [
+      { role: "assistant", content: "dup content" },
+      { role: "user", content: "an unrelated later user row" },
+      { role: "assistant", content: "dup content" },
+      { role: "user", content: "Your previous response was cut off because it reached the output token limit. Continue." }
+    ]
+    @manager.absorb_partial_rows!(history)
+
+    assert_equal 1, history.count { |r| r.is_a?(Hash) && r[:content] == "dup content" },
+                 "only the nudge-anchored partial row is absorbed"
+    assert_equal "an unrelated later user row", history[1][:content], "history keeps its shape"
+  end
+
   def test_stitch_and_reset
     @manager.handle_truncation(
       finish_reason: "length",

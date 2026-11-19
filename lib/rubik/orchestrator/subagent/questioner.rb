@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "securerandom"
+
 require_relative "../../storage/layout"
 
 module Rubik
@@ -29,13 +31,18 @@ module Rubik
           # step top): a pre-question inbox message was NOT sent to a
           # question-waiting subagent and must not pose as its answer.
           drain_inbox_into_history
+          question_id = "q-#{SecureRandom.hex(4)}"
           reason = Array(options).empty? ? question_text.to_s : "#{question_text} (options: #{Array(options).join(' / ')})"
-          payload = { id: @id, role: @role, state: :waiting_input,
+          payload = { id: @id, role: @role, state: :waiting_input, question_id: question_id,
                       reason: reason, timeout: question_timeout(timeout) }
           @monitor.synchronize do
             return :unavailable unless executing?
 
             transition!(:waiting_input)
+            # Open the pairing slot (issue #595-4 follow-up): only a reply
+            # that echoes THIS id poses as the answer, so a steering message
+            # pushed mid-window can never be consumed as the answer.
+            @pending_question_id = question_id
             @unit&.sync_state!
           end
           answer = nil
@@ -49,12 +56,11 @@ module Rubik
             unclaimed = []
             until answer
               @monitor.synchronize do
-                # Only answer-tagged messages may pose as the question's
-                # answer (issue #595-4): the tag is the push-time state
-                # (Instance#post_message), so a steering message that was
-                # already in flight when the question was announced — pushed
-                # after the pre-drain but BEFORE the :waiting_input flip —
-                # is no longer mislabeled as the answer. It is stashed and
+                # Only messages whose in_reply_to matches the pending
+                # question id pose as the answer (issue #595-4 follow-up):
+                # the push-time answer tag now requires the pairing, so a
+                # steering message arriving DURING the :waiting_input window
+                # — pushed without a matching in_reply_to — is stashed and
                 # re-queued below so the next step-top drain delivers it as
                 # a normal message row instead.
                 until answer || @inbox.empty?
@@ -63,7 +69,7 @@ module Rubik
                   rescue ThreadError
                     break
                   end
-                  if msg&.answer
+                  if msg&.answer && msg.in_reply_to == question_id
                     answer = msg.text
                   else
                     unclaimed << msg
@@ -81,15 +87,18 @@ module Rubik
             # Re-queue unclaimed messages in arrival order so
             # drain_inbox_into_history (next step top) delivers them — the
             # worker is still the only drainer here (it is this thread,
-            # blocked inside the tool).
+            # blocked inside the tool). A failed re-queue must be observable,
+            # never silently swallowed (AGENTS.md §5).
             begin
               unclaimed&.each { |msg| @inbox.push(msg) }
-            rescue StandardError
-              nil
+            rescue StandardError => e
+              Rubik::Log.warn(:subagent, "[Questioner] re-queue of #{unclaimed.to_a.size} unclaimed " \
+                                         "inbox message(s) failed: #{e.class}: #{e.message}")
             end
-            # Guarded restore (also covers a raise or Thread#kill mid-wait):
-            # grant_budget! or kill may have legitimately moved the state on.
+            # Close the pairing slot BEFORE the guarded restore: after this
+            # point no push can claim the (now dead) question id.
             @monitor.synchronize do
+              @pending_question_id = nil
               transition!(:running) if awaiting_human?
               @unit&.sync_state!
             end

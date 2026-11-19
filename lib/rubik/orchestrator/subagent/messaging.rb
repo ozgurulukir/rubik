@@ -34,7 +34,11 @@ module Rubik
           return false unless inst
 
           if inst.deliverable?
-            inst.post_message(message, sender: eff_sender, additional_steps: additional_steps)
+            # in_reply_to (#595-4 follow-up): an ask_question answer pairs
+            # against the instance's pending question id; nil for steering.
+            inst.post_message(message, sender: eff_sender,
+                                       additional_steps: additional_steps,
+                                       in_reply_to: kwargs[:in_reply_to])
             return true
           end
 
