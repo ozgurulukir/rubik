@@ -92,8 +92,20 @@ class TestLspIssues245251Regressions < Minitest::Test
       messages = messages_from(log)
       changes = messages.select { |m| m["method"] == "textDocument/didChange" }
       assert_equal 1, changes.size
-      assert_equal [{ "text" => "second" }], changes.first.dig("params", "contentChanges")
-      assert_nil changes.first.dig("params", "contentChanges", 0, "range")
+      # Issue #583: spec 3.17 — Incremental sync (kind 2) REQUIRES a range;
+      # a range-less event is invalid there and gets dropped by spec-strict
+      # servers (e.g. typeprof, the default ruby server). Full sync (kind 1)
+      # keeps the range-less whole-document form. Both are now asserted per
+      # kind instead of sharing one (formerly bug-encoding) expectation.
+      if kind == 2
+        edit = changes.first.dig("params", "contentChanges").first
+        assert_equal({ "line" => 0, "character" => 0 }, edit["range"]["start"])
+        assert_equal({ "line" => 0, "character" => "first".length }, edit["range"]["end"])
+        assert_equal "second", edit["text"]
+      else
+        assert_equal [{ "text" => "second" }], changes.first.dig("params", "contentChanges")
+        assert_nil changes.first.dig("params", "contentChanges", 0, "range")
+      end
 
       client.send(:handle_server_request, {
                     "id" => 900 + kind,

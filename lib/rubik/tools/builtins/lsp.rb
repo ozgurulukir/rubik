@@ -110,8 +110,22 @@ module Rubik
 
         if path.empty?
           all = mgr.all_diagnostic_snapshots
-          total_issues = all.values.sum { |snapshot| snapshot[:diagnostics].size }
           pending = all.values.count { |snapshot| snapshot[:state] == :pending }
+          # Pull-capable servers (diagnosticProvider) never push
+          # publishDiagnostics; pending-heavy workspaces trigger a bounded
+          # pull refresh (issue #583) instead of reporting "pending" forever.
+          if pending.positive? && mgr.respond_to?(:refresh_pending_diagnostic_snapshots)
+            mgr.refresh_pending_diagnostic_snapshots
+            deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + diagnostic_refresh_timeout
+            loop do
+              all = mgr.all_diagnostic_snapshots
+              pending = all.values.count { |snapshot| snapshot[:state] == :pending }
+              break if pending.zero? || Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+
+              sleep 0.05
+            end
+          end
+          total_issues = all.values.sum { |snapshot| snapshot[:diagnostics].size }
           unversioned = all.values.count { |snapshot| snapshot[:state] == :unversioned }
           if total_issues.zero?
             if pending.positive?
@@ -175,6 +189,18 @@ module Rubik
             lines.join("\n")
           end
         end
+      end
+
+      private
+
+      # Bounded wait after workspace-wide diagnostic pulls (issue #583);
+      # reuses lsp.feedback_timeout (config/defaults.rb) so the tool never
+      # hangs on a wedged server.
+      def diagnostic_refresh_timeout
+        timeout = effective_lsp_manager&.config&.fetch("lsp.feedback_timeout", nil)
+        timeout.is_a?(Numeric) && timeout.positive? ? timeout.to_f : 0.5
+      rescue StandardError
+        0.5
       end
     end
 

@@ -33,6 +33,13 @@ module Rubik
         "vue" => "vue-language-server --stdio"
       }.freeze
 
+      # Bounds every textDocument/diagnostic pull. The reader thread of the
+      # pull answers through the transport's response correlation; if the
+      # server stalls, the pull times out here, the snapshot stays :pending,
+      # and waiters fall through their own bounded timeout. Keeps the
+      # lsp_diagnostics tool from ever hanging on a wedged server.
+      DIAGNOSTIC_PULL_TIMEOUT = 5
+
       attr_reader :language, :server_cmd, :root_dir, :server_capabilities,
                   :sync_capabilities
       # The JSON-RPC transport delegate (issue #470). Exposed read-only as a
@@ -70,6 +77,17 @@ module Rubik
           source: :not_advertised, open_close: false, change: 0,
           save: false, include_text: false
         }.freeze
+        # Populated from the initialize response (see start): true when the
+        # server advertises `diagnosticProvider`, meaning diagnostics must be
+        # pulled via textDocument/diagnostic instead of (or in addition to)
+        # push publishDiagnostics.
+        @pull_diagnostics = false
+        # In-flight pull registry: path -> document version the outstanding
+        # textDocument/diagnostic request was issued for. Doubles as a
+        # dedupe guard (one pull per path+version) so polling loops cannot
+        # spawn unbounded threads.
+        @pull_in_flight = {}
+        @pull_mutex = Mutex.new
       end
 
       def binary_name
@@ -136,6 +154,7 @@ module Rubik
 
         @server_capabilities = init_res.is_a?(Hash) ? (init_res["capabilities"] || {}) : {}
         @sync_capabilities = normalize_sync_capabilities(@server_capabilities["textDocumentSync"])
+        @pull_diagnostics = pull_diagnostics_advertised?(@server_capabilities)
         unless send_notification("initialized", {})
           stop
           return false
@@ -222,14 +241,16 @@ module Rubik
           @document_store.commit(abs_path) do
             version = @document_store.next_version
             @document_store.stage_version(abs_path, content, version)
-            send_notification("textDocument/didOpen", {
-                                textDocument: {
-                                  uri: document_uri(abs_path),
-                                  languageId: language_id.to_s,
-                                  version: version,
-                                  text: content
-                                }
-                              })
+            sent = send_notification("textDocument/didOpen", {
+                                       textDocument: {
+                                         uri: document_uri(abs_path),
+                                         languageId: language_id.to_s,
+                                         version: version,
+                                         text: content
+                                       }
+                                     })
+            send_pull_diagnostics_unlocked(abs_path, version) if sent && pull_diagnostics?
+            sent
           end
         end
       rescue StandardError => e
@@ -302,13 +323,22 @@ module Rubik
 
       def diagnostics_snapshot_for(file_path)
         abs_path = normalized_document_path(file_path)
-        @document_store.diagnostic_snapshot(abs_path)
+        snapshot = @document_store.diagnostic_snapshot(abs_path)
+        refresh_diagnostics_via_pull(abs_path) if pull_diagnostics? && snapshot[:state] == :pending
+        snapshot
       rescue ArgumentError, TypeError
         { state: :unavailable, diagnostics: [], document_version: nil, published_version: nil }
       end
 
       def wait_for_diagnostics(file_path, timeout: 0.2)
         abs_path = normalized_document_path(file_path)
+        # Issue a pull whenever a pull-capable server has the document open
+        # and we do not yet hold a versioned answer for its current version
+        # (:pending) — repeated calls for an already-answered version are
+        # deduplicated by the in-flight registry, and :fresh results from a
+        # combined push+pull server are returned as-is (freshest data wins).
+        refresh_diagnostics_via_pull(abs_path) if pull_diagnostics? && @document_store.open?(abs_path) &&
+                                                  @document_store.diagnostic_snapshot(abs_path)[:state] == :pending
         @document_store.await_diagnostics(abs_path, timeout)
       rescue ArgumentError, TypeError
         { state: :unavailable, diagnostics: [], document_version: nil, published_version: nil }
@@ -318,7 +348,109 @@ module Rubik
         @document_store.all_diagnostic_snapshots
       end
 
+      # Workspace-wide pull refresh (issue #583): re-issue pulls for every
+      # document whose snapshot is still :pending. Bounded by the pull
+      # timeout on the client side and by the caller's wait on the tool
+      # side; a wedged server leaves snapshots :pending rather than
+      # hanging the surface.
+      def refresh_pending_diagnostic_snapshots
+        return unless pull_diagnostics?
+
+        @document_store.all_diagnostic_snapshots.each do |path, snapshot|
+          refresh_diagnostics_via_pull(path) if snapshot[:state] == :pending
+        end
+        nil
+      end
+
       private
+
+      # ---- Pull diagnostics (issue #583). Servers that advertise
+      # ---- `diagnosticProvider` (e.g. typeprof, the DEFAULT ruby server,
+      # ---- with ruby-lsp the configured fallback) never push
+      # ---- publishDiagnostics; without an explicit textDocument/diagnostic
+      # ---- request the document stays :pending forever and every
+      # ---- diagnostics surface reports nothing. Pulls ride the
+      # ---- transport's own request correlation: send_request blocks its
+      # ---- own thread until the response is matched, so no response can
+      # ---- dead-letter, and results are version-guarded on apply so a
+      # ---- stale async pull can never clobber a newer snapshot.
+
+      def pull_diagnostics?
+        @pull_diagnostics == true
+      end
+
+      # diagnosticProvider may be a boolean or an options object.
+      def pull_diagnostics_advertised?(capabilities)
+        provider = capabilities["diagnosticProvider"]
+        provider == true || provider.is_a?(Hash)
+      end
+
+      # Fire-and-forget pull, called with @document_mutex held (didOpen /
+      # didChange paths). Deduplicated per (path, version) so tight polling
+      # loops (diagnostics_snapshot_for) cannot spawn unbounded threads.
+      def send_pull_diagnostics_unlocked(abs_path, version)
+        return false unless alive?
+        return false if @pull_mutex.synchronize { @pull_in_flight[abs_path] == version }
+
+        @pull_mutex.synchronize { @pull_in_flight[abs_path] = version }
+        uri = document_uri(abs_path)
+        Thread.new do
+          result = @transport.send_request(
+            "textDocument/diagnostic",
+            { textDocument: { uri: uri } },
+            timeout: DIAGNOSTIC_PULL_TIMEOUT
+          )
+          apply_pull_diagnostics_result(abs_path, version, result)
+        rescue StandardError => e
+          # Timeout / transport failure: the snapshot simply stays :pending
+          # and waiters fall through their bounded timeout. Never raise
+          # out of an unowned thread.
+          Rubik::Log.warn(:lsp, "diagnostic pull failed for #{abs_path}: #{e.class}: #{e.message}")
+        ensure
+          @pull_mutex.synchronize do
+            @pull_in_flight.delete(abs_path) if @pull_in_flight[abs_path] == version
+          end
+        end
+        true
+      end
+
+      # Refresh entry used by wait_for_diagnostics / diagnostics_snapshot_for
+      # when the snapshot is still :pending (covers lost or timed-out pulls).
+      def refresh_diagnostics_via_pull(abs_path)
+        @document_mutex.synchronize do
+          return unless @document_store.open?(abs_path)
+
+          version = @document_store.version_for(abs_path)
+          send_pull_diagnostics_unlocked(abs_path, version) if version
+        end
+        nil
+      rescue StandardError => e
+        Rubik::Log.warn(:lsp, "diagnostic refresh failed for #{abs_path}: #{e.class}: #{e.message}")
+        nil
+      end
+
+      # Applies a textDocument/diagnostic response. `kind: "unchanged"` and
+      # non-hash results carry no items to install; the payload is applied
+      # only when the document still sits at the pulled version, so stale
+      # async results (a slow server answering after a further edit) are
+      # discarded instead of clobbering the newer snapshot. relatedDocuments
+      # is ignored — this client pulls per document.
+      def apply_pull_diagnostics_result(abs_path, pulled_version, result)
+        return unless result.is_a?(Hash)
+        return if result["kind"] == "unchanged"
+
+        items = result["items"].is_a?(Array) ? result["items"] : []
+        @document_mutex.synchronize do
+          current = @document_store.version_for(abs_path)
+          return unless current == pulled_version
+
+          @document_store.record_diagnostics(abs_path, items, current)
+        end
+        nil
+      rescue StandardError => e
+        Rubik::Log.warn(:lsp, "diagnostic pull result dropped for #{abs_path}: #{e.class}: #{e.message}")
+        nil
+      end
 
       # ---- Delegates to the transport (issue #470). These thin shims keep
       # ---- the Client's internal call sites and per-instance test stubs
@@ -433,19 +565,56 @@ module Rubik
         return false unless @document_store.open?(abs_path)
         return true if @document_store.content_for(abs_path) == content
 
+        old_content = @document_store.content_for(abs_path)
         @document_store.commit(abs_path) do
           version = @document_store.next_version
           @document_store.stage_version(abs_path, content, version)
-          send_notification("textDocument/didChange", {
-                              textDocument: {
-                                uri: document_uri(abs_path),
-                                version: version
-                              },
-                              # A text-only event is a full-document replacement,
-                              # which is valid for both Full and Incremental sync.
-                              contentChanges: [{ text: content }]
-                            })
+          sent = send_notification("textDocument/didChange", {
+                                     textDocument: {
+                                       uri: document_uri(abs_path),
+                                       version: version
+                                     },
+                                     contentChanges: build_content_changes(old_content, content)
+                                   })
+          send_pull_diagnostics_unlocked(abs_path, version) if sent && pull_diagnostics?
+          sent
         end
+      end
+
+      # Spec 3.17: Full sync (kind 1) replaces the whole document with a
+      # range-less change event. Incremental sync (kind 2) REQUIRES a range —
+      # a range-less event is invalid there, and servers that honor the spec
+      # (e.g. typeprof, the default ruby server) drop or misapply it. For
+      # incremental servers we send ONE edit spanning the entire OLD document,
+      # which is semantically a full replacement but structurally spec-valid.
+      # Character offsets are UTF-16 code units per the LSP spec.
+      def build_content_changes(old_content, new_content)
+        return [{ text: new_content }] unless @sync_capabilities[:change].to_i == 2
+        return [{ text: new_content }] if old_content.nil?
+
+        old_content = old_content.to_s
+        [{
+          range: {
+            start: { line: 0, character: 0 },
+            end: end_position_for(old_content)
+          },
+          text: new_content
+        }]
+      end
+
+      # LSP Position for the exclusive end of content: last line index and
+      # the line's length in UTF-16 code units (the spec's offset unit —
+      # Ruby String#length counts characters, which diverges for astral-plane
+      # code points that encode as surrogate pairs).
+      def end_position_for(content)
+        lines = content.split(/\r\n|\n|\r/, -1)
+        last_line = lines.length - 1
+        last_text = lines.last.to_s
+        { line: last_line, character: utf16_length(last_text) }
+      end
+
+      def utf16_length(text)
+        text.each_char.sum { |char| char.ord > 0xFFFF ? 2 : 1 }
       end
 
       def normalize_sync_capabilities(value)
