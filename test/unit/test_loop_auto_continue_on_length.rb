@@ -102,4 +102,43 @@ class TestLoopAutoContinueOnLength < Minitest::Test
     assert_includes res[:error], "3 automatic continue attempts were exhausted, so it was stopped"
     assert_includes res[:error], "!config set llm.default_max_output_tokens 8192"
   end
+
+  def test_stitched_final_text_absorbs_prior_partial_rows
+    step_events = []
+    mock_loop = build_auto_continue_loop(on_step: ->(event) { step_events << event })
+
+    mock_loop.turn_executor.call(Rubik::LLM::Response.new(text: "part one, ", raw: { "finish_reason" => "length" }))
+    mock_loop.turn_executor.call(Rubik::LLM::Response.new(text: "part two, ", raw: { "finish_reason" => "length" }))
+    res = mock_loop.turn_executor.call(Rubik::LLM::Response.new(text: "part three end", raw: { "finish_reason" => "stop" }))
+
+    assert res[:ok]
+    assistant_rows = mock_loop.history.select { |m| m[:role] == "assistant" && m[:content] }
+    assert_equal 1, assistant_rows.size, "partials are absorbed; one stitched row survives (issue #595-1)"
+    assert_equal "part one, part two, part three end", assistant_rows.first[:content]
+  end
+
+  def test_ceiling_terminal_preserves_accumulated_content_in_one_row
+    @config["llm"]["max_auto_continues"] = 1
+    mock_loop = build_auto_continue_loop(on_step: ->(_event) {})
+
+    res1 = mock_loop.turn_executor.call(Rubik::LLM::Response.new(text: "first chunk. ", raw: { "finish_reason" => "length" }))
+    assert_nil res1
+    res2 = mock_loop.turn_executor.call(Rubik::LLM::Response.new(text: "second chunk.", raw: { "finish_reason" => "length" }))
+    refute res2[:ok], "the ceiling terminal fires"
+
+    assistant_rows = mock_loop.history.select { |m| m[:role] == "assistant" && m[:content] }
+    assert_equal 1, assistant_rows.size, "prior partial absorbed, buffer + current partial kept once (issue #595-2)"
+    assert_equal "first chunk. second chunk.", assistant_rows.first[:content]
+  end
+
+  def test_disabled_auto_continue_terminal_preserves_the_partial_text
+    @config["llm"]["auto_continue_on_length"] = false
+    mock_loop = build_auto_continue_loop(on_step: ->(_event) {})
+
+    res = mock_loop.turn_executor.call(Rubik::LLM::Response.new(text: "the only partial answer", raw: { "finish_reason" => "length" }))
+    refute res[:ok]
+
+    row = mock_loop.history.find { |m| m[:role] == "assistant" && m[:content] }
+    assert_equal "the only partial answer", row[:content], "the failure terminal keeps the generated content (issue #595-2)"
+  end
 end

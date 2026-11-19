@@ -69,9 +69,11 @@ module Rubik
 
           # Stitch the RAW response (sanitized): `text` was already stripped
           # by TurnExecutor#call, which would eat the leading indentation of
-          # the continuation chunk (issue #547).
+          # the continuation chunk (issue #547). The history is handed in so
+          # the prior partial assistant rows are absorbed — the stitched
+          # full text must not duplicate them (issue #595-1).
           raw_text = res.respond_to?(:text) ? res.text : text
-          cm.stitch_and_reset(Platform.safe_utf8(raw_text).to_s)
+          cm.stitch_and_reset(Platform.safe_utf8(raw_text).to_s, history: @deps.history)
         end
 
         def track_usage(res) = @deps.budget_manager.track_token_usage!(res)
@@ -112,6 +114,17 @@ module Rubik
             return :consumed
           end
           return nil unless trunc_action[:error]
+
+          # Failure terminal (auto-continue disabled or ceiling exhausted):
+          # the generated content must not be dropped from history (issue
+          # #595-2). Persist buffer + current partial as ONE assistant row,
+          # absorbing any prior partial rows so nothing is duplicated —
+          # the same invariant as the stitch path.
+          accumulated = cm.continuation_buffer + safe_text
+          unless accumulated.strip.empty?
+            cm.absorb_partial_rows!(@deps.history)
+            @deps.history << { role: "assistant", content: accumulated }
+          end
 
           @deps.on_step&.call(type: :error, content: trunc_action[:error], step: @deps.step_count, max_steps: @deps.max_steps)
           @deps.loop_instance.turn_result(success: false, error: trunc_action[:error])

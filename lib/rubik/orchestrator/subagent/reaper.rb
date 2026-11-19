@@ -27,9 +27,13 @@ module Rubik
         # dosya yoksa reap sonraki süpürmeye kalır (yarım tasfiye yok). After
         # TRANSCRIPT_ARCHIVE_MAX_RETRIES the durability gate is released with
         # a warning so a permanently-failing save cannot strand the instance.
-        def archive!
+        # `durable:` lets the supervisor sweep pre-probe the transcript OUTSIDE
+        # its monitor (issue #595-5) and hand the verdict in; nil probes here
+        # (legacy direct callers keep the retry semantics untouched).
+        def archive!(durable: nil)
           @monitor.synchronize do
-            unless File.exist?(@transcript_uri.to_s)
+            exists = durable.nil? ? File.exist?(@transcript_uri.to_s) : durable
+            unless exists
               @archive_retries = (@archive_retries || 0) + 1
               if @archive_retries < TRANSCRIPT_ARCHIVE_MAX_RETRIES
                 return false # transient: leave it for the next sweep
@@ -52,30 +56,54 @@ module Rubik
       # bilinçli olarak yalnız @instances'e bakar (reap edilen zaten
       # notice ile duyurulmuş, sonucu transcriptte).
       module ReaperSupervisor
+        # Three-pass sweep (issue #595-5): the supervisor monitor is held
+        # only for STATE BOOKKEEPING. Pass 1 snapshots the candidates and
+        # releases the lock; the transcript durability probes (File.exist?)
+        # and the tombstone cleanups run OUTSIDE it, so spawn/send_message/
+        # status are never stalled behind FS IO. Pass 2 keeps archive! UNDER
+        # the monitor on purpose: the redeploy plane shares this monitor
+        # exactly so an archive cannot interleave a redeployable? check
+        # (reuse.rb buffer_for_redeploy) — that invariant is not negotiable.
         def reap_finished!(force: false)
-          dropped_steering = []
-          reaped = @monitor.synchronize do
-            grace = reap_grace_seconds
-            reaped = []
-            @instances.each do |id, inst|
+          grace = reap_grace_seconds
+          candidates = @monitor.synchronize do
+            @instances.values.select do |inst|
               next unless inst.respond_to?(:terminal_and_settled?) && inst.terminal_and_settled?
-              next unless force || (grace && inst.ended_at && Time.now - inst.ended_at >= grace)
-              next unless inst.archive!
 
-              dropped_steering << id if inst.respond_to?(:pending_redeploy_messages?) && inst.pending_redeploy_messages?
-              @finished[id] = inst
-              reaped << id
+              force || (grace && inst.ended_at && Time.now - inst.ended_at >= grace)
             end
-            reaped.each { |id| @instances.delete(id) }
-            evict_overflow!
-            reaped
           end
+          # OUTSIDE the supervisor monitor: per-candidate transcript probe.
+          durability = candidates.to_h { |inst| [inst.id, File.exist?(inst.transcript_uri.to_s)] }
+
+          dropped_steering = []
+          reaped_ids = evicted = nil
+          @monitor.synchronize do
+            reaped_ids = []
+            evicted = []
+            candidates.each do |inst|
+              # Re-checks (redeploy may have revived it between the passes);
+              # archive! + tombstone move stay atomic against the redeploy
+              # plane by sharing this monitor.
+              next unless @instances[inst.id].equal?(inst) && inst.terminal_and_settled?
+              next unless inst.archive!(durable: durability[inst.id])
+
+              dropped_steering << inst.id if inst.respond_to?(:pending_redeploy_messages?) && inst.pending_redeploy_messages?
+              @finished[inst.id] = inst
+              reaped_ids << inst.id
+            end
+            reaped_ids.each { |id| @instances.delete(id) }
+            evicted = evict_overflow!
+          end
+          # OUTSIDE the supervisor monitor: tombstone overflow cleanup
+          # (context dispose) must not stall live-plane operations.
+          evicted.each(&:cleanup)
           # OUTSIDE the supervisor monitor (emit/logging discipline): queued
           # steering that died with the instance instead of a redeploy — the
           # send_message :queued reply discloses this, but the loss must be
           # observable (issue #55 3.2).
           Platform.debug_warn("[Reaper] reaped with undelivered queued steering: #{dropped_steering.join(', ')}") unless dropped_steering.empty?
-          reaped
+          reaped_ids
         end
 
         private
@@ -99,13 +127,16 @@ module Rubik
           Rubik::Storage::Layout.config_get(@config, "subagents.tombstone_limit", 25).to_i
         end
 
-        # FIFO taşma: en eski mezar taşı evict edilir ve cleanup ile
-        # :disposed'a çekilir (ctx zaten dispose'lu; cleanup no-op güvenli).
+        # FIFO taşma: en eski mezar taşları evict edilir ve CALLING SIDE'a
+        # döner — cleanup (:disposed'a çekme, context dispose) monitor
+        # DIŞINDA çalışır (issue #595-5).
         def evict_overflow!
+          evicted = []
           while @finished.size > tombstone_limit
             _id, inst = @finished.shift
-            inst&.cleanup
+            evicted << inst if inst
           end
+          evicted
         end
       end
     end

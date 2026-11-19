@@ -26,13 +26,11 @@ module Rubik
     class Loop
       attr_accessor :history, :invalid_tool_count, :last_turn_streamed, :context_warning_emitted, :loop_context
       attr_reader :max_steps, :step_count, :model, :total_tokens, :warn_at_ratio, :runtime_manager, :context_limit, :max_output_tokens, :config
-      # Collaborator-facing state (Plan 54 D-5): loop state physically stays on Loop;
-      # extracted collaborators reach it through these accessors.
+      # Collaborator-facing state (Plan 54 D-5): loop state stays on Loop; collaborators reach it via these accessors.
       attr_reader :provider, :on_step, :tool_registry, :shell, :buffer_manager, :lsp_manager, :step_executor,
                   :budget_manager, :stream_manager, :activity
 
-      # Channel-owned counter (TurnExecutor::NudgePolicy); the public reader
-      # name is load-bearing (tests, REPL surfaces).
+      # Channel-owned counter (TurnExecutor::NudgePolicy); public reader name is load-bearing.
       def empty_response_count = turn_executor.nudge_policy.count
 
       def initialize(provider:, tool_registry:, max_steps: 40, warn_at_ratio: 0.75, model: nil, on_step: nil, shell: nil, context_limit: nil,
@@ -177,27 +175,32 @@ module Rubik
         end
       end
 
-      # auto: unattended auto-extension (!goal auto-continue) — the model
-      # sees an honest notice instead of a "User approved" claim no user made.
+      # auto: unattended auto-extension (!goal auto-continue) — an honest notice, not a fake "User approved".
       def continue_loop(extra_steps = 20, plan_only: false, auto: false)
-        # Retention seam — see SubagentNoticeInbox#keep_for_continuation.
-        subagent_notice_inbox.keep_for_continuation
-        extend_budget(extra_steps)
-        target_model = @model
-        opts = target_model ? { model: target_model } : {}
-        opts[:tools] = @tool_registry.schemas
+        # run()'ın ensure'i eski alt bağlamı imha etti; resume_turn! ile aynı
+        # disiplin (issue #595-3, §C): bayat bağlamı imha et, taze ctx.extend
+        # kur, koşu sonunda imha et — yoksa her devam ölü çocuk sızdırır.
+        @loop_context&.dispose
+        @loop_context = @runtime_manager&.context&.extend
+        begin
+          subagent_notice_inbox.keep_for_continuation # retention seam: SubagentNoticeInbox#keep_for_continuation
+          extend_budget(extra_steps)
+          target_model = @model
+          opts = target_model ? { model: target_model } : {}
+          opts[:tools] = @tool_registry.schemas
 
-        # Plan 61 D-14: notifications travel as their own user message —
-        # appending to @history.last may target a tool result or a
-        # content-less assistant message, which provider formatters then
-        # mangle.
-        approval = auto ? "Step budget auto-extended (unattended continuation, agent.goal_auto_continue_limit)." : "User approved extending step budget by #{extra_steps} steps."
-        continuation_msg = "<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" " \
-                           "current=\"#{@step_count}\" auto=\"#{auto}\" " \
-                           "message=\"#{approval} " \
-                           "Continue working toward completion.\" />"
-        @history << { role: "user", content: continuation_msg }
-        execute_steps(opts: opts, plan_only: plan_only)
+          # Plan 61 D-14: notifications travel as their own user message — appending to
+          # @history.last may target a tool/tool-less row that formatters mangle.
+          approval = auto ? "Step budget auto-extended (unattended continuation, agent.goal_auto_continue_limit)." : "User approved extending step budget by #{extra_steps} steps."
+          continuation_msg = "<step_budget_extended extra=\"#{extra_steps}\" new_max=\"#{@max_steps}\" " \
+                             "current=\"#{@step_count}\" auto=\"#{auto}\" " \
+                             "message=\"#{approval} " \
+                             "Continue working toward completion.\" />"
+          @history << { role: "user", content: continuation_msg }
+          execute_steps(opts: opts, plan_only: plan_only)
+        ensure
+          @loop_context&.dispose
+        end
       end
 
       # ── !goal resume (issue #106) ─────────────────────────────────────
@@ -317,8 +320,8 @@ module Rubik
         )
       end
 
-      # Lightweight fingerprint of environment factors that affect the rendered system prompt.
-      # Preserves prompt caching by avoiding regeneration when state is unchanged.
+      # Fingerprint of the environment factors affecting the rendered system
+      # prompt — avoids regeneration (keeps prompt caching) while unchanged.
       def prompt_state_fingerprint(plan_only: false)
         tools = plan_only ? [] : (@tool_registry&.schemas&.map { |s| s[:name] || s["name"] } || [])
         skills = Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::SKILL_MANAGER)&.prompt_index
@@ -329,8 +332,8 @@ module Rubik
         [tools, skills, subagents, dirty, lsp_diags].hash
       end
 
-      # Dynamically updates @history[0] in-place if tools, skills, subagents, dirty files or LSP
-      # change mid-execution. Keeps prompt cache intact on zero-change steps.
+      # Updates @history[0] in-place when tools, skills, subagents, dirty files
+      # or LSP change mid-execution; keeps the prompt cache intact on no-change.
       def refresh_system_prompt_if_needed!(mode:, plan_only:, extra_context: nil)
         return unless @history&.first && Prompt::ConversationRows.role_of(@history.first) == "system"
         return if (current_fp = prompt_state_fingerprint(plan_only: plan_only)) == @last_prompt_fingerprint

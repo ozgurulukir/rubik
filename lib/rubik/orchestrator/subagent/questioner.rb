@@ -46,9 +46,29 @@ module Rubik
             Notices.emit(@event_bus, Notices::QUESTION_EVENT, payload)
             deadline = Time.now + payload[:timeout]
             @monitor.synchronize { @answer_cond ||= @monitor.new_cond }
+            unclaimed = []
             until answer
               @monitor.synchronize do
-                answer = @inbox.pop(true)&.text unless @inbox.empty?
+                # Only answer-tagged messages may pose as the question's
+                # answer (issue #595-4): the tag is the push-time state
+                # (Instance#post_message), so a steering message that was
+                # already in flight when the question was announced — pushed
+                # after the pre-drain but BEFORE the :waiting_input flip —
+                # is no longer mislabeled as the answer. It is stashed and
+                # re-queued below so the next step-top drain delivers it as
+                # a normal message row instead.
+                until answer || @inbox.empty?
+                  begin
+                    msg = @inbox.pop(true)
+                  rescue ThreadError
+                    break
+                  end
+                  if msg&.answer
+                    answer = msg.text
+                  else
+                    unclaimed << msg
+                  end
+                end
                 # Sleep on the cond var INSIDE the monitor (wait atomically
                 # releases it), bounded by the deadline. The emitter's
                 # broadcast outside the critical section cannot be lost:
@@ -58,6 +78,15 @@ module Rubik
               break if Time.now >= deadline || !(awaiting_human? || executing?)
             end
           ensure
+            # Re-queue unclaimed messages in arrival order so
+            # drain_inbox_into_history (next step top) delivers them — the
+            # worker is still the only drainer here (it is this thread,
+            # blocked inside the tool).
+            begin
+              unclaimed&.each { |msg| @inbox.push(msg) }
+            rescue StandardError
+              nil
+            end
             # Guarded restore (also covers a raise or Thread#kill mid-wait):
             # grant_budget! or kill may have legitimately moved the state on.
             @monitor.synchronize do

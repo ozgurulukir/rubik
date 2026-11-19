@@ -23,6 +23,10 @@ module Rubik
         @max_auto_continues = (max_auto_continues || safe_config("llm.max_auto_continues", 3)).to_i
         @auto_continue_count = 0
         @continuation_buffer = +""
+        # The exact partial texts appended to history per text-truncation
+        # cycle (issue #595-1): the stitch/failure paths absorb their
+        # assistant rows so the history carries the full text ONCE.
+        @partial_texts = []
       end
 
       def enabled?
@@ -94,6 +98,7 @@ module Rubik
           }
         when :text_truncated
           @continuation_buffer << text_resp.to_s
+          @partial_texts << text_resp.to_s
           {
             continue: true,
             scenario: :text_truncated,
@@ -114,8 +119,12 @@ module Rubik
       end
 
       # Stitches any accumulated continuation buffer with the final response
-      # text and resets the continuation state.
-      def stitch_and_reset(final_text)
+      # text and resets the continuation state. When `history` is given, the
+      # partial assistant rows appended per continuation cycle are absorbed
+      # FIRST (issue #595-1): the stitched full text replaces them instead
+      # of duplicating every partial.
+      def stitch_and_reset(final_text, history: nil)
+        absorb_partial_rows!(history) if history
         stitched = if @continuation_buffer.empty?
                      final_text.to_s
                    else
@@ -125,9 +134,27 @@ module Rubik
         stitched
       end
 
+      # Absorbs the partial assistant rows recorded across continuation
+      # cycles out of the given history (issue #595-1/#595-2). Content
+      # equality is safe here: a row matching an accumulated partial is by
+      # definition that partial's own row.
+      def absorb_partial_rows!(history)
+        @partial_texts.each do |partial|
+          history.reject! do |row|
+            next false unless row.is_a?(Hash)
+
+            role = row[:role] || row["role"]
+            tool_calls = row[:tool_calls] || row["tool_calls"]
+            content = row[:content] || row["content"]
+            role == "assistant" && tool_calls.nil? && content == partial
+          end
+        end
+      end
+
       def reset!
         @auto_continue_count = 0
         @continuation_buffer = +""
+        @partial_texts = []
       end
 
       # A successful turn closes the *consecutive* truncation chain, so the
