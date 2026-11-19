@@ -21,16 +21,22 @@ module Rubik
         @deps = deps
       end
 
-      # Live dispatched work: any active unit (running, paused on error or
-      # budget, or blocked on an ask_question answer) counts — none of them
-      # may be abandoned by a completion. A nil supervisor (no subagent
-      # system, bare test loops) means nothing is pending.
+      # Live dispatched work: any in-flight unit (running, paused on error
+      # or budget, parked at :budget_exhausted, or blocked on an
+      # ask_question answer) counts — none of them may be abandoned by a
+      # completion (issue #594: :budget_exhausted is parked mid-task, not
+      # finished). A nil supervisor (no subagent system, bare test loops)
+      # means nothing is pending. Test-double supervisors that predate
+      # dispatched_count still answer through active_count.
       def pending?
-        active_count.positive?
+        dispatched_count.positive?
       end
 
-      def active_count
-        supervisor&.active_count.to_i
+      def dispatched_count
+        sup = supervisor
+        return sup.dispatched_count.to_i if sup.respond_to?(:dispatched_count)
+
+        sup&.active_count.to_i
       end
 
       # Called by the user channel INSTEAD of building the success
@@ -43,7 +49,7 @@ module Rubik
         return inject_notices! unless inbox.empty?
 
         timeout = wait_timeout
-        @deps.on_step&.call(type: :goal_wait, via: via, active: active_count, timeout: timeout,
+        @deps.on_step&.call(type: :goal_wait, via: via, active: dispatched_count, timeout: timeout,
                             step: @deps.step_count, max_steps: @deps.max_steps)
         # Notices arriving while the model was concluding sit in the inbox;
         # wait_for blocks until the whole dispatched set settles (budget-
@@ -98,7 +104,7 @@ module Rubik
       # falsely completing.
       def timeout_nudge!
         append_user_message!(
-          "<goal_wait_timeout active=\"#{active_count}\" timeout=\"#{wait_timeout}\">#{active_count} dispatched " \
+          "<goal_wait_timeout active=\"#{dispatched_count}\" timeout=\"#{wait_timeout}\">#{dispatched_count} dispatched " \
           "subagent(s) are still running. The goal is NOT complete while they run. Conclude your turn again to " \
           "keep waiting, or inspect and steer them (`manage_subagents` action 'status' | 'wait' | 'kill'). " \
           "Call finish only once every dispatched subagent has settled.</goal_wait_timeout>"

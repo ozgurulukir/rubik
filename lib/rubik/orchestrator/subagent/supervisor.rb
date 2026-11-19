@@ -191,6 +191,17 @@ module Rubik
           end
         end
 
+        # Dispatched-work view for the goal-completion guard (issue #594):
+        # in_flight? units — active? (slot-holding) PLUS :budget_exhausted
+        # parked mid-task. Concurrency-slot accounting keeps active_count;
+        # the completion guard must not declare a goal achieved while a
+        # parked unit still owes a result.
+        def dispatched_count
+          @monitor.synchronize do
+            @instances.values.count(&:in_flight?)
+          end
+        end
+
         def active_count
           @monitor.synchronize do
             @instances.values.count(&:active?)

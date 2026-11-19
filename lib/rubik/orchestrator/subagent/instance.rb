@@ -149,12 +149,17 @@ module Rubik
         # Inbox girdisi: mesaj metni + GERÇEK gönderen id'si. nil veya makine
         # adı "agent-0" gönderenler render'da maestro persona'sına çevrilir
         # (iki-düzlem adlandırma sözleşmesi) — subagent gönderenler kendi
-        # id'leriyle görünür (drain: StepRunner#sender_label).
-        InboxMessage = Struct.new(:text, :from)
+        # id'leriyle görünür (drain: StepRunner#sender_label). `answer`
+        # bayrağı (issue #595-4): push anında instance :waiting_input'taysa
+        # mesaj bir ask_question CEVABI olarak etiketlenir — questioner
+        # yalnız bayraklı mesajı cevap olarak tüketir; etiketsizler (soru
+        # duyurulmadan yolda olan steering) inbox'a geri konur ve drain ile
+        # normal mesaj satırı olarak history'ye gider.
+        InboxMessage = Struct.new(:text, :from, :answer)
 
         def post_message(message, sender: nil, additional_steps: nil)
           @monitor.synchronize do
-            @inbox.push(InboxMessage.new(message, sender))
+            @inbox.push(InboxMessage.new(message, sender, awaiting_human?))
             if error_paused?
               resume!(additional_steps: additional_steps)
             elsif awaiting_budget? || additional_steps

@@ -130,6 +130,43 @@ class TestOrchestratorLoop < Minitest::Test
     refute_includes user_msg[:content], 'auto="true"'
   end
 
+  # Issue #595-3: run()'s ensure disposes the per-run sub-context;
+  # continue_loop must follow the resume_turn! mold — dispose the stale
+  # one, re-extend a fresh child, dispose it in its own ensure.
+  def test_continue_loop_extends_a_fresh_sub_context_after_run_disposed_it
+    root_ctx = Rubik::Runtime::Context.new
+    manager = Rubik::Runtime::Manager.new(root_ctx)
+    mock_shell = Struct.new(:buffer_manager, :snapshot_store, :context_index, :lsp_manager, :config, :runtime_manager, :commands).new(
+      @buffer_manager, nil, nil, nil, { "llm.stream" => false }, manager, nil
+    )
+    seen = []
+    loop_ref = nil
+    provider = Class.new(MockProvider) do
+      define_method(:complete) do |messages, opts = {}|
+        ctx = loop_ref.loop_context
+        seen << [ctx, ctx && !ctx.disposed?]
+        super(messages, opts)
+      end
+    end.new(['{"tool": "finish", "args": { "message": "first leg" }}', '{"tool": "finish", "args": { "message": "second leg" }}'])
+
+    loop_inst = create_loop(provider: provider, shell: mock_shell)
+    loop_ref = loop_inst
+    res = loop_inst.run("first leg")
+    assert res[:ok]
+    run_ctx, run_live = seen[0]
+    refute_nil run_ctx
+    assert run_live, "run executes on a live child context"
+    assert run_ctx.disposed?, "run's ensure disposes it afterwards"
+
+    res2 = loop_inst.continue_loop(5)
+    assert res2[:ok]
+    continue_ctx, continue_live = seen[1]
+    refute_nil continue_ctx
+    refute_equal run_ctx.object_id, continue_ctx.object_id, "continue_loop re-extends a fresh child (issue #595-3)"
+    assert continue_live, "…and runs on a live child context"
+    refute root_ctx.disposed?, "the root context survives both legs"
+  end
+
   def test_continue_loop_auto_flag_tells_the_model_the_truth
     @provider.responses = ['{"tool": "finish", "args": { "message": "auto continued" }}']
     loop_inst = create_loop(max_steps: 5)

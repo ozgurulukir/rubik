@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../tool_call_id"
+require_relative "../tool_history"
 
 module Rubik
   module Orchestrator
@@ -32,10 +33,13 @@ module Rubik
         end
 
         # Subagent policy (ToolCallId doctrine): deterministic
-        # (subagent id, step, index) — the history lives and dies with the
-        # run, and greppable ids beat collision-proof ones here.
+        # (subagent id, run, step, index). run_seq increments on every
+        # start_async — spawn AND redeploy alike — so a redeployed run's
+        # ids can never collide with the preserved history it re-sends to
+        # the provider (issue #593). Greppable ids still beat
+        # collision-proof ones here.
         def mint_call_id(idx)
-          ToolCallId.mint(@inst.id, @inst.current_step, idx + 1)
+          ToolCallId.mint(@inst.id, @inst.run_seq, @inst.current_step, idx + 1)
         end
 
         # ── response shaping ──
@@ -90,15 +94,27 @@ module Rubik
           @inst.history << { role: "assistant", content: final_text.empty? ? nil : final_text, tool_calls: tool_calls }
         end
 
-        def on_finish(args, fallback_text)
+        # The assistant row carrying the finish tool_use was already
+        # recorded; it needs a pairing tool-result row before
+        # complete_turn! or the preserved history hands strict providers
+        # an orphaned tool_use on the next request (issue #593 — mirrors
+        # StepExecutor#handle_finish_tool and the user channel's deferred
+        # finish path).
+        def on_finish(args, fallback_text, call_id = nil)
           message = args["message"] || args[:message] || fallback_text || "Completed"
           @inst.auto_apply_buffer!(:finish) unless @inst.workspace == "branch"
+          if call_id
+            Rubik::Orchestrator::ToolHistory.write(
+              @inst.history, tool_call_id: call_id, tool_name: "finish",
+                             status: :ok, duration_ms: 0.0, content: message.to_s
+            )
+          end
           @inst.complete_turn!(message)
           { ok: true, completed: true }
         end
 
         def execute_tool_call(tool_call, text)
-          return on_finish(tool_call["args"] || {}, text) if TurnExecutor.finish_call?(@inst.tool_registry, tool_call)
+          return on_finish(tool_call["args"] || {}, text, tool_call["id"]) if TurnExecutor.finish_call?(@inst.tool_registry, tool_call)
 
           @inst.execute_subagent_tool_call(tool_call)
           nil

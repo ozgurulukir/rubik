@@ -124,6 +124,35 @@ class TestSubagentQuestion < Minitest::Test
     assert Time.now - t0 < 0.8, "kill must break the poll within a couple of ticks"
   end
 
+  # Issue #595-4: a steering message that lost the race against the ask's
+  # pre-drain (pushed after the drain, before the :waiting_input flip — so
+  # tagged answer=false) must not pose as the question's answer — the
+  # questioner re-queues it so the next step-top drain delivers it as a
+  # normal message row.
+  def test_unclaimed_steering_is_not_consumed_as_the_answer
+    inst = @inst
+    real_transition = inst.method(:transition!)
+    # Deterministic replay of the drain→flip race window: the steering is
+    # pushed between the ask's pre-drain and the :waiting_input flip, so
+    # post-flip push tagging cannot claim it as an answer.
+    inst.define_singleton_method(:transition!) do |to|
+      @inbox.push(Rubik::Orchestrator::Subagent::Instance::InboxMessage.new("switch lanes", "agent-0", false)) if to == :waiting_input
+      real_transition.call(to)
+    end
+
+    returned = :never
+    thread = Thread.new { returned = inst.ask_init0("Stuck?", options: ["A", "B"], timeout: 5) }
+    wait_until { inst.state == :waiting_input } # steering pushed inside the flip
+    wait_until { inst.instance_variable_get(:@inbox).empty? } # poller popped and stashed it
+    inst.post_message("the real answer")
+
+    thread.join(3)
+    assert_equal "the real answer", returned, "only answer-tagged messages pose as the answer"
+    inbox = inst.instance_variable_get(:@inbox)
+    assert_equal 1, inbox.size, "the steering message is re-queued, never dropped"
+    assert_equal "switch lanes", inbox.pop.text
+  end
+
   def test_scoped_registry_rebinds_ask_question_to_child_context
     source = Rubik::Tools::Registry.new
     source.register(Rubik::Tools::AskQuestionTool.new(shell: nil, runtime_context: @root_context))

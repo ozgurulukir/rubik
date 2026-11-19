@@ -274,7 +274,7 @@ module Rubik
 
       def resume_in_process(ctx, entry)
         ctx.recorder&.record_user_turn("!goal resume")
-        # Kaynaklama (issue #454): canlı girdiden; resume! geçişi (SUSPENDED → RUNNING) kaynaklamanın parçası.
+        # Kaynaklama (issue #454): resume! geçişi (SUSPENDED → RUNNING) kaynaklamanın parçası.
         goal_state = entry.goal_state
         goal_ledger = entry.ledger
         goal_state.resume!
@@ -491,23 +491,23 @@ module Rubik
       end
       private_class_method :build_goal_orchestrator
 
-      # Damga meta'sındaki suspended_at (iso8601) → Time; bozuk değer
-      # nil — Loop#append_resume_marker! "unknown" downtime basar.
+      # suspended_at (iso8601) → Time; bozuk değer nil — marker "unknown" basar.
       def parse_suspended_at(value)
         Time.iso8601(value.to_s)
       rescue ArgumentError, TypeError
         nil
       end
 
-      # Defense-in-depth behind the loop-level goal guard: if a success
-      # terminal escapes GoalWait with live subagent units, the goal must
-      # stop honestly instead of celebrating a false completion. Fails
-      # CONSERVATIVE: coeffect absence is nil-safe (Coeffects.get never
-      # raises for a missing subsystem), so a raise here is real breakage
-      # — reporting zero would launder it into exactly the false
-      # "Goal Achieved" this backstop exists to refuse.
+      # Defense-in-depth behind the loop-level goal guard: a success terminal
+      # that escapes GoalWait over live units must stop honestly, not celebrate.
+      # Fails CONSERVATIVE: coeffect absence is nil-safe, so a raise is real
+      # breakage — zero would launder it into the false "Goal Achieved".
       def goal_active_subagent_count(ctx)
         supervisor = Rubik::Coeffects.get(ctx.runtime_manager&.context, Rubik::Coeffects::SUBAGENT_SUPERVISOR)
+        # Issue #594: dispatched_count covers :budget_exhausted units parked
+        # mid-task; doubles predating it still answer through active_count.
+        return supervisor.dispatched_count.to_i if supervisor.respond_to?(:dispatched_count)
+
         supervisor&.active_count.to_i
       rescue StandardError => e
         Rubik::Log.warn(:orchestrator, "goal completion defense could not inspect subagents " \
