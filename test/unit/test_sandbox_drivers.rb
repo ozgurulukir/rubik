@@ -34,9 +34,15 @@ class TestSandboxDrivers < Minitest::Test
 
   # Issue #597-3 follow-up: a child that exits 124 on its own (e.g. it ran
   # under timeout(1)) must keep timed_out=false — the flag is plumbed, never
-  # re-derived from the exit code.
+  # re-derived from the exit code. The guard is injected permissively: on
+  # Windows every spawn routes through the cmd branch, whose fail-closed
+  # classifier cannot classify this shell-only construct (it would block the
+  # spawn before run) — the assertion under test is the flag plumb, not
+  # command classification.
   def test_process_driver_flag_false_for_legitimate_timeout_exit
-    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    pass_through_guard = Object.new
+    def pass_through_guard.verify_command_safety!(_cmd, shell: nil, **_opts) = true # rubocop:disable Lint/UnusedMethodArgument -- permissive test double
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new(guard: pass_through_guard)
     res = driver.run("exit 124", chdir: @temp_dir)
     refute res[:ok]
     assert_equal 124, res[:exit_code]
