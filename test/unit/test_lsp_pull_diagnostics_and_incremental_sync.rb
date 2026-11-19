@@ -28,6 +28,11 @@ class TestLspPullDiagnosticsAndIncrementalSync < Minitest::Test
     "severity" => 1,
     "message" => "pulled issue"
   }.freeze
+  RELATED_DIAGNOSTIC_ITEM = {
+    "range" => { "start" => { "line" => 3, "character" => 2 }, "end" => { "line" => 3, "character" => 9 } },
+    "severity" => 2,
+    "message" => "related issue"
+  }.freeze
 
   def setup
     @tmp = Dir.mktmpdir("rubik lsp 583 ")
@@ -205,6 +210,89 @@ class TestLspPullDiagnosticsAndIncrementalSync < Minitest::Test
 
     # No pull machinery may fire on a push-only server.
     refute_includes(messages_from(log).map { |m| m["method"] }, "textDocument/diagnostic")
+  end
+
+  # --- Issue #585: relatedDocuments -----------------------------------------
+
+  def test_related_documents_are_recorded_through_version_guarded_path
+    client, _log = start_fake_server(
+      "textDocumentSync" => 1,
+      "diagnosticProvider" => true
+    )
+    assert client.did_open("doc.rb", "content")
+    assert client.did_open("other.rb", "other content")
+
+    related = RELATED_DIAGNOSTIC_ITEM
+    abs_other = client.send(:normalized_document_path, "other.rb")
+    version = client.instance_variable_get(:@document_store).version_for(abs_other)
+    client.send(:apply_pull_diagnostics_result,
+                client.send(:normalized_document_path, "doc.rb"),
+                client.instance_variable_get(:@document_store).version_for(client.send(:normalized_document_path, "doc.rb")),
+                { "kind" => "full", "items" => [DIAGNOSTIC_ITEM],
+                  "relatedDocuments" => {
+                    client.send(:document_uri, "other.rb") => { "kind" => "full", "items" => [related] }
+                  } })
+
+    snapshot = client.diagnostics_snapshot_for("other.rb")
+    assert_equal :fresh, snapshot[:state], "related document snapshot must go fresh"
+    assert_equal 1, snapshot[:diagnostics].size
+    assert_equal "related issue", snapshot[:diagnostics].first["message"]
+    assert_equal version, snapshot[:published_version]
+  end
+
+  def test_related_documents_stale_version_is_discarded
+    client, _log = start_fake_server(
+      "textDocumentSync" => 1,
+      "diagnosticProvider" => true
+    )
+    assert client.did_open("doc.rb", "content")
+    assert client.did_open("other.rb", "v1")
+    abs_doc = client.send(:normalized_document_path, "doc.rb")
+    stale_version = client.instance_variable_get(:@document_store).version_for(abs_doc)
+
+    # The pulled document moves to a new version before the pull result
+    # lands: the WHOLE result — items AND relatedDocuments — must be
+    # discarded by the outer version guard, leaving the related document
+    # untouched (:pending, since nothing else was recorded for it).
+    client.did_change("doc.rb", "v2")
+    client.send(:apply_pull_diagnostics_result,
+                abs_doc,
+                stale_version,
+                { "kind" => "full", "items" => [DIAGNOSTIC_ITEM],
+                  "relatedDocuments" => {
+                    client.send(:document_uri, "other.rb") => { "kind" => "full", "items" => [RELATED_DIAGNOSTIC_ITEM] }
+                  } })
+
+    snapshot = client.diagnostics_snapshot_for("doc.rb")
+    refute_equal :fresh, snapshot[:state], "stale pull result must not record items"
+    assert_empty snapshot[:diagnostics]
+    related_snapshot = client.diagnostics_snapshot_for(client.send(:normalized_document_path, "other.rb"))
+    assert_equal :pending, related_snapshot[:state], "related payload rides the same version guard"
+    assert_empty related_snapshot[:diagnostics]
+  end
+
+  def test_related_documents_unknown_or_closed_uris_are_skipped
+    client, _log = start_fake_server(
+      "textDocumentSync" => 1,
+      "diagnosticProvider" => true
+    )
+    assert client.did_open("doc.rb", "content")
+
+    # Never-opened document URI plus a malformed URI: both must be skipped
+    # without raising, and the pulled document must still be recorded.
+    client.send(:apply_pull_diagnostics_result,
+                client.send(:normalized_document_path, "doc.rb"),
+                client.instance_variable_get(:@document_store).version_for(client.send(:normalized_document_path, "doc.rb")),
+                { "kind" => "full", "items" => [DIAGNOSTIC_ITEM],
+                  "relatedDocuments" => {
+                    "file:///tmp/rubik-never-opened-#{SecureRandom.hex(4)}.rb" => { "kind" => "full", "items" => [RELATED_DIAGNOSTIC_ITEM] },
+                    "not-a-uri" => { "kind" => "full", "items" => [] },
+                    "file:///collected/garbage" => "not-a-hash"
+                  } })
+
+    snapshot = client.diagnostics_snapshot_for("doc.rb")
+    assert_equal :fresh, snapshot[:state]
+    assert_equal 1, snapshot[:diagnostics].size
   end
 
   # --- Tool surface ---------------------------------------------------------

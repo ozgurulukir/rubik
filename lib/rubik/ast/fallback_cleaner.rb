@@ -117,7 +117,12 @@ module Rubik
 
         j = start + 1
         while j < raw.length
-          j += 1 if raw[j] == "\\"
+          if raw[j] == "\\"
+            # Issue #600: skip the escaped pair entirely — an escaped `\/`
+            # is content, not the delimiter, and must not end the span.
+            j += 2
+            next
+          end
           break if raw[j] == "/"
 
           j += 1

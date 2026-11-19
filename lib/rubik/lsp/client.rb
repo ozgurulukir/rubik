@@ -437,7 +437,9 @@ module Rubik
       # applied only when the document still sits at the pulled version, so
       # stale async results (a slow server answering after a further edit) are
       # discarded instead of clobbering the newer snapshot. relatedDocuments
-      # is ignored — this client pulls per document.
+      # entries (cross-file diagnostics for OTHER documents, issue #585) are
+      # recorded through the same version-guarded path; entries for documents
+      # rubik never opened are skipped without erroring.
       def apply_pull_diagnostics_result(abs_path, pulled_version, result)
         return unless result.is_a?(Hash)
 
@@ -448,16 +450,45 @@ module Rubik
           if result["kind"] == "unchanged"
             existing = @document_store.diagnostic_snapshot(abs_path)[:diagnostics]
             @document_store.record_diagnostics(abs_path, existing, current)
-            return
+          else
+            items = result["items"].is_a?(Array) ? result["items"] : []
+            @document_store.record_diagnostics(abs_path, items, current)
           end
 
-          items = result["items"].is_a?(Array) ? result["items"] : []
-          @document_store.record_diagnostics(abs_path, items, current)
+          record_related_documents(result["relatedDocuments"])
         end
         nil
       rescue StandardError => e
         Rubik::Log.warn(:lsp, "diagnostic pull result dropped for #{abs_path}: #{e.class}: #{e.message}")
         nil
+      end
+
+      # Records cross-file diagnostics from a pull response's relatedDocuments
+      # map (DocumentUri -> diagnostic report, issue #585). Each entry goes
+      # through the same version-guarded record_diagnostics path as the pulled
+      # document; documents rubik never opened (or closed since) are skipped
+      # without erroring — a pull response may legitimately reference files
+      # outside this client's document store.
+      def record_related_documents(related)
+        return unless related.is_a?(Hash)
+
+        related.each do |uri, report|
+          next unless report.is_a?(Hash)
+
+          begin
+            raw_path = Rubik::Platform.from_file_uri(uri)
+            path = normalized_document_path(raw_path)
+            next unless @document_store.open?(path)
+
+            version = @document_store.version_for(path)
+            next unless version
+
+            items = report["items"].is_a?(Array) ? report["items"] : []
+            @document_store.record_diagnostics(path, items, version)
+          rescue StandardError => e
+            Rubik::Log.warn(:lsp, "relatedDocument entry skipped for #{uri}: #{e.class}: #{e.message}")
+          end
+        end
       end
 
       # ---- Delegates to the transport (issue #470). These thin shims keep

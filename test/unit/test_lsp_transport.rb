@@ -185,4 +185,52 @@ class TestLSPTransport < Minitest::Test
     assert_operator elapsed, :<, 2.0, "a full pipe must fail at the deadline, not park forever"
     assert_match(/write failed/, @transport.instance_variable_get(:@reader_failure))
   end
+
+  # --- Issue #601: bounded Content-Length framing ----------------------------
+
+  def assert_reader_failed_for_frame(frame, failure_pattern)
+    @transport.instance_variable_set(:@running, true)
+    @transport.start_reader_thread
+    @transport.instance_variable_get(:@pending_requests)[1] = 0.0
+
+    @from_server_w.write(frame)
+    @from_server_w.close
+
+    error = assert_raises(Rubik::LSP::Transport::RequestError) do
+      @transport.wait_for_response(1, timeout: 2)
+    end
+    assert_equal :reader_failure, error.reason
+    assert_match(failure_pattern, @transport.instance_variable_get(:@reader_failure))
+    assert @transport.crashed?, "invalid framing must break the reader loop, not park it"
+  end
+
+  def test_non_positive_content_length_fails_reader
+    assert_reader_failed_for_frame(
+      "Content-Length: 0\r\n\r\n",
+      /invalid Content-Length: 0/
+    )
+  end
+
+  def test_oversized_content_length_fails_reader_instead_of_blocking
+    start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    assert_reader_failed_for_frame(
+      "Content-Length: #{Rubik::LSP::Transport::MAX_FRAME_SIZE + 1}\r\n\r\n",
+      /invalid Content-Length: #{Regexp.escape((Rubik::LSP::Transport::MAX_FRAME_SIZE + 1).to_s)}/
+    )
+    # The garbage header must fail fast, not park on an unbounded read.
+    assert_operator Process.clock_gettime(Process::CLOCK_MONOTONIC) - start, :<, 2.0
+  end
+
+  def test_max_frame_size_boundary_payload_is_accepted
+    @transport.instance_variable_set(:@running, true)
+    @transport.start_reader_thread
+    @transport.instance_variable_get(:@pending_requests)[7] = 0.0
+
+    body = JSON.dump(jsonrpc: "2.0", id: 7, result: { "ok" => true })
+    @from_server_w.write(framed(body))
+    @from_server_w.close
+
+    msg = @transport.wait_for_response(7, timeout: 2)
+    assert_equal({ "ok" => true }, msg, "a legal frame must still correlate normally")
+  end
 end

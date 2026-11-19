@@ -198,4 +198,84 @@ class TestAstFallbackScanner < Minitest::Test
     assert_equal "class Demo", sym(prism_symbols(src), "Demo").signature
     assert_equal "class Demo < Base", sym(fallback_symbols(src), "Demo").signature
   end
+
+  # --- Issue #600: scope stack + escaped slash in regex literals ------------
+
+  def test_top_level_def_after_class_body_is_not_misattributed
+    src = <<~RUBY
+      class A
+        def inside
+          1
+        end
+      end
+
+      def helper
+        2
+      end
+    RUBY
+    symbols = fallback_symbols(src)
+    assert_equal [7, 9], [sym(symbols, "helper").line_start, sym(symbols, "helper").line_end],
+                 "a def after the class body closed must index at top level"
+    assert_nil sym(symbols, "A#helper")
+    assert_equal [2, 4], [sym(symbols, "A#inside").line_start, sym(symbols, "A#inside").line_end]
+  end
+
+  def test_nested_module_and_class_yield_qualified_names
+    src = <<~RUBY
+      module M
+        class C
+          def work
+            1
+          end
+        end
+      end
+    RUBY
+    symbols = fallback_symbols(src)
+    assert sym(symbols, "M::C"), "nested class must carry the M:: prefix"
+    assert sym(symbols, "M::C#work"), "methods in a nested class must be qualified as M::C#work"
+    assert_equal [1, 7], [sym(symbols, "M").line_start, sym(symbols, "M").line_end]
+    assert_equal [2, 6], [sym(symbols, "M::C").line_start, sym(symbols, "M::C").line_end]
+  end
+
+  def test_defs_after_nested_module_close_at_top_level
+    src = <<~RUBY
+      module Outer
+        class Inner
+          def deep
+            1
+          end
+        end
+      end
+
+      def top
+        2
+      end
+    RUBY
+    symbols = fallback_symbols(src)
+    assert_equal [9, 11], [sym(symbols, "top").line_start, sym(symbols, "top").line_end]
+    assert sym(symbols, "Outer::Inner#deep")
+    assert_nil sym(symbols, "Outer::Inner#top")
+  end
+
+  def test_regex_span_end_skips_escaped_slash
+    cleaner = Rubik::AST::FallbackCleaner
+    raw = "/a\\/b/"
+    fin = cleaner.regex_span_end(raw, 0)
+    assert_equal 5, fin, "the closing delimiter is the final slash, not the escaped \\/"
+  end
+
+  def test_regex_with_escaped_slash_is_fully_blanked
+    src = <<~RUBY
+      class Slashy
+        PATTERN = /end\\/def/
+        def real
+          1
+        end
+      end
+    RUBY
+    symbols = fallback_symbols(src)
+    assert_equal [3, 5], [sym(symbols, "Slashy#real").line_start, sym(symbols, "Slashy#real").line_end],
+                 "keywords inside a regex with \\/ must stay blanked for end-matching"
+    assert_equal [1, 6], [sym(symbols, "Slashy").line_start, sym(symbols, "Slashy").line_end]
+  end
 end
