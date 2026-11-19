@@ -44,8 +44,10 @@ module Rubik
         # /chat/completions to a versioned tail, and a bare /openai tail
         # would spell /openai/chat/completions (a 404 there). POSTs hard-400
         # with MissingSessionID until providers.<key>.session_header carries
-        # x-opencode-session — the wizard collects it (ask_session_header).
-        { id: "opencode", label: "opencode (Go)", type: "openai_compatible", api: "https://opencode.ai/inference/go/openai/v1", catalog_id: "opencode", use_catalog_api: false },
+        # x-opencode-session, so the row PRE-ANSWERS the wizard question:
+        # selecting the preset applies the header without prompting (ask_session_header).
+        { id: "opencode", label: "opencode (Go)", type: "openai_compatible", api: "https://opencode.ai/inference/go/openai/v1", catalog_id: "opencode", use_catalog_api: false,
+          session_header: "x-opencode-session" },
         { id: "ollama", label: "Ollama (yerel / local)", type: "ollama", api: "http://localhost:11434", catalog_id: nil }
       ].freeze
 
