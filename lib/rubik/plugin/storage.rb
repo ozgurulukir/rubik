@@ -92,6 +92,8 @@ module Rubik
       # against. Keyed by plugin name (the package root's basename).
       def record_package(plugin_dir, name, scope: :project)
         target_dir = scope.to_sym == :global ? global_plugins_dir : project_plugins_dir
+        # Fail-closed on a corrupt manifest (issue #596, cf. record_hash).
+        manifest_store.refuse_corrupt_manifest!(target_dir, :record, name.to_s)
         manifest = load_manifest(target_dir)
         manifest[name.to_s] = {
           "type" => "directory",
@@ -143,6 +145,9 @@ module Rubik
 
         if File.directory?(source_path)
           plugin_name = File.basename(source_path)
+          # Same guard as remove_plugin (issues #554/#596).
+          return { ok: false, error: "Invalid plugin name: #{plugin_name.inspect}." } unless safe_plugin_name?(plugin_name, target_dir)
+
           dest_path = File.join(target_dir, plugin_name)
 
           if (violation = PackageInventory.violation(source_path))
@@ -159,9 +164,8 @@ module Rubik
             return { ok: true, name: plugin_name, path: dest_path, type: :directory }
           end
 
-          # Deterministic re-add (also the legacy-manifest re-consent path):
-          # replace any previous copy so stale helpers cannot survive into
-          # the newly consented package.
+          # Deterministic re-add (also the legacy re-consent path): replace
+          # any previous copy so stale helpers cannot survive the re-consent.
           FileUtils.rm_rf(dest_path)
           FileUtils.cp_r(source_path, dest_path)
 
@@ -176,8 +180,12 @@ module Rubik
 
           { ok: true, name: plugin_name, path: dest_path, type: :directory }
         else
+          source_name = File.basename(source_path)
           plugin_name = File.basename(source_path, ".rb")
-          dest_path = File.join(target_dir, File.basename(source_path))
+          # Same guard as remove_plugin (issue #554) before the cp (issue #596).
+          return { ok: false, error: "Invalid plugin name: #{plugin_name.inspect}." } unless safe_plugin_name?(source_name, target_dir)
+
+          dest_path = File.join(target_dir, source_name)
           FileUtils.cp(source_path, dest_path)
           record_hash(dest_path, scope: scope)
 
@@ -224,9 +232,8 @@ module Rubik
 
       # A plugin name must resolve to a single path component directly under
       # target_dir. Reject separators, traversal components (`.`/`..`),
-      # absolute paths and NUL bytes before any rm_f/rm_rf so a caller-supplied
-      # name can never escape the plugins directory (issue #554). Any ordinary
-      # single-component name is allowed, so legitimate plugins keep working.
+      # absolute paths and NUL bytes before any rm_f/rm_rf (issue #554).
+      # Any ordinary single-component name is allowed, so plugins keep working.
       def safe_plugin_name?(name, target_dir)
         component = name.to_s
         return false if component.empty? || component == "." || component == ".."
@@ -240,8 +247,8 @@ module Rubik
       end
 
       # The package root for a path inside the plugins dir: plugins/<first
-      # segment> when that segment is a DIRECTORY (directory plugin); nil for
-      # a single-file plugin. A path outside the plugins dir is not a package.
+      # segment> when that segment is a DIRECTORY; nil for a single-file
+      # plugin or a path outside the plugins dir.
       def package_root_for(path, plugins_dir)
         base = File.expand_path(plugins_dir)
         prefix = "#{base}#{File::SEPARATOR}"
@@ -259,8 +266,7 @@ module Rubik
 
       # Whole-package verification. A legacy (entry-file-only) manifest cannot
       # vouch for helpers that were never consented to, so it is rejected with
-      # an explicit re-consent path: re-add the plugin, or opt into trust with
-      # RUBIK_TRUST_OVERLAYS=1.
+      # an explicit re-consent path (re-add, or RUBIK_TRUST_OVERLAYS=1).
       def verify_package_integrity(package_dir, scope: :project)
         dir = scope.to_sym == :global ? global_plugins_dir : project_plugins_dir
         name = File.basename(package_dir)

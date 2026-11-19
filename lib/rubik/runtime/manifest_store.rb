@@ -59,8 +59,11 @@ module Rubik
 
       # Per-basename hash record: load → merge → save. The caller owns hash
       # computation (file vs normalized content) and pre-write guards; the
-      # store owns the entry shape and the manifest mutation.
+      # store owns the entry shape and the manifest mutation. Fail-closed on
+      # a corrupt manifest — recording would rewrite it with only the new
+      # entry and evict the other consented records (issue #596).
       def record_hash(dir, filename, hash, scope:)
+        refuse_corrupt_manifest!(dir, :record, filename)
         manifest = load_manifest(dir)
         manifest[filename] = {
           "sha256" => hash,
@@ -71,8 +74,10 @@ module Rubik
       end
 
       # Symmetric retraction: remove a basename and persist. Returns whether
-      # the key existed (mirrors Hash#delete's semantics).
+      # the key existed (mirrors Hash#delete's semantics). Fail-closed on a
+      # corrupt manifest for the same eviction reason as record_hash.
       def remove_entry(dir, filename)
+        refuse_corrupt_manifest!(dir, :delete, filename)
         manifest = load_manifest(dir)
         existed = manifest.delete(filename)
         save_manifest(dir, manifest) if existed
