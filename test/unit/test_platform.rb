@@ -662,4 +662,16 @@ class TestPlatform < Minitest::Test
 
     assert_equal "ORIGINAL", File.binread(target)
   end
+
+  # Issue #597: the cycle guard must cut only genuine cycles — an object
+  # shared from two sibling places is emitted in full both times.
+  def test_clean_utf8_deep_keeps_shared_non_cyclic_objects
+    shared = ["shared-value"]
+    data = { h1: shared, h2: shared }
+
+    cleaned = Rubik::Platform.clean_utf8_deep(data)
+
+    assert_equal ["shared-value"], cleaned[:h1], "first occurrence must be emitted in full"
+    assert_equal ["shared-value"], cleaned[:h2], "second shared occurrence must NOT be cut as a cycle"
+  end
 end

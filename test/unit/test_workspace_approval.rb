@@ -296,4 +296,30 @@ class TestWorkspaceApproval < Minitest::Test
     assert_empty config.stored
     assert_includes @out.string, "'ghost' is not in the allowlist."
   end
+
+  # Issue #598: a persist failure must print the honest persist-failure line
+  # (report_persist_failure accepts the IO @out), not raise NoMethodError.
+  class FailingPersistConfig < FakeConfig
+    def set(key, value, persist: nil)
+      @stored[key] = [value, persist]
+      { ok: false, error: "disk full" }
+    end
+  end
+
+  def test_add_root_persist_failure_prints_honest_line
+    approval, = build_approval(config: FailingPersistConfig.new)
+    approval.add_root!
+
+    assert_includes @out.string, "Error: could not save to Project level (.rubik/config.yml): disk full"
+    assert_includes @out.string, "(change kept for this session only)"
+    refute_includes @out.string, "[Rubik::Workspace] Added"
+  end
+
+  def test_remove_allowed_dir_persist_failure_prints_honest_line
+    approval, = build_approval(config: FailingPersistConfig.new("workspace.allowed_external_dirs" => [extra_path]))
+    approval.remove_allowed_dir!
+
+    assert_includes @out.string, "Error: could not save to"
+    refute_includes @out.string, "[Rubik::Allow] Removed"
+  end
 end

@@ -37,9 +37,10 @@ class TestCommandResultContract < Minitest::Test
     remove_temp_dir(@tmp) if @tmp && File.directory?(@tmp)
   end
 
-  def runner_for(success:, exit_code:, output:)
+  def runner_for(success:, exit_code:, output:, timed_out: nil)
     runner = Object.new
     result = { ok: success, exit_code: exit_code, output: output, duration: 0.01 }
+    result[:timed_out] = timed_out unless timed_out.nil?
     runner.define_singleton_method(:run) { |_cmd, **_opts| result }
     runner
   end
@@ -178,4 +179,23 @@ class TestCommandResultContract < Minitest::Test
     sup&.shutdown_all
     root_context&.dispose unless root_context&.disposed?
   end
+end
+
+# Issue #597: the runner's explicit timeout flag wins over the legacy
+# exit-code-124 inference.
+def test_runner_timeout_flag_false_with_exit_124_is_not_a_timeout
+  result = tool_for(runner_for(success: false, exit_code: 124, output: "done", timed_out: false))
+           .execute("command" => "timeout 1 something")
+
+  assert_equal :error, result.status
+  assert_equal false, result.metadata["timed_out"]
+  refute_includes result.output, "(timed out)"
+end
+
+def test_runner_timeout_flag_true_is_reported_as_timeout
+  result = tool_for(runner_for(success: false, exit_code: 124, output: "killed", timed_out: true))
+           .execute("command" => "sleep 10", "timeout" => 1)
+
+  assert_equal true, result.metadata["timed_out"]
+  assert_includes result.output, "(timed out)"
 end

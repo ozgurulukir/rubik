@@ -247,7 +247,10 @@ module Rubik
       end
 
       def kill_child(pid)
-        Process.kill("KILL", pid)
+        # kill_tree (not a bare KILL): handler code under verification may
+        # have spawned subprocesses that a direct-child-only kill would
+        # orphan (issue #597).
+        Rubik::Platform.kill_tree(pid)
         Process.wait(pid)
       rescue StandardError
         nil

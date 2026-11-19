@@ -345,6 +345,13 @@ module Rubik
       end
 
       def meta_set_ref(meta, name, id)
+        # One ref-name guard for BOTH alias-creation paths (issue #602):
+        # put(ref:) previously skipped the validation set_ref enforces, so
+        # an alias with separators/unicode could reach meta.json and yield a
+        # permanently unreadable refs route.
+        name = name.to_s
+        raise ArgumentError, "invalid ref name '#{name}'" unless name.match?(REF_PATTERN)
+
         refs = (meta["refs"] ||= {})
         refs[name] = id
         meta["updated_at"] = Time.now.utc.iso8601

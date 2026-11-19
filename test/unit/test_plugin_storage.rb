@@ -323,4 +323,73 @@ class TestPluginStorage < Minitest::Test
       assert_includes res[:error], "Invalid plugin name"
     end
   end
+  # ── Issue #596: add_plugin guards + fail-closed corrupt manifest ──
+
+  def test_add_plugin_directory_branch_rejects_traversal_source
+    pkg = File.join(@tmp_root, "pkg")
+    FileUtils.mkdir_p(pkg)
+    source = File.join(pkg, "..")
+
+    res = @storage.add_plugin(source, scope: :project)
+
+    refute res[:ok], "a '..'-shaped source must be rejected before any rm_rf/cp_r"
+    assert_includes res[:error], "Invalid plugin name"
+    assert Dir.exist?(@storage.project_plugins_dir)
+  end
+
+  def test_add_plugin_file_branch_rejects_traversal_source
+    pkg = File.join(@tmp_root, "pkg")
+    FileUtils.mkdir_p(pkg)
+    source = File.join(pkg, "..")
+
+    res = @storage.add_plugin("#{source}.rb", scope: :project)
+
+    refute res[:ok] unless File.exist?("#{source}.rb")
+  end
+
+  def test_record_hash_refuses_to_heal_corrupt_manifest
+    manifest = @storage.manifest_path(@storage.project_plugins_dir)
+    File.write(manifest, "{not json")
+    plugin = File.join(@tmp_root, "p.rb")
+    File.write(plugin, "x = 1")
+
+    assert_raises(Rubik::Runtime::ManifestStore::CorruptManifestError) do
+      @storage.record_hash(plugin, scope: :project)
+    end
+    assert_equal "{not json", File.read(manifest), "corrupt manifest must not be rewritten"
+  end
+
+  def test_record_package_refuses_to_heal_corrupt_manifest
+    manifest = @storage.manifest_path(@storage.project_plugins_dir)
+    File.write(manifest, "{not json")
+    pkg = File.join(@tmp_root, "pkg")
+    FileUtils.mkdir_p(pkg)
+    File.write(File.join(pkg, "pkg.rb"), "x = 1")
+
+    assert_raises(Rubik::Runtime::ManifestStore::CorruptManifestError) do
+      @storage.record_package(pkg, "pkg", scope: :project)
+    end
+    assert_equal "{not json", File.read(manifest), "corrupt manifest must not be rewritten"
+  end
+
+  def test_add_plugin_reports_failure_without_healing_corrupt_manifest
+    manifest = @storage.manifest_path(@storage.project_plugins_dir)
+    File.write(manifest, "{not json")
+    plugin = File.join(@tmp_root, "p.rb")
+    File.write(plugin, "x = 1")
+
+    res = @storage.add_plugin(plugin, scope: :project)
+
+    refute res[:ok]
+    assert_equal "{not json", File.read(manifest), "corrupt manifest must not be rewritten"
+  end
+
+  def test_manifest_store_remove_entry_refuses_corrupt_manifest
+    dir = @storage.project_plugins_dir
+    File.write(@storage.manifest_path(dir), "{not json")
+
+    assert_raises(Rubik::Runtime::ManifestStore::CorruptManifestError) do
+      @storage.manifest_store.remove_entry(dir, "x.rb")
+    end
+  end
 end

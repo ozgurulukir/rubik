@@ -47,7 +47,10 @@ module Rubik
         @conversation_history << { role: "user", content: user_text }
         @conversation_history << { role: "assistant", content: assistant_content.to_s }
         trim_conversation_window!
-        @recorder&.record_assistant_response(assistant_content.to_s, tokens: tokens, streamed: streamed)
+        # Same one policy as the input record (shell.rb): replayed turns
+        # hydrate the conversation window but must not re-record events
+        # into the active session JSONL (issue #598).
+        @recorder&.record_assistant_response(assistant_content.to_s, tokens: tokens, streamed: streamed) unless @replaying
       rescue StandardError => e
         Rubik::Platform.debug_warn("turn outcome recording failed (#{e.class}: #{e.message}); turn lost from conversation memory")
         nil

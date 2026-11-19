@@ -212,7 +212,7 @@ module Rubik
         # context already includes the idle-injected notices. The notice
         # turn itself drains first, so this clear is a no-op for it.
         clear_pending_wake_notices! if respond_to?(:clear_pending_wake_notices!)
-        @recorder&.record_user_turn(text)
+        @recorder&.record_user_turn(text) unless @replaying
         @event_bus.emit(:prompt_received, prompt: text)
         task
       end
@@ -270,12 +270,12 @@ module Rubik
             md_stream.finish { |seg| @output.print seg }
             @output.flush if @output.respond_to?(:flush)
           when :tool_call
-            @recorder&.record_tool_call(step_info[:tool], step_info[:args], call_id: step_info[:call_id])
+            @recorder&.record_tool_call(step_info[:tool], step_info[:args], call_id: step_info[:call_id]) unless @replaying
             formatted = renderer.render(step_info)
             @output.puts formatted if formatted && !formatted.empty?
             @output.flush if @output.respond_to?(:flush)
           when :tool_result
-            @recorder&.record_tool_result(step_info[:tool], step_info[:output], status: step_info[:status] || :ok, call_id: step_info[:call_id])
+            @recorder&.record_tool_result(step_info[:tool], step_info[:output], status: step_info[:status] || :ok, call_id: step_info[:call_id]) unless @replaying
             formatted = renderer.render(step_info)
             @output.puts formatted if formatted && !formatted.empty?
             @output.flush if @output.respond_to?(:flush)

@@ -219,7 +219,10 @@ module Rubik
       # contract through BOTH dispatch paths — no display-text parsing.
       def command_result(cmd, res, duration_ms:)
         exit_code = res[:exit_code]
-        timed_out = exit_code.to_i == 124
+        # Explicit timeout flag from the runner (popen_capture) when present;
+        # fall back to the legacy exit-code-124 inference for drivers that do
+        # not carry the flag (issue #597).
+        timed_out = res.key?(:timed_out) ? res[:timed_out] == true : exit_code.to_i == 124
         status_text = res[:ok] ? "OK" : "EXIT #{exit_code}"
         shell_tag = res[:shell] ? " (#{res[:shell]})" : ""
         out = "[#{status_text}]#{shell_tag} #{res[:output]}"

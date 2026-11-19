@@ -78,7 +78,19 @@ module Rubik
         record("repl_command", { "command" => cmd, "output" => output })
       end
 
-      def switch_session_file(target_file, cleanup_empty_current: true)
+      # Durability barrier for copies of the live JSONL (issue #598): records
+      # are opened, written and closed per event, so there is no buffered
+      # writer to flush — this fsync barrier guarantees a save copy taken
+      # afterwards never observes a torn tail.
+      def flush
+        return unless @session_file && File.exist?(@session_file)
+
+        File.open(@session_file, "a", &:fsync)
+      rescue StandardError
+        nil
+      end
+
+      def switch_session_file(target_file, cleanup_empty_current: true, parent_session_id: nil)
         if cleanup_empty_current && @session_file && File.exist?(@session_file) && File.expand_path(@session_file) != File.expand_path(target_file)
           begin
             lines = File.readlines(@session_file).reject { |l| l.strip.empty? }
@@ -111,7 +123,7 @@ module Rubik
         end
 
         record("session_resumed", {
-                 "parent_session_id" => File.basename(target_file, ".jsonl"),
+                 "parent_session_id" => parent_session_id || File.basename(target_file, ".jsonl"),
                  "resumed_at" => Time.now.iso8601
                })
       end
