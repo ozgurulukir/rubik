@@ -38,6 +38,12 @@ module Rubik
       # prevent the kill_tree that unblocks the pipe.
       WRITE_TIMEOUT = 5.0
 
+      # Upper bound on a single framed message the reader accepts (issue #601).
+      # A wedged/corrupt server emitting a garbage oversized Content-Length
+      # would otherwise park the reader thread on a blocking read of that many
+      # bytes. 16 MiB is far above any legitimate LSP payload.
+      MAX_FRAME_SIZE = 16 * 1024 * 1024
+
       attr_reader :mutex, :cv, :running
 
       def initialize(root_dir:, on_message:)
@@ -330,6 +336,17 @@ module Rubik
               end
 
               break if content_length.nil?
+
+              # Issue #601: a non-positive or oversized wire-supplied
+              # Content-Length means corrupt framing — fail the reader
+              # instead of parking on an unbounded blocking read.
+              if content_length <= 0 || content_length > MAX_FRAME_SIZE
+                @mutex.synchronize do
+                  @reader_failure = "LSP server sent invalid Content-Length: #{content_length} " \
+                                    "(must be > 0 and <= #{MAX_FRAME_SIZE})"
+                end
+                break
+              end
 
               body = @stdout.read(content_length)
               break unless body

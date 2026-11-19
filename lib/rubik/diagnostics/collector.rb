@@ -12,6 +12,12 @@ module Rubik
       SEVERITY_ORDER = { error: 0, warning: 1, info: 2, hint: 3, unknown: 4 }.freeze
       LSP_SEVERITY_MAP = { 1 => :error, 2 => :warning, 3 => :info, 4 => :hint }.freeze
 
+      # Issue #601: the collector must not grow without bound. CLI/parsed
+      # entries are evicted oldest-first past this cap; LSP entries are keyed
+      # by file, so a re-harvest REPLACES that file's slice instead of
+      # appending stale duplicates forever.
+      MAX_ENTRIES = 2000
+
       attr_reader :root_dir, :lsp_manager
 
       def initialize(lsp_manager: nil, root_dir: Dir.pwd)
@@ -34,7 +40,10 @@ module Rubik
       def add_entry(entry)
         return unless entry.is_a?(Entry)
 
-        @mutex.synchronize { @entries << entry }
+        @mutex.synchronize do
+          @entries << entry
+          evict_oldest_beyond_cap
+        end
       end
 
       # Parses CLI compiler/linter output and adds entries
@@ -54,15 +63,20 @@ module Rubik
               raw_text: e.raw_text
             )
           end
+          evict_oldest_beyond_cap
         end
       end
 
-      # Ingests raw LSP diagnostics from a file path
+      # Ingests raw LSP diagnostics from a file path. Keyed by file: the
+      # previous slice for that file is replaced per harvest (issue #601),
+      # so repeated collect_lsp! calls stay bounded instead of accreting
+      # stale entries.
       def add_lsp_diagnostics(file_path, lsp_diags)
         return if lsp_diags.nil? || lsp_diags.empty?
 
         rel_file = normalize_rel_path(file_path)
         @mutex.synchronize do
+          @entries.reject! { |e| e.file == rel_file }
           lsp_diags.each do |d|
             start_pos = d.dig("range", "start") || {}
             line = (start_pos["line"] || 0) + 1
@@ -81,6 +95,7 @@ module Rubik
               raw_text: d.to_s
             )
           end
+          evict_oldest_beyond_cap
         end
       end
 
@@ -174,6 +189,14 @@ module Rubik
       end
 
       private
+
+      # Issue #601: keeps @entries bounded — drops the oldest entries once the
+      # cap is exceeded. Called with @mutex held.
+      def evict_oldest_beyond_cap
+        return if @entries.size <= MAX_ENTRIES
+
+        @entries.shift(@entries.size - MAX_ENTRIES)
+      end
 
       def escape_xml(str)
         str.to_s

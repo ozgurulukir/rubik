@@ -172,22 +172,28 @@ module Rubik
       end
 
       def extract_via_fallback(symbols)
-        current_class_or_module = nil
+        # Scope stack of [qualified_name, end_line] pairs (issue #600):
+        # entries pop once the scanner moves past their matching `end`, so
+        # top-level defs after a class body are no longer misattributed and
+        # nested `module M; class C` yields `M::C` prefixes.
+        scopes = []
         i = 0
 
         while i < code_lines.size
-          line = code_lines[i]
           line_num = i + 1
-          stripped = line.strip
+          scopes.reject! { |(_, end_line)| line_num > end_line }
+
+          stripped = code_lines[i].strip
 
           if stripped.start_with?("class ") || stripped.start_with?("module ")
             kind = stripped.start_with?("class ") ? :class : :module
             name = stripped.split(/\s+/)[1].to_s.split("<").first.to_s.strip
-            current_class_or_module = name
+            qualified_name = scopes.empty? ? name : "#{scopes.last[0]}::#{name}"
             end_line = find_matching_end(i)
+            scopes << [qualified_name, end_line]
 
             symbols << Symbol.new(
-              name: name,
+              name: qualified_name,
               kind: kind,
               file: @file_path,
               line_start: line_num,
@@ -196,7 +202,7 @@ module Rubik
             )
           elsif stripped.start_with?("def ")
             method_name = stripped.sub(/^def\s+/, "").split(/[(\s;]/).first.strip
-            full_name = current_class_or_module ? "#{current_class_or_module}##{method_name}" : method_name
+            full_name = scopes.empty? ? method_name : "#{scopes.last[0]}##{method_name}"
             end_line = find_matching_end(i)
             calls_src = lines[(line_num - 1)..(end_line - 1)]&.join.to_s
             calls = []

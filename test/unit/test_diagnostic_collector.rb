@@ -95,4 +95,49 @@ class TestDiagnosticCollector < Minitest::Test
     assert_includes term, "Diagnostic Fusion Summary (1 error(s), 0 warning(s)):"
     assert_includes term, "❌ [ERROR] lib/auth.rb:42:8 - unexpected token (syntax)"
   end
+
+  # --- Issue #601: bounded growth / per-file eviction -------------------------
+
+  def lsp_item(line, message)
+    {
+      "range" => { "start" => { "line" => line, "character" => 0 }, "end" => { "line" => line, "character" => 1 } },
+      "severity" => 1,
+      "message" => message
+    }
+  end
+
+  def test_repeated_lsp_harvests_replace_file_slice_instead_of_accreting
+    @collector.add_lsp_diagnostics("lib/calc.rb", [lsp_item(0, "old error one"), lsp_item(1, "old error two")])
+    assert_equal 2, @collector.count
+
+    # Same file re-harvested: the previous slice must be REPLACED, so the
+    # total stays bounded no matter how many times collect_lsp! runs.
+    @collector.add_lsp_diagnostics("lib/calc.rb", [lsp_item(0, "new error")])
+    @collector.add_lsp_diagnostics("lib/calc.rb", [lsp_item(0, "newest error")])
+    assert_equal 1, @collector.count
+    assert_equal "newest error", @collector.entries.first.message
+  end
+
+  def test_reharvest_keeps_other_files_entries
+    @collector.add_lsp_diagnostics("lib/keep.rb", [lsp_item(0, "keep me")])
+    @collector.add_lsp_diagnostics("lib/calc.rb", [lsp_item(0, "replace me")])
+
+    @collector.add_lsp_diagnostics("lib/calc.rb", [lsp_item(0, "fresh")])
+
+    assert_equal 2, @collector.count
+    messages = @collector.entries.map(&:message)
+    assert_includes messages, "keep me"
+    assert_includes messages, "fresh"
+  end
+
+  def test_add_entry_evicts_oldest_beyond_cap
+    cap = Rubik::Diagnostics::Collector::MAX_ENTRIES
+    (cap + 100).times do |i|
+      @collector.add_entry(Rubik::Diagnostics::Entry.new(file: "f.rb", line: i, severity: :error, message: "m#{i}"))
+    end
+    assert_operator @collector.count, :<=, cap, "entries must be evicted instead of growing forever"
+    # oldest entries are dropped first
+    assert_nil(@collector.entries(max_limit: cap + 1).find { |e| e.message == "m0" })
+    assert(@collector.entries(max_limit: cap + 1).find { |e| e.message == "m#{cap + 99}" })
+  end
 end
