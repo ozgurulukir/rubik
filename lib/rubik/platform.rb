@@ -74,9 +74,12 @@ module Rubik
 
       # sanitized_spawn_env plus an explicit nil for every credential-shaped
       # host variable (spawn semantics: nil UNSETs it; benign variables stay
-      # out of the hash and remain normally inheritable). Consumer:
-      # TaskManager#start (issue #586); Driver::ProcessDriver#child_env
-      # carries the same pattern inline.
+      # out of the hash and remain normally inheritable). Consumers:
+      # TaskManager#start (issue #586) and Driver::ProcessDriver#child_env
+      # (both now delegate here — single shared CREDENTIAL_ENV_PATTERN).
+      # The MCP stdio transport keeps its own narrower pattern on purpose:
+      # it matches _REDIS_URL, which this pattern's underscore-URL branch
+      # does not, so this pattern is not a safe superset for that path.
       def credential_free_env
         env = sanitized_spawn_env
         ENV.each_key do |key|

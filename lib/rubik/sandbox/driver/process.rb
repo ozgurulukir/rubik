@@ -19,12 +19,9 @@ module Rubik
         # AWS_ACCESS_KEY_ID are covered without matching words like "tokenizer".
         # NOTE: this is integrity hygiene, NOT a secret-confinement boundary —
         # the child still inherits non-credential host variables by design.
-        CREDENTIAL_ENV_PATTERN = /
-          (?:_|\A)(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PAT|CREDENTIALS?)(?:_|\z)
-          |\A(?:DATABASE|REDIS|MONGO|POSTGRES|MYSQL|AMQP)_URL\z
-          |_(?:DATABASE|CONNECTION)_URL\z
-        /ix
-        private_constant :CREDENTIAL_ENV_PATTERN
+        # The credential pattern and the env construction live once in
+        # Rubik::Platform.credential_free_env (issue #586); this driver is a
+        # pure consumer of that shared implementation.
 
         def available?
           true
@@ -66,13 +63,10 @@ module Rubik
         # child cannot observe or dump them. Benign variables are left out of
         # the hash entirely and therefore remain normally inheritable, which
         # keeps legitimate command execution (PATH, HOME, locale, proxies…)
-        # working. See CREDENTIAL_ENV_PATTERN for the shape that is stripped.
+        # working. See Rubik::Platform::CREDENTIAL_ENV_PATTERN for the shape
+        # that is stripped.
         def child_env
-          env = Rubik::Platform.sanitized_spawn_env
-          ENV.each_key do |key|
-            env[key] = nil if key.match?(CREDENTIAL_ENV_PATTERN)
-          end
-          env
+          Rubik::Platform.credential_free_env
         end
 
         # cmd.exe parses its tail with its own quoting rules that standard
