@@ -31,9 +31,15 @@ module Rubik
         # RETRYABLE_ERRORS lives in client.rb, which requires this file before
         # defining the HTTPClient class.
         def integrity_lost_errors
+          # StreamCallbackError (issue #587): a consumer chunk-callback
+          # exception escapes mid-body, so the SSE framing state is unknown.
+          # It is deliberately narrower than ClientError — a status-decided
+          # ClientError is raised after a full body drain and the session is
+          # reusable — so pooling is not penalized on ordinary HTTP failures.
           @integrity_lost_errors ||= [
             *HTTPClient::RETRYABLE_ERRORS, Net::ReadTimeout, IOError,
-            OpenSSL::SSL::SSLError, Net::HTTPBadResponse, Interrupt
+            OpenSSL::SSL::SSLError, Net::HTTPBadResponse, Interrupt,
+            Rubik::LLM::StreamCallbackError
           ].freeze
         end
 

@@ -257,4 +257,31 @@ class TestLLMConnectionPool < Minitest::Test
       @socket_error = saved_error
     end
   end
+
+  # Issue #587: a StandardError raised inside the streaming chunk callback
+  # escapes mid-body as StreamCallbackError (subclass of ClientError), so
+  # with_connection must treat the pooled session's integrity as lost —
+  # otherwise the next request on that socket desynchronizes against the
+  # server's remaining stream bytes.
+  def test_stream_callback_exception_drops_the_pooled_session
+    require_loopback_server!
+
+    err = assert_raises(Rubik::LLM::StreamCallbackError) do
+      Rubik::LLM::HTTPClient.post_stream_json(url, payload: {}) do |_event|
+        raise "consumer callback blew up"
+      end
+    end
+
+    assert_match(/consumer callback blew up/, err.message)
+    assert_empty pooled_sessions_for_port,
+                 "a mid-stream callback failure must discard the pooled session"
+    assert err.is_a?(Rubik::LLM::ClientError), "StreamCallbackError stays a ClientError"
+
+    # Poisoned-socket follow-up: the next request must succeed on a fresh
+    # connection instead of choking on leftover SSE bytes.
+    events = []
+    Rubik::LLM::HTTPClient.post_stream_json(url, payload: {}) { |e| events << e }
+    assert_equal 2, events.size
+    assert_equal 2, @server.accepts
+  end
 end

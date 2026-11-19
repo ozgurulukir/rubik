@@ -44,6 +44,16 @@ module Rubik
       end
     end
 
+    # An error raised from inside the streaming body read (issue #587): the
+    # consumer's chunk callback blew up mid-stream. Unlike a status-decided
+    # ClientError (raised after a full drain, socket intact), the SSE body
+    # here was cut part-way through, so the pooled session's framing state is
+    # unknown — the connection pool must discard it or the next request on
+    # that socket desynchronizes against the server's remaining stream bytes.
+    # Subclass of ClientError so every existing `rescue ClientError` site
+    # keeps working.
+    class StreamCallbackError < ClientError; end
+
     class HTTPClient
       # Errors that are safe to retry with an idempotent bounded backoff:
       # connect-phase failures and transport resets. Net::ReadTimeout is
@@ -390,7 +400,16 @@ module Rubik
             end
 
             response.read_body do |chunk|
+              # Any exception escaping the consumer's callback (or the SSE
+              # parse) cuts the body mid-stream. Re-type it as
+              # StreamCallbackError so ConnectionPool#with_connection can
+              # tell "socket integrity unknown" apart from a status-decided
+              # ClientError raised after a full drain (issue #587).
               parser.feed(chunk).each(&callback)
+            rescue Interrupt
+              raise
+            rescue StandardError => e
+              raise Rubik::LLM::StreamCallbackError, "Streaming callback failed: #{e.class}: #{e.message}"
             end
           end
 
