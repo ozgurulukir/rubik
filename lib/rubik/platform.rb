@@ -61,6 +61,30 @@ module Rubik
         env
       end
 
+      # Credential-shaped variable names stripped from child-process
+      # environments (issue #586). Matching is by underscore-delimited
+      # segment (case-insensitive) so OPENAI_API_KEY, MY_SECRET and
+      # AWS_ACCESS_KEY_ID are covered without matching words like
+      # "tokenizer". NOTE: integrity hygiene, NOT a confinement boundary.
+      CREDENTIAL_ENV_PATTERN = /
+        (?:_|\A)(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PAT|CREDENTIALS?)(?:_|\z)
+        |\A(?:DATABASE|REDIS|MONGO|POSTGRES|MYSQL|AMQP)_URL\z
+        |_(?:DATABASE|CONNECTION)_URL\z
+      /ix
+
+      # sanitized_spawn_env plus an explicit nil for every credential-shaped
+      # host variable (spawn semantics: nil UNSETs it; benign variables stay
+      # out of the hash and remain normally inheritable). Consumer:
+      # TaskManager#start (issue #586); Driver::ProcessDriver#child_env
+      # carries the same pattern inline.
+      def credential_free_env
+        env = sanitized_spawn_env
+        ENV.each_key do |key|
+          env[key] = nil if key.match?(CREDENTIAL_ENV_PATTERN)
+        end
+        env
+      end
+
       def host_os
         RbConfig::CONFIG["host_os"] || ""
       end
