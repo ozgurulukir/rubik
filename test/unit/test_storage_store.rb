@@ -456,4 +456,23 @@ class TestStorageStore < Minitest::Test
     assert_equal record["id"], @store.get(type: "note", id: prefix)["id"]
     assert_equal record["id"], @store.get(type: "note", id: record["row"].to_s)["id"]
   end
+
+  # Issue #602: put(ref:) must enforce the same REF_PATTERN as set_ref.
+  def test_put_rejects_invalid_ref_alias
+    ["bad/name", "bad name", "bad\u00e9"].each do |bad|
+      e = assert_raises(ArgumentError) do
+        @store.put(type: "note", title: "t", ref: bad)
+      end
+      assert_includes e.message, "invalid ref name"
+    end
+    # Nothing was written: the store is lazily installed, so a rejected
+    # put must not have created the store dir at all.
+    refute File.exist?(File.join(@root, "demo-proj", "store", "meta.json"))
+  end
+
+  def test_put_accepts_valid_ref_alias
+    @store.put(type: "note", title: "t", ref: "alpha_1.2-3")
+    meta = JSON.parse(File.read(File.join(@root, "demo-proj", "store", "meta.json")))
+    assert meta["refs"].key?("alpha_1.2-3")
+  end
 end
