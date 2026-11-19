@@ -118,7 +118,8 @@ module Rubik
           label = "#{pin[:label]}  ·  #{host_of(api)}"
           choices << label
           lookup[label] = { id: pin[:id], label: pin[:label], type: pin[:type], base_url: api,
-                            catalog_id: pin[:catalog_id], catalog_entry: entry }
+                            catalog_id: pin[:catalog_id], catalog_entry: entry,
+                            session_header: pin[:session_header] }.compact
         end
         choices << CUSTOM_LABEL
         lookup[CUSTOM_LABEL] = :custom
@@ -219,6 +220,13 @@ module Rubik
       # openai_compatible family is asked: anthropic/ollama know no such knob.
       def ask_session_header(plan)
         return plan unless plan[:type] == "openai_compatible"
+
+        # Presets that KNOW the gateway contract (opencode Go) pre-answer the
+        # question: zero extra prompts, one honest notice instead.
+        if plan[:session_header].is_a?(String) && !plan[:session_header].strip.empty?
+          @ui.puts @ui.paint("Session header from preset: #{plan[:session_header]} (applied automatically)", :dim)
+          return plan
+        end
 
         choice = @ui.select(S_SESSION_HEADER, [SESSION_HEADER_NO, SESSION_HEADER_YES], default: SESSION_HEADER_NO)
         return :cancelled unless choice.is_a?(String)

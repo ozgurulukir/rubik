@@ -465,6 +465,31 @@ class TestConnectWizard < Minitest::Test
     assert_equal "x-opencode-session", @config.provider_spec("openai")["session_header"]
   end
 
+  # The opencode preset KNOWS the Go gateway contract: the session-header
+  # question is pre-answered — zero extra prompts, one notice line instead.
+  def test_session_header_preset_applies_without_asking
+    io = StringIO.new
+    ui = ScriptedConnectPrompt.new([
+                                     pick("opencode (Go)"), # preset carries session_header
+                                     accept_default,        # endpoint (no session-header prompts follow)
+                                     pick("API key"),
+                                     literal("fake-opencode-key"),
+                                     pick("model-a"),
+                                     pick("default only"),
+                                     literal(true)
+                                   ])
+    res = wizard(ui, io: io).run
+
+    assert res[:ok], res.inspect
+    spec = @config.provider_spec("opencode")
+    assert_equal "x-opencode-session", spec["session_header"]
+    assert_equal "https://opencode.ai/inference/go/openai/v1/chat/completions", spec["endpoint"]
+    # Honest notice replaces the prompts (live-terminal surface), and the
+    # confirm summary still names the header.
+    assert ui.printed.any? { |l| l.include?("Session header from preset") }, ui.printed.inspect
+    assert_includes io.string, "x-opencode-session"
+  end
+
   def test_cancel_at_session_header_name_prompt_writes_nothing
     ui = ScriptedConnectPrompt.new([
                                      pick("OpenAI"),

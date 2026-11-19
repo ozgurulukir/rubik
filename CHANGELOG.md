@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Zero-prompt session header for the opencode (Go) preset:** the connect
+  wizard's preset row pre-answers the session-header question — selecting
+  `opencode (Go)` applies `x-opencode-session` automatically (one notice
+  line instead of two prompts) and the confirm summary still names it.
+  The question remains for custom endpoints and catalog picks.
+
 ## [0.14.0] - 2026-11-19
 
 The session-attribution minor: gateway plumbing that needed a stable

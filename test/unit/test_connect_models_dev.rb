@@ -147,6 +147,9 @@ class TestConnectModelsDev < Minitest::Test
     # console endpoint), so the pinned api must win over the catalog.
     assert_equal "https://opencode.ai/inference/go/openai/v1", row[:api]
     assert_equal false, row[:use_catalog_api]
+    # The row pre-answers the wizard's session-header question (zero-prompt
+    # connect flow): the Go gateway hard-400s without it.
+    assert_equal "x-opencode-session", row[:session_header]
   end
 
   def test_opencode_preset_base_normalizes_to_v1_chat_completions
