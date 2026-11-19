@@ -86,4 +86,25 @@ class TestConfigChildScope < Minitest::Test
     ctx.dispose
     assert_nil @parent_config.fetch("temporary_probe_key")
   end
+
+  # Issue #599: an explicit nil override must shadow the parent value.
+  def test_explicit_nil_override_shadows_parent
+    @parent_config.set("experimental_flag", "parent_value")
+    child_config = @parent_config.extend
+
+    child_config.set("experimental_flag", nil)
+
+    assert_nil child_config.fetch("experimental_flag")
+    assert_equal "parent_value", @parent_config.fetch("experimental_flag")
+  end
+
+  def test_nil_override_then_delete_restores_parent_value
+    @parent_config.set("experimental_flag", "parent_value")
+    child_config = @parent_config.extend
+    child_config.set("experimental_flag", nil)
+
+    child_config.delete("experimental_flag")
+
+    assert_equal "parent_value", child_config.fetch("experimental_flag")
+  end
 end

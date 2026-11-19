@@ -40,12 +40,19 @@ module Rubik
       def fetch(key, default = nil)
         @monitor.synchronize do
           keys = key.to_s.split(".")
-          val = keys.reduce(@overrides) do |acc, k|
-            break nil unless acc.is_a?(Hash) && acc.key?(k)
-
-            acc[k]
+          # "Key present with nil" is distinct from "key absent" (issue #599):
+          # an explicit nil override shadows the parent instead of falling
+          # through to it.
+          node = @overrides
+          present = keys.all? do |k|
+            if node.is_a?(Hash) && node.key?(k)
+              node = node[k]
+              true
+            else
+              false
+            end
           end
-          return val unless val.nil?
+          return node if present
 
           @parent.fetch(key, default)
         end
