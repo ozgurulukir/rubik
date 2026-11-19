@@ -86,8 +86,12 @@ module Rubik
               target_path
             end
             if ctx.buffer_manager.dirty_files.key?(rel)
-              full_path = File.expand_path(rel, ctx.buffer_manager.root_dir)
-              orig_content = File.exist?(full_path) ? File.read(full_path) : ""
+              # Route through Manager.read(from_disk: true) so the disk side
+              # gets the same read_bytes_as_utf8 encoding as the buffer side
+              # (issue #589) — a plain File.read can raise
+              # Encoding::CompatibilityError in unified_diff for files with
+              # invalid-UTF-8 bytes.
+              orig_content = ctx.buffer_manager.read(rel, from_disk: true) || ""
               new_content = ctx.buffer_manager.read(rel) || ""
               Rubik::UI::DiffViewer.render(ctx, theme, Rubik::Buffer::Diff.unified_diff(rel, orig_content, new_content))
             else

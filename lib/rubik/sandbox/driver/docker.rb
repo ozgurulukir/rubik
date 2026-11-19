@@ -19,6 +19,11 @@ module Rubik
         end
 
         def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0")
+          # Defense-in-depth (issue #591): re-run the shared session guard
+          # before spawning, the same way ProcessDriver does, so a caller
+          # that forgot its own pre-check is still gated by operator policy.
+          verify_command_safety!(cmd)
+
           image = @options[:image] || DEFAULT_IMAGE
           workspace = File.expand_path(chdir)
           container_name = "rubik-box-#{SecureRandom.hex(6)}"
@@ -29,6 +34,7 @@ module Rubik
             *CONTAINER_HARDENING_FLAGS,
             "-w", "/workspace",
             "-v", "#{workspace}:/workspace:rw",
+            *allowed_dir_mounts,
             "--memory", "#{memory_limit_mb}m",
             "--cpus", cpus.to_s,
             "--pids-limit", "100"
@@ -61,6 +67,20 @@ module Rubik
             duration: res[:duration],
             driver: "docker"
           }
+        end
+
+        private
+
+        # Issue #591: bind-mount every configured allowed dir read-write,
+        # mirroring BubblewrapDriver's loop, so commands legitimately touching
+        # an allowed external dir work identically across drivers.
+        def allowed_dir_mounts
+          Array(@options[:allowed_dirs]).filter_map do |dir|
+            expanded = File.expand_path(dir.to_s)
+            next unless File.directory?(expanded)
+
+            ["-v", "#{expanded}:#{expanded}:rw"]
+          end.flatten
         end
       end
     end

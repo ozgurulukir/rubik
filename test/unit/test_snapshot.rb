@@ -94,4 +94,42 @@ class TestSnapshot < Minitest::Test
   ensure
     FileUtils.remove_entry(fake_home) if fake_home && File.directory?(fake_home)
   end
+
+  # Issue #589: debounced stores coalesce rapid edits into at most one
+  # deflate+disk persist per interval — while undo keeps every step, because
+  # undo runs from the in-memory snapshot list, never from the files.
+  def test_debounce_coalesces_disk_persists_but_keeps_undo_steps
+    store = Rubik::Buffer::SnapshotStore.new(storage_dir: @snap_dir, min_interval: 60.0)
+    @manager.snapshot_store = store
+
+    @manager.write("a.rb", "v1")
+    assert_equal 1, Dir.children(@snap_dir).size, "the first persist always lands"
+
+    @manager.write("a.rb", "v2")
+    assert_equal 2, store.snapshots.size
+    assert_equal 1, Dir.children(@snap_dir).size, "a persist inside the debounce window is skipped"
+
+    # Undo granularity is preserved even though the second persist was
+    # debounced away.
+    assert store.undo(@manager)
+    assert_equal "v1", @manager.read("a.rb")
+  end
+
+  def test_retention_cap_rotates_old_snapshots_and_files
+    store = Rubik::Buffer::SnapshotStore.new(storage_dir: @snap_dir, max_snapshots: 3)
+    @manager.snapshot_store = store
+
+    5.times { |i| @manager.write("a.rb", "v#{i}") }
+
+    assert_equal 3, store.snapshots.size, "snapshots beyond the cap are rotated away"
+
+    files = Dir.children(@snap_dir).sort
+    assert_equal 3, files.size, "rotated snapshot files are deleted from disk"
+
+    # Undo still walks the retained history in order.
+    assert store.undo(@manager)
+    assert_equal "v3", @manager.read("a.rb")
+    assert store.undo(@manager)
+    assert_equal "v2", @manager.read("a.rb")
+  end
 end

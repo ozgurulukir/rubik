@@ -101,11 +101,36 @@ module Rubik
         write_targets.concat(ast.write_paths.to_a) if ast.respond_to?(:write_paths)
 
         write_targets.uniq.each do |wp|
-          next unless critical_path?(wp)
+          if critical_path?(wp)
+            @audit.log_audit("blocked_command", command: cmd_str, reason: "critical_path_write", path: wp)
+            raise BlockedWriteError.new(
+              "Command write to critical path blocked: #{wp} in `#{cmd_str}`",
+              kind: :critical_path_write,
+              blocked_command: cmd_str,
+              path: wp
+            )
+          end
 
-          @audit.log_audit("blocked_command", command: cmd_str, reason: "critical_path_write", path: wp)
+          # Symlink re-check (fail-closed, issue #590): the lexical test above
+          # cannot see `evil -> .git/config`, so `echo x > evil` would sail
+          # through while naming nothing critical. Resolve each write target
+          # exactly like verify_path_write! does and re-check the resolution;
+          # a nil resolution (symlink loop / permission wall) fails closed.
+          resolved = Rubik::Platform.resolved_path(wp, strict: true)
+          if resolved.nil?
+            @audit.log_audit("blocked_command", command: cmd_str, reason: "path_resolution_failed", path: wp)
+            raise BlockedWriteError.new(
+              "Command write blocked: path could not be safely resolved: #{wp} in `#{cmd_str}`",
+              kind: :critical_path_write,
+              blocked_command: cmd_str,
+              path: wp
+            )
+          end
+          next unless critical_path?(resolved)
+
+          @audit.log_audit("blocked_command", command: cmd_str, reason: "critical_path_write_symlink", path: wp, resolved: resolved)
           raise BlockedWriteError.new(
-            "Command write to critical path blocked: #{wp} in `#{cmd_str}`",
+            "Command write to critical path blocked (symlink-resolved): #{wp} -> #{resolved} in `#{cmd_str}`",
             kind: :critical_path_write,
             blocked_command: cmd_str,
             path: wp

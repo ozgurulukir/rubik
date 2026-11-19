@@ -131,14 +131,17 @@ module Rubik
       def validate_question(q_data, index:)
         return ToolOutput.error("Invalid question #{index}: item must be an object with 'question' and 'options' properties.") unless q_data.is_a?(Hash)
 
-        q_text = (q_data["question"] || q_data[:question]).to_s.strip
+        # Question text and options are model-controlled; strip CSI/OSC
+        # escapes (issue #592) so prompt-injected sequences cannot reach the
+        # raw terminal through the dialog card or the echoed response.
+        q_text = Rubik::UI::Capability.strip_ansi((q_data["question"] || q_data[:question]).to_s.strip)
         raw_options = q_data["options"] || q_data[:options]
         is_multi = q_data["is_multi_select"] || q_data[:is_multi_select] || false
 
         return ToolOutput.error("Invalid question #{index}: question text cannot be blank.") if q_text.empty?
         return ToolOutput.error("Invalid question #{index}: must provide an array of selectable options.") unless raw_options.is_a?(Array)
 
-        options = raw_options.map(&:to_s).map(&:strip).reject(&:empty?).uniq
+        options = raw_options.map { |o| Rubik::UI::Capability.strip_ansi(o.to_s.strip) }.reject(&:empty?).uniq
         return ToolOutput.error("Invalid question #{index}: must provide at least 2 distinct non-empty selectable options.") if options.size < 2
 
         { question: q_text, options: options, is_multi: is_multi }

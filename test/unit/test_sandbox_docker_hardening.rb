@@ -159,4 +159,59 @@ class TestSandboxDockerHardening < Minitest::Test
     tmpfs_idx = captured_args.index("--tmpfs")
     assert_equal "/tmp:rw,noexec,nosuid", captured_args[tmpfs_idx + 1]
   end
+
+  # Issue #591: container drivers must mount options[:allowed_dirs] read-write,
+  # mirroring BubblewrapDriver, so allowed external dirs behave identically
+  # across drivers.
+  def run_capturing_args(driver, cmd)
+    captured_args = nil
+    mock_thr = Struct.new(:value, :pid).new(Struct.new(:exitstatus, :signaled?).new(0, false), 777)
+    Open3.stub :popen3, lambda { |*args, &block|
+      captured_args = args
+      block.call(StringIO.new, StringIO.new("ok"), StringIO.new, mock_thr)
+    } do
+      driver.run(cmd, chdir: @temp_dir)
+    end
+    captured_args
+  end
+
+  def test_docker_mounts_allowed_dirs_read_write
+    allowed = Dir.mktmpdir
+    driver = Rubik::Sandbox::Driver::DockerDriver.new(allowed_dirs: [allowed])
+
+    captured_args = run_capturing_args(driver, "echo hi")
+    mount_idx = captured_args.index("-v")
+    refute_nil mount_idx
+    assert_includes captured_args, "#{allowed}:#{allowed}:rw"
+  ensure
+    FileUtils.remove_entry(allowed) if allowed && File.directory?(allowed)
+  end
+
+  def test_podman_mounts_allowed_dirs_read_write
+    allowed = Dir.mktmpdir
+    driver = Rubik::Sandbox::Driver::PodmanDriver.new(allowed_dirs: [allowed])
+
+    captured_args = run_capturing_args(driver, "echo hi")
+    mount_idx = captured_args.index("-v")
+    refute_nil mount_idx
+    assert_includes captured_args, "#{allowed}:#{allowed}:rw"
+  ensure
+    FileUtils.remove_entry(allowed) if allowed && File.directory?(allowed)
+  end
+
+  def test_container_drivers_reverify_command_safety_internally
+    driver = Rubik::Sandbox::Driver::DockerDriver.new
+
+    # Injected guard rejects the command before any spawn happens.
+    guard = Object.new
+    def guard.verify_command_safety!(cmd, shell: nil) # rubocop:disable Lint/UnusedMethodArgument -- guard arayüzü kwarg'i
+      raise Rubik::Security::BlockedWriteError, "blocked by injected guard: #{cmd}"
+    end
+    driver.stub :guard, guard do
+      error = assert_raises(Rubik::Security::BlockedWriteError) do
+        driver.run("echo hi", chdir: @temp_dir)
+      end
+      assert_match(/blocked by injected guard/, error.message)
+    end
+  end
 end
