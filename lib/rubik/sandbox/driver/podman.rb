@@ -56,20 +56,6 @@ module Rubik
             driver: "podman"
           }
         end
-
-        private
-
-        # Issue #591: bind-mount every configured allowed dir read-write,
-        # mirroring BubblewrapDriver's loop, so commands legitimately touching
-        # an allowed external dir work identically across drivers.
-        def allowed_dir_mounts
-          Array(@options[:allowed_dirs]).filter_map do |dir|
-            expanded = File.expand_path(dir.to_s)
-            next unless File.directory?(expanded)
-
-            ["-v", "#{expanded}:#{expanded}:rw"]
-          end.flatten
-        end
       end
     end
   end
