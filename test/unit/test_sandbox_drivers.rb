@@ -28,7 +28,19 @@ class TestSandboxDrivers < Minitest::Test
     res = driver.run("sleep 2", timeout: 0.1, chdir: @temp_dir)
     refute res[:ok]
     assert_equal 124, res[:exit_code]
+    assert_equal true, res[:timed_out], "the explicit flag rides the driver result (#597-3)"
     assert_includes res[:stderr], "timed out"
+  end
+
+  # Issue #597-3 follow-up: a child that exits 124 on its own (e.g. it ran
+  # under timeout(1)) must keep timed_out=false — the flag is plumbed, never
+  # re-derived from the exit code.
+  def test_process_driver_flag_false_for_legitimate_timeout_exit
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    res = driver.run("exit 124", chdir: @temp_dir)
+    refute res[:ok]
+    assert_equal 124, res[:exit_code]
+    refute res[:timed_out]
   end
 
   def test_process_driver_strips_credential_environment

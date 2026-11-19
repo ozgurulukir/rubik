@@ -49,6 +49,9 @@ module Rubik
           {
             ok: res[:ok],
             exit_code: res[:exit_code],
+            # Explicit timeout flag plumbed to the tool layer (#597-3): a
+            # legitimate timeout(1) exit 124 must not read as a runner kill.
+            timed_out: res[:timed_out] == true,
             stdout: clean_stdout,
             stderr: clean_stderr,
             output: [clean_stdout, clean_stderr].reject(&:empty?).join("\n"),
