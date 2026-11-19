@@ -13,10 +13,14 @@ module Rubik
     #   and a deterministic "call_3_1" WILL recur inside one history —
     #   duplicate tool_use ids break strict providers' tool_result
     #   pairing. The 4-digit random suffix is load-bearing, not decor.
-    # - Subagent StepRunner (deterministic): a subagent's history lives
-    #   and dies with its own run — never restored, never continued — so
-    #   (subagent id, step, index) is unique by construction, and
-    #   determinism keeps ids greppable across subagents in transcripts.
+    # - Subagent StepRunner (deterministic): (subagent id, run, step,
+    #   index) is unique by construction and determinism keeps ids
+    #   greppable across subagents in transcripts. The run component is
+    #   load-bearing (issue #593): Redeploy preserves @history and mints
+    #   a fresh Budget, so step restarts at 0 while the OLD ids stay in
+    #   the re-sent history — run_seq (incremented by every start_async,
+    #   spawn and redeploy alike) is what keeps the redeployed run's ids
+    #   disjoint from the preserved ones.
     # - StepExecutor (unique: true): dead on the production path (the
     #   TurnExecutor normalizes ids before dispatch) but live on the
     #   executor's own seam — test doubles call it with bare, id-less tool

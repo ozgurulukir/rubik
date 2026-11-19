@@ -34,7 +34,8 @@ class TestTurnExecutorChannels < Minitest::Test
     assert_equal(["read_file", "finish"], user_rows.map { |r| r[:tool_name] })
 
     subagent_rows = obs.subagent.history.select { |m| m[:role] == "tool" }
-    assert_equal 1, subagent_rows.size, "exactly one scripted tool row on the subagent channel"
+    assert_equal 2, subagent_rows.size, "read_file plus the pairing finish row on the subagent channel (issue #593)"
+    assert_equal(["read_file", "finish"], subagent_rows.map { |r| r[:tool_name] })
     [user_rows.first, subagent_rows.first].each do |row|
       assert_equal Rubik::Orchestrator::ToolHistory::ROW_KEYS, row.keys, "the canonical row on both channels"
       assert_equal "read_file", row[:tool_name]
@@ -53,8 +54,11 @@ class TestTurnExecutorChannels < Minitest::Test
     assert_equal "scenario done", obs.subagent.result
     assert obs.user_loop.history.any? { |m| m[:role] == "tool" && m[:tool_name] == "finish" },
            "user-channel finish now writes its pairing tool row (issue #548)"
-    refute obs.subagent.history.any? { |m| m[:role] == "tool" && m[:tool_name] == "finish" },
-           "the subagent channel keeps its own finish path"
+    finish_row = obs.subagent.history.find { |m| m[:role] == "tool" && m[:tool_name] == "finish" }
+    assert finish_row, "subagent finish writes its pairing tool row before complete_turn! (issue #593)"
+    finish_use = obs.subagent.history.flat_map { |m| Array(m[:tool_calls]) }.compact.find { |tc| tc["tool"] == "finish" }
+    assert finish_use, "the assistant row carrying the finish tool_use was recorded"
+    assert_equal finish_use["id"], finish_row[:tool_call_id], "finish tool_use and tool row pair on the subagent channel"
   end
 
   def test_both_channels_recover_from_context_overflow_via_their_own_announce_channel
@@ -138,8 +142,10 @@ class TestTurnExecutorChannels < Minitest::Test
 
     assert_equal :completed, obs.subagent.state
     assert_equal "cased finish", obs.subagent.result
-    assert_empty obs.subagent.history.select { |m| m[:role] == "tool" },
-                 "the case variant must not produce an unknown-tool refusal row"
+    rows = obs.subagent.history.select { |m| m[:role] == "tool" }
+    assert_equal 1, rows.size, "exactly the pairing finish row — no unknown-tool refusal (issue #593)"
+    assert_equal "finish", rows.first[:tool_name]
+    assert_equal :ok, rows.first[:status]
   end
 
   def test_finish_detection_falls_back_to_name_for_declaration_less_registries

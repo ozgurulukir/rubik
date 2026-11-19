@@ -348,6 +348,67 @@ class TestSubagentReuseAndReap < Minitest::Test
     refute inst.history.empty?, "history is never dropped before durability"
   end
 
+  def test_archive_durability_verdict_can_be_supplied_outside_the_monitor
+    inst = spawn_done(@sup, "Supplied")
+
+    refute inst.archive!(durable: false), "a supplied missing verdict keeps the retry gate closed"
+    assert inst.archive!(durable: true), "a supplied durable verdict reaps without an FS probe (issue #595-5)"
+  end
+
+  def test_reaped_tombstone_overflow_cleans_up_outside_the_sweep_lock
+    sup = new_supervisor(config: { "subagents.reap_finished_after" => 0.001, "subagents.tombstone_limit" => 1 })
+    first = spawn_done(sup, "Old")
+    wait_until { Time.now - first.ended_at > 0.005 }
+    sup.reap_finished!
+
+    second = spawn_done(sup, "New")
+    wait_until { Time.now - second.ended_at > 0.005 }
+    reaped = sup.reap_finished!
+
+    assert_equal [second.id], reaped
+    assert_nil sup.get(first.id), "the evicted tombstone leaves every table"
+    assert first.disposed?, "evicted tombstone is cleaned up (now outside the monitor, issue #595-5)"
+  end
+
+  def test_redeployed_run_mints_tool_call_ids_disjoint_from_the_preserved_history
+    inst = spawn_done(@sup, "Reuser", "first task")
+    channel_one = Rubik::Orchestrator::TurnExecutor::SubagentChannel.new(inst)
+    run_one_ids = Array.new(3) { |i| channel_one.mint_call_id(i) }
+    seq_one = inst.run_seq
+
+    @sup.redeploy(inst.id, prompt: "second task")
+    wait_until { inst.terminal_and_settled? && inst.result == "All done" }
+
+    refute_equal seq_one, inst.run_seq, "redeploy increments run_seq"
+    channel_two = Rubik::Orchestrator::TurnExecutor::SubagentChannel.new(inst)
+    run_two_ids = Array.new(6) { |i| channel_two.mint_call_id(i) }
+    assert_empty run_one_ids & run_two_ids,
+                 "the redeployed run never re-emits an id the preserved history already carries (issue #593)"
+  end
+
+  def test_budget_parked_subagent_counts_as_dispatched_for_the_goal_guard
+    resp = Struct.new(:content, :tool_calls).new("All done", [])
+    gate = Queue.new
+    parked_provider = Object.new
+    parked_provider.define_singleton_method(:complete) do |_h, _o = {}|
+      gate.pop
+      resp
+    end
+
+    inst = @sup.spawn(role: "Worker", prompt: "long haul", provider: parked_provider)
+    wait_until { inst.executing? }
+    inst.transition!(:waiting_budget)
+    inst.transition!(:budget_exhausted)
+
+    assert inst.in_flight?, "budget-parked work is in flight (issue #594)"
+    refute inst.active?, "…while holding no concurrency slot"
+    assert_equal 0, @sup.active_count
+    assert_equal 1, @sup.dispatched_count, "the goal guard must not see the parked unit as settled"
+
+    gate << :release
+    wait_until { inst.terminal_and_settled? }
+  end
+
   def test_archived_transcript_renders_pointer
     inst = spawn_done(@sup, "Pointed")
     @sup.reap_finished!(force: true)
