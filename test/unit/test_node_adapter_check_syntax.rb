@@ -104,22 +104,23 @@ class TestNodeAdapterCheckSyntax < Minitest::Test
     end
   end
 
-  def test_check_syntax_typescript_fallback_node_check
-    captured_cmd = nil
-    mock_run = lambda do |cmd|
-      captured_cmd = cmd
+  # Issue #588: `node --check` cannot parse TypeScript — without tsc/npx the
+  # adapter must report unavailability instead of a false syntax error.
+  def test_check_syntax_typescript_unavailable_without_tsc_or_npx
+    process_called = false
+    mock_run = lambda do |_cmd|
+      process_called = true
       { ok: true, output: "", exit_code: 0, duration: 0.01 }
     end
-
-    file_path = "src/app.ts"
-    escaped = Shellwords.escape(file_path)
 
     Rubik::Adapter::ProcessRunner.stub(:run, mock_run) do
       @adapter.stub(:available?, true) do
         Rubik::Runtime::Discovery.stub(:binary_available?, false) do
-          res = @adapter.check_syntax(file_path)
-          assert res[:ok]
-          assert_equal "node --check #{escaped}", captured_cmd
+          res = @adapter.check_syntax("src/app.ts")
+          refute process_called, "must not run node --check on a TypeScript file"
+          refute res[:ok]
+          assert_equal 127, res[:exit_code]
+          assert_includes res[:output], "No syntax checker available for TypeScript files"
         end
       end
     end

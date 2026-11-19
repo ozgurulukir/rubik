@@ -115,4 +115,24 @@ class TestNativeToolCallingAndRouter < Minitest::Test
     assert_includes output.string, "fast-coder:3b"
     assert_includes output.string, "claude-3-5-sonnet"
   end
+
+  # Issue #588: router.mode fast/advanced are schema-valid but were silently
+  # behaving as auto. They now map to the identically named forced role,
+  # bypassing keyword classification.
+  def test_router_forced_fast_and_advanced_modes
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    config.set_model_spec(:fast, provider: "ollama", name: "fast-model")
+    config.set_model_spec(:advanced, provider: "openai", name: "adv-model")
+    router = Rubik::LLM::Router.new(config: config)
+
+    config.data["router"]["mode"] = "fast"
+    routed = router.route(task_type: :auto, prompt: "Refactor architecture and plan whole system")
+    assert_equal :fast, routed[:role]
+    assert_equal "fast-model", routed[:model]
+
+    config.data["router"]["mode"] = "advanced"
+    routed = router.route(task_type: :auto, prompt: "Fix syntax error on line 4")
+    assert_equal :advanced, routed[:role]
+    assert_equal "adv-model", routed[:model]
+  end
 end

@@ -144,10 +144,16 @@ class TestLspJitBufferSyncAndWebAdapter < Minitest::Test
           assert_equal "npx tsc --noEmit #{escaped}", commands_executed.last
         end
 
-        # 3. Neither tsc nor npx available -> fallback node --check
+        # 3. Neither tsc nor npx available -> unavailable (issue #588):
+        # `node --check` cannot parse TypeScript, so running it would report
+        # a false syntax error for every TS file.
+        ran_before = commands_executed.size
         Rubik::Runtime::Discovery.stub(:binary_available?, false) do
-          adapter.check_syntax(ts_file)
-          assert_equal "node --check #{escaped}", commands_executed.last
+          res = adapter.check_syntax(ts_file)
+          refute res[:ok]
+          assert_equal 127, res[:exit_code]
+          assert_includes res[:output], "No syntax checker available for TypeScript files"
+          assert_equal ran_before, commands_executed.size, "no command must run for TS without tsc/npx"
         end
       end
     end

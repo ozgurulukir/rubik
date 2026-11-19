@@ -93,6 +93,14 @@ module Rubik
       private
 
       def determine_role(task_type, prompt, mode)
+        # router.mode fast/advanced (issue #588): schema-valid enum values
+        # that previously silently degraded to auto classification. A sensible
+        # forced mapping exists — each mode maps to the identically named role
+        # — so instead of restricting the schema, honor the mode as a forced
+        # role, bypassing keyword classification.
+        return :fast if mode == "fast"
+        return :advanced if mode == "advanced"
+
         case task_type.to_sym
         when :fast, :quick, :repair, :diagnose
           :fast

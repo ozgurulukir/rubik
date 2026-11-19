@@ -226,4 +226,29 @@ class TestLLMFormatter < Minitest::Test
 
     assert_equal({ "input_tokens" => 42, "output_tokens" => 0 }, chunk.usage)
   end
+
+  # Issue #588: JSON.parse yields string keys only — the streaming usage
+  # normalization must look up input_tokens/output_tokens spellings, not
+  # just the symbol-key OpenAI spellings.
+  def test_openai_stream_usage_normalizes_string_keyed_input_output_tokens
+    formatter = Rubik::LLM::OpenAIFormatter.new
+
+    chunk = formatter.parse_stream_event(
+      { type: "message", data: '{"choices":[],"usage":{"input_tokens":11,"output_tokens":22,"total_tokens":33}}' }
+    )
+
+    assert_equal 11, chunk.usage[:input_tokens]
+    assert_equal 22, chunk.usage[:output_tokens]
+  end
+
+  def test_openai_stream_usage_still_normalizes_prompt_completion_tokens
+    formatter = Rubik::LLM::OpenAIFormatter.new
+
+    chunk = formatter.parse_stream_event(
+      { type: "message", data: '{"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":7}}' }
+    )
+
+    assert_equal 5, chunk.usage[:input_tokens]
+    assert_equal 7, chunk.usage[:output_tokens]
+  end
 end
