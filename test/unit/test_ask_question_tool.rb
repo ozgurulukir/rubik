@@ -325,5 +325,22 @@ class TestAskQuestionTool < Minitest::Test
     refute_includes card, "\e]0;"
     refute_includes card, "\e[2J"
     assert_includes card, "Pick one"
+    assert_includes card, "Single-Select", "the subtitle renders next to the sanitized question"
+  end
+
+  # Multi-select path (#592): the subtitle-bearing card must sanitize the
+  # model-authored question exactly like the single-select path.
+  def test_dialog_render_card_multi_path_strips_ansi_escapes
+    out = StringIO.new
+    shell = Struct.new(:output, :input).new(out, StringIO.new)
+    dialog = Rubik::UI::Dialog.new(shell: shell, theme: Rubik::UI::Theme.new(enabled: false))
+
+    dialog.send(:render_card, "\e]0;title hijack\aPick many\e[2J", multi: true)
+
+    card = out.string
+    refute_includes card, "\e]0;"
+    refute_includes card, "\e[2J"
+    assert_includes card, "Pick many"
+    assert_includes card, "Multi-Select", "the subtitle renders next to the sanitized question"
   end
 end

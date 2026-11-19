@@ -16,6 +16,16 @@ module Rubik
     class ContinuationManager
       TRUNCATION_REASONS = ["length", "max_tokens"].freeze
 
+      # The continuation nudges handle_truncation appends right after each
+      # partial row; they anchor absorb_partial_rows! to the genuine partial
+      # positions (issue #595-1 follow-up). Keep in sync with the nudge
+      # strings inside handle_truncation.
+      NUDGE_PREFIXES = [
+        "Your thinking process reached the output token limit",
+        "Your previous response was cut off",
+        "Your tool call was cut off"
+      ].freeze
+
       attr_reader :auto_continue_count, :continuation_buffer, :max_auto_continues
 
       def initialize(config: nil, max_auto_continues: nil)
@@ -135,20 +145,35 @@ module Rubik
       end
 
       # Absorbs the partial assistant rows recorded across continuation
-      # cycles out of the given history (issue #595-1/#595-2). Content
-      # equality is safe here: a row matching an accumulated partial is by
-      # definition that partial's own row.
+      # cycles out of the given history (issue #595-1/#595-2). Anchoring
+      # (#595-1 follow-up): a partial row is always the assistant row
+      # immediately preceding its own continuation nudge, so matching is
+      # restricted to that position — content equality alone would also
+      # delete an unrelated earlier assistant row that coincidentally
+      # repeats a partial verbatim.
       def absorb_partial_rows!(history)
         @partial_texts.each do |partial|
-          history.reject! do |row|
-            next false unless row.is_a?(Hash)
+          history.each_index do |i|
+            row = history[i]
+            next unless row.is_a?(Hash)
+            next unless continuation_nudge_row?(history[i + 1])
 
             role = row[:role] || row["role"]
             tool_calls = row[:tool_calls] || row["tool_calls"]
             content = row[:content] || row["content"]
-            role == "assistant" && tool_calls.nil? && content == partial
+            history[i] = nil if role == "assistant" && tool_calls.nil? && content == partial
           end
+          history.compact!
         end
+      end
+
+      # The continuation nudges appended right after each partial row are
+      # the anchor markers (handle_truncation is the only writer).
+      def continuation_nudge_row?(row)
+        return false unless row.is_a?(Hash)
+
+        content = (row[:content] || row["content"]).to_s
+        (row[:role] || row["role"]) == "user" && NUDGE_PREFIXES.any? { |prefix| content.start_with?(prefix) }
       end
 
       def reset!

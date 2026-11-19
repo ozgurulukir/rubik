@@ -55,7 +55,8 @@ module Rubik
         def guidance(state, id:, max_steps:, step: nil, uptime: nil)
           case state.to_sym
           when :waiting_input
-            "Subagent asked a question and is BLOCKED awaiting your answer. Reply via send_message(recipient: '#{id}', message: '<your answer>')."
+            "Subagent asked a question and is BLOCKED awaiting your answer. Reply via send_message(recipient: '#{id}', " \
+            "message: '<your answer>', in_reply_to: '<question_id from the question notification>')."
           when :waiting_budget
             Notices.budget_paused_line(id, max_steps)
           when :budget_exhausted
