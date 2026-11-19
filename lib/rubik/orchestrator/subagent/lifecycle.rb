@@ -5,14 +5,12 @@ require_relative "../../errors"
 module Rubik
   module Orchestrator
     module Subagent
-      # The Instance lifecycle vocabulary, extracted from instance.rb to
-      # satisfy module hygiene (same vertical-cohesion extraction as
-      # StepRunner/Questioner, Plan 95): TRANSITIONS is the single home of
-      # the state machine, transition! its only mutation path, and these
-      # predicates the only control-flow surface. Instance includes this
-      # module, so Instance::TRANSITIONS / Instance::StateError remain the
-      # public constants — adding a state means editing THIS file (plus the
-      # kernel STATE_MAP, held by contract test).
+      # The Instance lifecycle vocabulary (Plan 95 extraction): TRANSITIONS
+      # is the single home of the state machine, transition! its only
+      # mutation path, these predicates the only control-flow surface.
+      # Instance::TRANSITIONS / Instance::StateError stay the public
+      # constants — adding a state means editing THIS file (plus the kernel
+      # STATE_MAP, held by contract test).
       module Lifecycle
         class StateError < Rubik::StateError; end
 
@@ -40,33 +38,35 @@ module Rubik
           disposed: []
         }.transform_values(&:freeze).freeze
 
-        # Attention vocabulary (the tool plane's "needs attention" classification,
-        # derived here so a state rename can never silently desync it — the tool
-        # layer hand-copied these until now). PARKED_STATES is the vocabulary's
-        # own words for the condvar-parked set; ATTENTION_STATES rides
-        # :waiting_input on top. A named owned constant, not a computation from
-        # TRANSITIONS — no clean derivation from the edges exists.
+        # Attention vocabulary (the tool plane's "needs attention" set,
+        # derived here so a rename can never silently desync it).
+        # PARKED_STATES is the condvar-parked set; ATTENTION_STATES rides
+        # :waiting_input on top. Owned constants — no clean derivation
+        # from the TRANSITIONS edges exists.
         PARKED_STATES = [:paused_error, :waiting_budget, :budget_exhausted].freeze
         ATTENTION_STATES = (PARKED_STATES + [:waiting_input]).freeze
 
-        # --- Predicates: control-flow questions answer here, not at
-        # consumers. All take the re-entrant monitor; callers composing
-        # them under a held lock pay nothing extra, and external readers
-        # see consistent snapshots.
+        # --- Predicates: control-flow questions answer here. All take the
+        # re-entrant monitor (re-entrant: composition under a held lock
+        # pays nothing extra; readers see consistent snapshots).
 
-        # Worker thread mid-flight (possibly parked on a steering, budget,
-        # or error wait).
+        # Worker thread mid-flight (possibly parked on a wait).
         def running?
           @monitor.synchronize { @state == :running || @state == :waiting_input || @state == :waiting_budget || @state == :paused_error }
         end
 
-        # Occupies a concurrency slot / tracked in Supervisor#instances.
-        # Composed from the vocabulary's own words: everything live except
-        # :budget_exhausted (deliberately excluded, pinned by
-        # test_pause_and_await_budget_expansion_timeout; supervisor's
-        # send_message compensates via deliverable?).
+        # Occupies a concurrency slot / tracked in Supervisor#instances:
+        # everything live except :budget_exhausted (deliberately excluded,
+        # pinned by test_pause_and_await_budget_expansion_timeout;
+        # supervisor's send_message compensates via deliverable?).
         def active?
           @monitor.synchronize { pending? || running? || canceling? }
+        end
+
+        # Issue #594, dispatched-work view: active? PLUS :budget_exhausted —
+        # a parked unit holds no slot (see active?) but its work is unfinished.
+        def in_flight?
+          @monitor.synchronize { pending? || running? || canceling? || @state == :budget_exhausted }
         end
 
         def pending? = @monitor.synchronize { @state == :pending }

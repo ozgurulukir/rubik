@@ -161,6 +161,30 @@ class TestGoalCompletionGuard < Minitest::Test
     assert_empty sup.wait_calls, "the supervisor is never consulted outside goal mode"
   end
 
+  # Issue #594: a subagent parked at :budget_exhausted holds no
+  # concurrency slot (active_count 0) but its work is unfinished — finish
+  # must yield and wait, never report success over it.
+  def test_budget_parked_subagent_blocks_finish_completion
+    sup = FakeSupervisor.new(active_count: 0, root_dir: @ws_root)
+    def sup.dispatched_count = 1
+    events = []
+    loop = build_goal_loop(supervisor: sup, responses: [
+                             Rubik::LLM::Response.new(text: '{"tool": "finish", "args": {"message": "premature conclusion"}}'),
+                             Rubik::LLM::Response.new(text: "the parked subagent was steered and settled; the goal is met")
+                           ], on_step: ->(e) { events << e })
+    sup.on_wait do
+      # The parked unit is granted budget and settles during the wait.
+      sup.singleton_class.send(:remove_method, :dispatched_count)
+    end
+
+    res = loop.run("review the open PRs", goal_mode: true)
+
+    assert res[:ok], "the run completes only after the parked unit settles"
+    wait_event = events.find { |e| e[:type] == :goal_wait }
+    refute_nil wait_event, "finish over a budget-parked unit yields, never completes (issue #594)"
+    assert_equal 1, wait_event[:active], "dispatched_count (not active_count) drives the guard"
+  end
+
   def test_goal_mode_without_subagent_system_completes_normally
     loop = build_goal_loop(supervisor: nil, responses: [Rubik::LLM::Response.new(text: "solo goal, no subagents")])
 
