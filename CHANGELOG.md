@@ -8,13 +8,92 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-11-20
+
+The diagnostics-and-hardening minor: the LSP client learns pull diagnostics
+and spec-compliant incremental sync, the connect wizard's opencode (Go)
+preset becomes zero-prompt — and a broad fix wave closes credential leaks,
+stream-pool poisoning, orchestrator lifecycle bugs, symlink and ANSI escape
+bypasses, and a long tail of platform, buffer, and storage edge cases.
+
 ### Added
+
+- **LSP pull diagnostics + incremental sync (#583):** the client captures
+  `diagnosticProvider` at initialize and issues `textDocument/diagnostic`
+  requests for documents whose snapshot is pending, recording `full` results
+  through the same version-guarded path as push diagnostics (stale-version
+  responses discarded, `unchanged` short-circuited, in-flight pulls deduped
+  per document+version). Pull-only servers such as typeprof — the default
+  Ruby server — now surface diagnostics instead of reporting "pending"
+  forever. Under the negotiated Incremental sync kind, `didChange` sends one
+  full-old-document ranged edit computed in UTF-16 code units; Full sync
+  keeps the range-less form. `relatedDocuments` entries are now recorded
+  too (#585), and the fallback scanner tracks a scope stack so top-level
+  defs after a class body index at top level and nested modules yield
+  `M::C` prefixes (#600).
 
 - **Zero-prompt session header for the opencode (Go) preset:** the connect
   wizard's preset row pre-answers the session-header question — selecting
   `opencode (Go)` applies `x-opencode-session` automatically (one notice
   line instead of two prompts) and the confirm summary still names it.
   The question remains for custom endpoints and catalog picks.
+
+### Changed
+
+- Container sandbox drivers (Docker/Podman) now bind-mount each
+  `allowed_dirs` entry read-write like Bubblewrap, so commands touching
+  allowed external dirs behave identically across drivers (#591).
+- Shared helpers deduplicated: `allowed_dir_mounts` hoisted into
+  `Sandbox::Driver::Base`, and process env sanitizing delegates to the single
+  `Rubik::Platform.credential_free_env` source (#608).
+
+### Fixed
+
+- **Security & sandboxing (#586, #590, #592):** task children spawn with
+  credential-shaped host vars explicitly unset and task-log lines redacted
+  and byte-bounded at `RingBuffer#push`; shell-plane critical-path writes
+  re-resolve AST-derived targets with strict `resolved_path` so a committed
+  symlink cannot redirect a write into `.git/`; and ANSI/CSI/OSC escapes are
+  stripped from model-controlled tool args and dialog questions (both card
+  variants) before they reach the raw terminal.
+
+- **LLM transport & adapters (#587, #588):** a streaming callback failure
+  now re-types as `StreamCallbackError` so a half-read pooled session is
+  discarded instead of poisoning the next request; streaming usage keys are
+  read with string spellings after `JSON.parse`; `router.mode fast/advanced`
+  map to their forced roles instead of silently behaving as auto; and
+  `.ts`/`.tsx` without `tsc`/`npx` returns unavailable instead of a false
+  syntax error from `node --check`.
+
+- **Orchestrator lifecycle (#593, #594, #595):** subagent tool-call ids
+  include a per-run sequence so redeploys no longer re-emit ids the preserved
+  history already carries, and the finish tool writes its pairing result
+  row; `:budget_exhausted` units now count as dispatched work in the
+  goal-completion guard so goals are not declared achieved over unfinished
+  work; auto-continue absorbs prior partial rows on stitch; `continue_loop`
+  disposes its stale per-run sub-context; `ask_question` pairs answers by
+  `in_reply_to` question id so steering cannot pose as an answer; and the
+  reaper sweep takes transcript probes out from under the supervisor lock.
+
+- **Platform & process (#597):** deep path cleanup tracks a path stack so
+  shared non-cyclic objects are no longer elided as `[...]`; the
+  `popen_capture` watchdog sets `deadline_hit` only when the kill targets a
+  still-live child; an explicit `timed_out` flag replaces exit-code-124
+  inference; and preflight kills whole process trees.
+
+- **LSP robustness (#601, #605, #609):** the reader rejects non-positive
+  `Content-Length` and caps frames at 16 MiB, the diagnostic collector is
+  keyed by file with an oldest-first eviction cap, the transport clears
+  in-flight pulls on start/stop, and the `lsp.feedback_timeout` knob is
+  honored for per-file queries.
+
+- **Buffer, plugins, config, storage & session (#589, #596, #598, #599,
+  #602):** snapshot persistence is debounced with a retention cap while
+  in-memory undo granularity is preserved and `!diff` shares one decoding
+  path; `add_plugin` guards derived names and refuses to silently heal a
+  corrupt manifest; replayed turns no longer re-record into the active
+  session; `Scoped#fetch` lets an explicit `nil` shadow a parent value; and
+  `put(ref:)` aliases are validated against `REF_PATTERN`.
 
 ## [0.14.0] - 2026-11-19
 
@@ -1860,7 +1939,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.14.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.15.0...HEAD
+[0.15.0]: https://github.com/ozgurulukir/rubik/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/ozgurulukir/rubik/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/ozgurulukir/rubik/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/ozgurulukir/rubik/compare/v0.11.0...v0.12.0
