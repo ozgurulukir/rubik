@@ -112,15 +112,16 @@ module Rubik
         def announce_llm_thought(_text, **) = nil
 
         # ── terminals & dispatch ──
+        def continuation_manager
+          @continuation_manager ||= ContinuationManager.new(config: @inst.config)
+        end
+
         # The shared two-strike nudge policy (Channel#empty_response_turn)
         # now governs empty, tool-less responses: one standard nudge row,
         # then the terminal below on the second consecutive strike. The
         # subagent can no longer "complete" with an empty result — the
         # declared Phase 4 delta.
-        def continuation_manager
-          @continuation_manager ||= ContinuationManager.new(config: @inst.config)
-        end
-
+        #
         # Second consecutive empty strike: the run's work is already in
         # history, so deliver the last assistant text as a clearly marked
         # salvaged result instead of an empty failure (issue #610). With
