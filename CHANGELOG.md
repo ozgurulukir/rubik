@@ -8,6 +8,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-11-20
+
+The subagent-report-rescue patch: a report turn whose reasoning spends the
+whole output budget is no longer thrown away — the channel continues the
+turn instead of counting it empty, and salvages partial text rather than
+failing silently.
+
+### Fixed
+
+- **Subagent reports survive output-budget truncation (#610):** the
+  subagent channel ignored `finish_reason=length`, so a report turn whose
+  reasoning spent the whole budget was counted as an empty response and
+  died on the second strike, losing the report. The channel now reuses
+  `ContinuationManager` to continue with a targeted nudge, stitches partial
+  text across continuations, raises the per-request output cap (bounded)
+  after a truncated turn, and salvages the last assistant message as a
+  clearly marked result when the continue ceiling is exhausted — instead of
+  an empty failure.
+
 ## [0.15.0] - 2026-11-20
 
 The diagnostics-and-hardening minor: the LSP client learns pull diagnostics
@@ -1939,7 +1958,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.15.0...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.15.1...HEAD
+[0.15.1]: https://github.com/ozgurulukir/rubik/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/ozgurulukir/rubik/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/ozgurulukir/rubik/compare/v0.13.0...v0.14.0
 [0.13.0]: https://github.com/ozgurulukir/rubik/compare/v0.12.0...v0.13.0
