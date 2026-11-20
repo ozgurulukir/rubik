@@ -7,7 +7,7 @@ require_relative "../test_helper"
 class TestSubagentChannelTruncation < Minitest::Test
   Resp = Struct.new(:text, :tool_calls, :raw, :thought, keyword_init: true)
 
-  class FakeInstance
+  class StubSubagentRun
     attr_reader :history, :config, :result, :failure, :journal
     attr_accessor :max_output_tokens
 
@@ -22,7 +22,7 @@ class TestSubagentChannelTruncation < Minitest::Test
   end
 
   def build(config = {})
-    @inst = FakeInstance.new(config)
+    @inst = StubSubagentRun.new(config)
     channel = Rubik::Orchestrator::TurnExecutor::SubagentChannel.new(@inst)
     Rubik::Orchestrator::TurnExecutor.new(channel: channel)
   end
