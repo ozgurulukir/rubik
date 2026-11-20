@@ -50,6 +50,15 @@ module Rubik
                     :context_limit, :max_output_tokens, :config, :pause_facts, :prompt_reconstructible,
                     :run_seq, :journal, :operations
 
+        # Grows the per-request output cap after a truncated turn (issue
+        # #610) so reasoning + the final report can both fit. Monotonic and
+        # bounded by `ceiling`; never lowers a cap the operator set higher.
+        def raise_max_output_tokens!(ceiling)
+          grown = [@max_output_tokens * 2, ceiling].min
+          @max_output_tokens = grown if grown > @max_output_tokens
+          @max_output_tokens
+        end
+
         # Budget delegation: step counters live in Subagent::Budget (reader contract preserved).
         def current_step = @budget.current_step
         def max_steps = @budget.max_steps
