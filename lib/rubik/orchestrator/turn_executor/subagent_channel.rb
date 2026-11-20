@@ -12,6 +12,14 @@ module Rubik
       # the channel never holds @monitor and never emits on the bus under
       # it (the same discipline as the StepRunner methods it replaces).
       class SubagentChannel < Channel
+        # Prefixed to results rebuilt from history after the model went silent.
+        SALVAGE_NOTICE = "[Salvaged: the model returned no final report. This is the last assistant " \
+                         "message from the run; see the transcript for the full work.]"
+
+        # Output-cap growth bound for truncated turns (issue #610); the
+        # operator's own llm.default_max_output_tokens still wins if higher.
+        MAX_OUTPUT_TOKENS_CEILING = 16_384
+
         def initialize(instance)
           super()
           @inst = instance
@@ -104,16 +112,27 @@ module Rubik
         def announce_llm_thought(_text, **) = nil
 
         # ── terminals & dispatch ──
+        def continuation_manager
+          @continuation_manager ||= ContinuationManager.new(config: @inst.config)
+        end
+
         # The shared two-strike nudge policy (Channel#empty_response_turn)
         # now governs empty, tool-less responses: one standard nudge row,
         # then the terminal below on the second consecutive strike. The
         # subagent can no longer "complete" with an empty result — the
         # declared Phase 4 delta.
-        def continuation_manager
-          @continuation_manager ||= ContinuationManager.new(config: @inst.config)
-        end
-
+        #
+        # Second consecutive empty strike: the run's work is already in
+        # history, so deliver the last assistant text as a clearly marked
+        # salvaged result instead of an empty failure (issue #610). With
+        # nothing to salvage the turn still fails.
         def empty_response_failure
+          salvaged = last_assistant_text
+          if salvaged
+            continuation_manager.reset!
+            return final_text_result("#{SALVAGE_NOTICE}\n\n#{salvaged}")
+          end
+
           @inst.fail_turn!("Empty response from model (2 consecutive)")
           { ok: false, completed: false }
         end
@@ -156,8 +175,18 @@ module Rubik
 
         private
 
+        def last_assistant_text
+          row = @inst.history.reverse_each.find do |m|
+            m.is_a?(Hash) && m[:role] == "assistant" && !m[:content].to_s.strip.empty?
+          end
+          row && row[:content].to_s.strip
+        end
+
         def continue_truncated(action)
           nudge_policy.reset!
+          if [:thinking_exhausted, :text_truncated].include?(action[:scenario]) && @inst.respond_to?(:raise_max_output_tokens!)
+            @inst.raise_max_output_tokens!(MAX_OUTPUT_TOKENS_CEILING)
+          end
           if action[:thought]
             @inst.history << { role: "assistant", content: nil, thought: Platform.safe_utf8(action[:thought]) }
           elsif action[:partial_text]

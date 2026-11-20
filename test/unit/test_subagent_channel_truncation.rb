@@ -17,6 +17,10 @@ class TestSubagentChannelTruncation < Minitest::Test
       @max_output_tokens = 100
     end
 
+    def raise_max_output_tokens!(ceiling)
+      @max_output_tokens = [@max_output_tokens * 2, ceiling].min
+    end
+
     def complete_turn!(result) = @result = result
     def fail_turn!(reason) = @failure = reason
   end
@@ -76,5 +80,23 @@ class TestSubagentChannelTruncation < Minitest::Test
     assert_nil executor.call(stop_resp(""))
     assert_equal({ ok: false, completed: false }, executor.call(stop_resp("")))
     assert_match(/Empty response/, @inst.failure)
+  end
+
+  def test_truncated_turn_grows_the_output_cap_up_to_the_ceiling
+    executor = build
+    3.times { executor.call(length_resp("", thought: "t")) }
+    assert_operator @inst.max_output_tokens, :<=, Rubik::Orchestrator::TurnExecutor::SubagentChannel::MAX_OUTPUT_TOKENS_CEILING
+    assert_operator @inst.max_output_tokens, :>, 100
+  end
+
+  def test_second_empty_strike_salvages_last_assistant_text
+    executor = build
+    @inst.history << { role: "assistant", content: "findings: A, B, C" }
+    assert_nil executor.call(stop_resp(""))
+    result = executor.call(stop_resp(""))
+    assert_equal({ ok: true, completed: true }, result)
+    assert_includes @inst.result, "Salvaged"
+    assert_includes @inst.result, "findings: A, B, C"
+    assert_nil @inst.failure
   end
 end
