@@ -99,8 +99,28 @@ class TestLoopAutoContinueOnLength < Minitest::Test
 
     res = mock_loop.turn_executor.call(truncated)
     refute res[:ok]
+    assert_equal :output_truncated, res[:reason], "the terminal must carry a machine-readable reason (issue #613)"
     assert_includes res[:error], "3 automatic continue attempts were exhausted, so it was stopped"
     assert_includes res[:error], "!config set llm.default_max_output_tokens 8192"
+  end
+
+  def test_ceiling_terminal_flushes_buffer_and_strikes_for_resume
+    mock_loop = build_auto_continue_loop(on_step: ->(_event) {})
+    truncated = Rubik::LLM::Response.new(text: "partial report. ", raw: { "finish_reason" => "length" })
+    3.times { mock_loop.turn_executor.call(truncated) }
+    res = mock_loop.turn_executor.call(truncated)
+    refute res[:ok]
+
+    cm = mock_loop.continuation_manager
+    assert_empty cm.continuation_buffer, "flushed partials live in history as one row (issue #613)"
+    assert_equal 0, cm.auto_continue_count, "a resumed turn must not inherit exhausted strikes"
+
+    # A normal response after resume must not duplicate the stitched partial.
+    final = mock_loop.turn_executor.call(Rubik::LLM::Response.new(text: "final report text", raw: { "finish_reason" => "stop" }))
+    assert final[:ok]
+    assert_equal "final report text", final[:output]
+    partials = mock_loop.history.select { |m| m[:role] == "assistant" && m[:content].to_s.include?("partial report") }
+    assert_equal 1, partials.size, "exactly one stitched partial assistant row survives"
   end
 
   def test_stitched_final_text_absorbs_prior_partial_rows
@@ -125,6 +145,7 @@ class TestLoopAutoContinueOnLength < Minitest::Test
     assert_nil res1
     res2 = mock_loop.turn_executor.call(Rubik::LLM::Response.new(text: "second chunk.", raw: { "finish_reason" => "length" }))
     refute res2[:ok], "the ceiling terminal fires"
+    assert_equal :output_truncated, res2[:reason]
 
     assistant_rows = mock_loop.history.select { |m| m[:role] == "assistant" && m[:content] }
     assert_equal 1, assistant_rows.size, "prior partial absorbed, buffer + current partial kept once (issue #595-2)"
@@ -137,6 +158,7 @@ class TestLoopAutoContinueOnLength < Minitest::Test
 
     res = mock_loop.turn_executor.call(Rubik::LLM::Response.new(text: "the only partial answer", raw: { "finish_reason" => "length" }))
     refute res[:ok]
+    assert_equal :output_truncated, res[:reason]
 
     row = mock_loop.history.find { |m| m[:role] == "assistant" && m[:content] }
     assert_equal "the only partial answer", row[:content], "the failure terminal keeps the generated content (issue #595-2)"
