@@ -393,6 +393,34 @@ class TestPlanAndGoal < Minitest::Test
     assert_equal "Survive the DNS outage", registry.latest.goal_text, "resume revives the MOST RECENT suspension"
   end
 
+  def test_suspend_with_binary_provider_error_message_is_sanitized
+    # A charset-less HTTP body makes a transient ClientError message BINARY
+    # (commit 7cc85b9 fixed the fail path; the suspend path must sanitize
+    # too — the ledger meta goes through JSON, which raises on invalid
+    # bytes, diverting the run into the fail path).
+    binary = (+"Network error calling api.example.com: \xFF\xFE (gave up after 2 retries)").force_encoding(Encoding::BINARY)
+    @shell.instance_variable_get(:@llm_registry).register(
+      "ollama",
+      FlakyThenGoodProvider.new([Rubik::LLM::ClientError.new(binary, transient: true)])
+    )
+    @shell.execute_input("!goal Survive the DNS outage")
+
+    out = @output.string
+    assert_includes out, "Suspended after", "a binary transient error must still suspend, not crash or fail"
+
+    state = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal :suspended, state.status, "the binary message must not divert the run into the fail path"
+
+    ledger = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_LEDGER)
+    refute_nil ledger
+    assert ledger.snapshot[:suspended], "the ledger meta must survive a binary reason (JSON-safe)"
+
+    contents = @shell.conversation_history.map { |m| m[:content].to_s }
+    pair = contents.find { |c| c.start_with?("[Goal suspended after") }
+    refute_nil pair, "the suspend pair must be recorded"
+    assert pair.valid_encoding?, "the recorded pair must be valid UTF-8"
+  end
+
   def test_goal_resume_revives_the_same_loop_in_process
     suspended_goal_via_transient_transport_failure
     registry = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_REGISTRY)

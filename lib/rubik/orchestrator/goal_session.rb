@@ -172,10 +172,10 @@ module Rubik
 
       def suspend_goal_turn(ctx, orchestrator:, goal_state:, goal_ledger:,
                             goal_text:, goal_id:, record_pair:, reason:, tokens: nil)
+        reason = Rubik::Platform.safe_utf8(reason.to_s)
         attempt = suspended_attempt(ctx, goal_id) + 1
         # Ledger id must be read BEFORE suspend!: ledger.suspend! changes
-        # storage_id, so a later assignment misses SUSPEND_EVENT and drops
-        # the ledger= link on first suspension (same order as resume_cross_process).
+        # storage_id, so a later id misses SUSPEND_EVENT (resume_cross_process order).
         goal_state.ledger_id = goal_ledger.snapshot[:storage_id] if goal_ledger
         goal_state.suspend!(reason, tokens: tokens)
         goal_ledger&.suspend!(suspend_stamp_meta(goal_state, goal_id, reason, attempt))
