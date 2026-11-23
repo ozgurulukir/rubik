@@ -2,8 +2,10 @@
 
 require_relative "base"
 require_relative "../../platform"
+require_relative "../../log"
 require "open3"
 require "timeout"
+require "securerandom"
 
 module Rubik
   module Sandbox
@@ -23,9 +25,11 @@ module Rubik
 
           image = @options[:image] || DEFAULT_IMAGE
           workspace = File.expand_path(chdir)
+          container_name = "rubik-box-#{SecureRandom.hex(6)}"
 
           podman_args = [
             "podman", "run", "--rm",
+            "--name", container_name,
             *CONTAINER_HARDENING_FLAGS,
             "-w", "/workspace",
             "-v", "#{workspace}:/workspace:rw",
@@ -38,25 +42,24 @@ module Rubik
           podman_args.push("--network", "none") unless allow_network
           podman_args.push(image, "sh", "-c", cmd)
 
-          res = Rubik::Platform.popen_capture(
-            *podman_args,
-            timeout: timeout,
-            chdir: workspace,
-            timeout_message: "Podman sandbox execution timed out after #{timeout} seconds",
-            error_message: "Podman sandbox error"
-          )
+          res = begin
+            Rubik::Platform.popen_capture(
+              *podman_args,
+              timeout: timeout,
+              chdir: workspace,
+              timeout_message: "Podman sandbox execution timed out after #{timeout} seconds",
+              error_message: "Podman sandbox error"
+            )
+          ensure
+            # Mirror DockerDriver: the watchdog kills the podman client process
+            # tree on timeout, and --rm removal is performed by that client, so
+            # a timed-out run would otherwise orphan the container. Best-effort
+            # cleanup; a failed `podman rm -f` leaves a trace.
+            removed = system("podman", "rm", "-f", container_name, out: File::NULL, err: File::NULL)
+            Rubik::Log.warn(:sandbox, "podman container '#{container_name}' could not be removed") unless removed
+          end
 
-          {
-            ok: res[:ok],
-            exit_code: res[:exit_code],
-            # Explicit timeout flag plumbed to the tool layer (#597-3).
-            timed_out: res[:timed_out] == true,
-            stdout: res[:stdout],
-            stderr: res[:stderr],
-            output: res[:output],
-            duration: res[:duration],
-            driver: "podman"
-          }
+          finalize_result(res, driver: "podman")
         end
       end
     end

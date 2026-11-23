@@ -40,9 +40,8 @@ module Rubik
         # shared session guard via driver_opts (options[:guard]) so operator
         # policy — the live command allowlist above all — applies to every
         # driver; the lazy local fallback (silent audit, zero policy) serves
-        # only standalone / test-constructed drivers. ProcessDriver keeps its
-        # own copy with cmd.exe refinements; container drivers re-verify the
-        # raw command through this shared helper before spawning.
+        # only standalone / test-constructed drivers. Every driver re-verifies
+        # the raw command through this shared helper before spawning.
         def guard
           @options[:guard] || (@guard ||= Rubik::Security::Guard.new(audit_log_path: nil))
         end
@@ -52,6 +51,30 @@ module Rubik
         def verify_command_safety!(cmd, shell: nil)
           guard.verify_command_safety!(cmd, shell: shell)
           true
+        end
+
+        # Assemble the driver result with output hygiene applied uniformly:
+        # stdout/stderr are redacted and `output` is recomputed from the
+        # redacted parts, so a credential a command prints can never reach
+        # model-visible output through any driver. Every driver funnels its
+        # result through this one home.
+        # NOTE: integrity hygiene, NOT a secret-confinement boundary.
+        def finalize_result(res, driver: name, stderr: nil, extra: {})
+          require_relative "../../security/redactor" unless defined?(Rubik::Security::Redactor)
+          stdout = Rubik::Security::Redactor.redact(res[:stdout])
+          stderr = Rubik::Security::Redactor.redact(stderr || res[:stderr])
+          {
+            ok: res[:ok],
+            exit_code: res[:exit_code],
+            # Explicit timeout flag plumbed to the tool layer (#597-3).
+            timed_out: res[:timed_out] == true,
+            stdout: stdout,
+            stderr: stderr,
+            output: [stdout, stderr].reject(&:empty?).join("\n"),
+            duration: res[:duration],
+            driver: driver,
+            **extra
+          }
         end
 
         # Issue #591: bind-mount every configured allowed dir read-write,
