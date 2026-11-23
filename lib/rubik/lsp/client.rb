@@ -40,6 +40,13 @@ module Rubik
       # lsp_diagnostics tool from ever hanging on a wedged server.
       DIAGNOSTIC_PULL_TIMEOUT = 5
 
+      # The snapshot shape returned when no running client holds the
+      # document — one home shared by Client rescue paths and the Manager's
+      # inactive fallbacks, so the contract gains a key once, not 4×.
+      UNAVAILABLE_SNAPSHOT = {
+        state: :unavailable, diagnostics: [].freeze, document_version: nil, published_version: nil
+      }.freeze
+
       attr_reader :language, :server_cmd, :root_dir, :server_capabilities,
                   :sync_capabilities
       # The JSON-RPC transport delegate (issue #470). Exposed read-only as a
@@ -329,7 +336,7 @@ module Rubik
         refresh_diagnostics_via_pull(abs_path) if pull_diagnostics? && snapshot[:state] == :pending
         snapshot
       rescue ArgumentError, TypeError
-        { state: :unavailable, diagnostics: [], document_version: nil, published_version: nil }
+        UNAVAILABLE_SNAPSHOT
       end
 
       def wait_for_diagnostics(file_path, timeout: 0.2)
@@ -343,7 +350,7 @@ module Rubik
                                                   @document_store.diagnostic_snapshot(abs_path)[:state] == :pending
         @document_store.await_diagnostics(abs_path, timeout)
       rescue ArgumentError, TypeError
-        { state: :unavailable, diagnostics: [], document_version: nil, published_version: nil }
+        UNAVAILABLE_SNAPSHOT
       end
 
       def all_diagnostic_snapshots
