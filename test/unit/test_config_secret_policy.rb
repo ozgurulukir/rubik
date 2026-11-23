@@ -95,13 +95,93 @@ class TestConfigSecretPolicy < Minitest::Test
   def test_global_store_failure_degrades_with_loud_warning
     Rubik::Security::SecretStore.backend = FailingBackend.new
 
-    res = @config.set("providers.openai.api_key", FAKE, persist: :global)
+    res = nil
+    _out, err = capture_io do
+      res = @config.set("providers.openai.api_key", FAKE, persist: :global)
+    end
 
     assert res[:ok] # gh-style: write proceeds
     refute res[:secret][:stored]
     assert_includes res[:secret][:warning], "plaintext kept"
     assert_equal FAKE, @config.fetch("providers.openai.api_key")
     assert_includes @config.warnings.join("\n"), "OS secret store unavailable"
+    # Visible at runtime without RUBIK_DEBUG, and never echoes the secret.
+    assert_includes err, "OS secret store unavailable"
+    refute_includes err, FAKE
+  end
+
+  def test_store_success_emits_no_fallback_warning
+    _out, err = capture_io do
+      @config.set("providers.healthy.api_key", FAKE, persist: :global)
+    end
+
+    assert @config.fetch("providers.healthy.api_key").start_with?("rubik-secret:")
+    refute_includes err, "OS secret store unavailable"
+    refute_includes @config.warnings.join("\n"), "OS secret store unavailable"
+  end
+
+  def test_redact_secret_value_masks_nested_api_keys_without_mutating_source
+    policy = Rubik::Config::SecretPolicy
+    source = { "type" => "openai", "api_key" => FAKE,
+               "nested" => { "api_key" => FAKE, "name" => "keep" } }
+
+    out = policy.redact_secret_value("providers.openai", source)
+    redacted = policy::REDACTED_VALUE
+
+    assert_equal redacted, out["api_key"]
+    assert_equal redacted, out["nested"]["api_key"]
+    assert_equal "openai", out["type"]
+    assert_equal "keep", out["nested"]["name"]
+    assert_equal FAKE, source["api_key"], "redaction must not mutate the source"
+    assert_equal FAKE, source["nested"]["api_key"]
+  end
+
+  def test_secret_values_are_redacted_in_events_and_dmesg
+    secret = "sk-leak-SECRET123"
+    dmesg = Rubik::Kernel::Dmesg.new(capacity: 64)
+    dispatcher = Rubik::Kernel::Dispatcher.new(dmesg: dmesg)
+    bus = Rubik::EventBus.new(dispatcher: dispatcher)
+    @config.event_bus = bus
+    captured = []
+    bus.subscribe(:config_changed) { |payload| captured << payload.dup }
+    bus.subscribe(:config_deleted) { |payload| captured << payload.dup }
+
+    # Session scope keeps the plaintext in memory, so it reaches the emitter.
+    @config.set("providers.leaky.api_key", secret, persist: nil)
+    @config.delete("providers.leaky.api_key", persist: nil)
+
+    refute_includes captured.map(&:inspect).join("\n"), secret,
+                    "plaintext secret leaked into a captured event payload"
+    refute_includes dmesg.formatted, secret, "plaintext secret leaked into dmesg"
+    redacted = Rubik::Config::SecretPolicy::REDACTED_VALUE
+    assert(captured.any? { |p| p[:key] == "providers.leaky.api_key" && p[:value] == redacted })
+    assert(captured.any? { |p| p[:key] == "providers.leaky.api_key" && p[:old_val] == redacted })
+
+    # Non-secret config events must keep their real values.
+    @config.set("ui.verbosity", "verbose", persist: nil)
+    assert_equal "verbose", captured.last[:value]
+  ensure
+    bus&.stop
+  end
+
+  def test_listener_error_quoting_a_secret_is_redacted
+    secret = "sk-listener-SECRET123"
+    dmesg = Rubik::Kernel::Dmesg.new(capacity: 64)
+    dispatcher = Rubik::Kernel::Dispatcher.new(dmesg: dmesg)
+    bus = Rubik::EventBus.new(dispatcher: dispatcher)
+    @config.event_bus = bus
+    errors = []
+    bus.subscribe(:config_listener_error) { |payload| errors << payload[:error] }
+    @config.on_change("providers.secure.api_key") { raise "listener failed with #{secret}" }
+
+    _out, err = capture_io { @config.set("providers.secure.api_key", secret, persist: nil) }
+
+    redacted = Rubik::Config::SecretPolicy::REDACTED_VALUE
+    assert_equal [redacted], errors
+    refute_includes dmesg.formatted, secret
+    refute_includes err, secret
+  ensure
+    bus&.stop
   end
 
   def test_override_restores_legacy_project_plaintext_on_store_failure

@@ -99,6 +99,24 @@ class TestKernelDispatcher < Minitest::Test
     assert_equal 100, rec.data[:budget]
   end
 
+  def test_dmesg_redacts_secret_keys_in_event_payloads
+    secret = "sk-dmesg-leak-SECRET"
+    @dispatcher.post(:config_changed, key: "providers.openai.api_key", value: secret, old_val: secret)
+    assert @dispatcher.sync_drain
+
+    refute_includes @dmesg.formatted, secret
+    rec = @dmesg.tail(1).first
+    redacted = Rubik::Config::SecretPolicy::REDACTED_VALUE
+    assert_equal redacted, rec.data[:value]
+    assert_equal redacted, rec.data[:old_val]
+    assert_equal "providers.openai.api_key", rec.data[:key]
+
+    # Non-secret config events keep their real values in dmesg.
+    @dispatcher.post(:config_changed, key: "ui.verbosity", value: "verbose")
+    assert @dispatcher.sync_drain
+    assert_equal "verbose", @dmesg.tail(1).first.data[:value]
+  end
+
   def test_sync_drain_barrier_synchronization
     latch = Thread::Queue.new
     picked_up = Thread::Queue.new

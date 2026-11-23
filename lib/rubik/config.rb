@@ -77,7 +77,7 @@ module Rubik
     # {ok: false, error:, reason: :persist_failed} when the write failed —
     # so callers report honestly instead of assuming success.
     def set(key, value, persist: nil)
-      @monitor.synchronize do
+      res, old_val, new_val = @monitor.synchronize do
         old_val = fetch(key)
         typed_val = parse_scalar_value(value)
         typed_val = Schema.coerce(key, typed_val)
@@ -110,28 +110,21 @@ module Rubik
         res = persisting?(persist) ? persist_result(save!(persist)) : { ok: true }
         res[:reason] = :persist_failed unless res[:ok]
         res[:secret] = policy[:info] if policy&.key?(:info)
-        notify_change(key, typed_val, old_val) if old_val != typed_val
-        res
+        [res, old_val, typed_val]
       end
+      # Dispatch outside the monitor so a kworker subscriber can read Config (#623).
+      notify_change(key, new_val, old_val) if old_val != new_val
+      res
     end
 
     # Sets a temporary configuration change within a Context lifecycle (AGENTS.md Ω).
     # When ctx is disposed, the inverse restores the prior configuration value.
     def set_revertible(ctx, key, new_val)
-      @monitor.synchronize do
-        old_val = fetch(key)
-        had_key = !old_val.nil?
-        set(key, new_val, persist: nil)
-        return unless ctx.respond_to?(:on_dispose)
+      old_val = @monitor.synchronize { fetch(key) }
+      set(key, new_val, persist: nil)
+      return unless ctx.respond_to?(:on_dispose)
 
-        ctx.on_dispose do
-          if had_key
-            set(key, old_val, persist: nil)
-          else
-            delete(key, persist: nil)
-          end
-        end
-      end
+      ctx.on_dispose { old_val.nil? ? delete(key, persist: nil) : set(key, old_val, persist: nil) }
     end
 
     # Creates an isolated, scoped child configuration (AGENTS.md Unified Context).
@@ -144,7 +137,7 @@ module Rubik
     # Deleting an absent key is a successful no-op. Returns the persist
     # outcome (see set); notifies listeners on change.
     def delete(key, persist: nil)
-      @monitor.synchronize do
+      res, old_val, new_val = @monitor.synchronize do
         old_val = fetch(key)
         blocked = deep_delete(@data, key) == :blocked
         return { ok: false, error: "cannot delete '#{key}': path traverses a non-hash value" } if blocked
@@ -163,13 +156,14 @@ module Rubik
         res[:reason] = :persist_failed unless res[:ok]
 
         new_val = fetch(key)
-        if old_val != new_val
-          notify_change(key, new_val, old_val)
-          @event_bus&.emit(:config_deleted, key: key.to_s, old_val: old_val)
-        end
         cleanup_stored_secret(key, res, persist, old_val: old_val)
-        res
+        [res, old_val, new_val]
       end
+      if old_val != new_val
+        notify_change(key, new_val, old_val)
+        @event_bus&.emit(:config_deleted, key: key.to_s, old_val: redact_secret_value(key, old_val))
+      end
+      res
     end
 
     # True only for scopes save! writes to disk; nil/false/:session/"session"/
@@ -254,11 +248,16 @@ module Rubik
         begin
           entry[:callback].call(key_str, new_val, old_val)
         rescue StandardError => e
-          Rubik::Log.warn(:config, "[WARN] Config listener failed for '#{key_str}': #{e.message}")
-          @event_bus&.emit(:config_listener_error, key: key_str, error: e.message)
+          # A listener error can quote the value that triggered it; never echo
+          # a secret into logs, events, or the dmesg ring buffer (#622).
+          error_text = secret_key?(key_str) ? SecretPolicy::REDACTED_VALUE : e.message
+          Rubik::Log.warn(:config, "[WARN] Config listener failed for '#{key_str}': #{error_text}")
+          @event_bus&.emit(:config_listener_error, key: key_str, error: error_text)
         end
       end
-      @event_bus&.emit(:config_changed, key: key_str, value: new_val, old_val: old_val)
+      safe_new = redact_secret_value(key_str, new_val)
+      safe_old = redact_secret_value(key_str, old_val)
+      @event_bus&.emit(:config_changed, key: key_str, value: safe_new, old_val: safe_old)
     end
 
     def recompute_data!
