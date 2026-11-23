@@ -22,13 +22,6 @@ module Rubik
         # Errno::EPIPE after this many seconds instead of a deadlock.
         STDIN_WRITE_TIMEOUT = 5.0
 
-        # Credential-shaped variable names stripped from the inherited host
-        # environment when a server opts out with `inherit_env: false`. Only
-        # the suffix shape is policy — the prefix is the provider's choice
-        # (GITHUB_TOKEN, ANTHROPIC_API_KEY, AWS_SECRET_ACCESS_KEY, GITHUB_PAT,
-        # DATABASE_URL, ...), so we match it broadly.
-        CREDENTIAL_ENV_PATTERN = /_(KEY|TOKEN|SECRET|PASSWORD|PAT)\z|\A(DATABASE|REDIS|MONGO|POSTGRES|MYSQL|AMQP)_URL\z|_(DATABASE|REDIS|CONNECTION)_URL\z/i
-
         attr_reader :command, :args, :env, :inherit_env, :root_dir, :running, :wait_thr
 
         def initialize(command, args: [], env: {}, inherit_env: true, root_dir: Dir.pwd, guard: nil)
@@ -299,12 +292,14 @@ module Rubik
         # semantics need an explicit nil to remove an inherited variable —
         # leaving the sanitized base plus ONLY the server's explicit env:
         # entries for anything credential-shaped. Explicit env: entries always
-        # win in both modes.
+        # win in both modes. Credential stripping shares the Platform pattern
+        # (single CREDENTIAL_ENV_PATTERN for every spawn path); default mode
+        # deliberately leaves credential vars implicit to inherit.
         def spawn_env
           base = Rubik::Platform.sanitized_spawn_env
           unless @inherit_env
             ENV.each_key do |key|
-              base[key] = nil if key.match?(CREDENTIAL_ENV_PATTERN)
+              base[key] = nil if key.match?(Rubik::Platform::CREDENTIAL_ENV_PATTERN)
             end
           end
           base.merge(
