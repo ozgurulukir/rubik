@@ -650,6 +650,19 @@ class TestPlatform < Minitest::Test
     refute File.exist?(sentinel), "Command injection payload must not be executed by shell"
   end
 
+  # Single shared credential-env pattern: the stdio transport must strip
+  # through the same Platform pattern, so the shapes stay in lockstep and
+  # every spawn path strips the superset (MY_REDIS_URL included).
+  def test_credential_env_pattern_covers_url_suffix_shapes
+    ["MY_REDIS_URL", "FOO_REDIS_URL", "MY_DATABASE_URL", "MY_CONNECTION_URL", "OPENAI_API_KEY",
+     "MY_PASSWD", "AWS_CREDENTIALS", "DATABASE_URL", "GITHUB_PAT"].each do |key|
+      assert Rubik::Platform::CREDENTIAL_ENV_PATTERN.match?(key),
+             "#{key} must be recognized as credential-shaped"
+    end
+    refute Rubik::Platform::CREDENTIAL_ENV_PATTERN.match?("TOKENIZER_MODEL")
+    refute Rubik::Platform::CREDENTIAL_ENV_PATTERN.match?("PATH")
+  end
+
   def test_atomic_write_never_clobbers_live_target_when_rename_fails
     target = File.join(@temp_dir, "meta.json")
     File.binwrite(target, "ORIGINAL")
