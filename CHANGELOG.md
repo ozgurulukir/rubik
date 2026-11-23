@@ -8,6 +8,33 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.15.2] - 2026-11-23
+
+The suspend-and-redact patch: output-token truncation suspends a goal
+instead of failing it, container driver output joins the redaction
+pipeline — and three refactors collapse duplicated spawn-env, loop-context
+and LSP-delegation patterns behind single seams.
+
+### Fixed
+
+- **Goals suspend instead of failing on output-token truncation (#614):**
+  reaching the auto-continue ceiling while producing a large report used to
+  fail the goal terminally. The truncation is now tagged terminal with
+  `:output_truncated` and routed through the existing transient-error
+  suspend path, so the goal is resumable with its loop, counters and ledger
+  preserved; the continuation buffer flushes at the terminal so a resumed
+  turn neither duplicates the stitched partial nor re-inherits exhausted
+  strikes. A charset-less provider error body is also sanitized at
+  `suspend_goal_turn` entry (the suspend path had the same
+  `Encoding::CompatibilityError` gap the fail path had).
+- **Container driver output is redacted (#615):** Docker, podman and
+  bubblewrap drivers passed stdout/stderr/output through unredacted while
+  ProcessDriver always redacted — a credential printed inside a container
+  reached model-visible output unmasked. Result assembly now funnels through
+  `Base#finalize_result`; podman also gains the named container +
+  timeout force-remove cleanup docker already had, and redundant guard
+  deduplication is dropped.
+
 ## [0.15.1] - 2026-11-20
 
 The subagent-report-rescue patch: a report turn whose reasoning spends the
@@ -1958,7 +1985,8 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.15.1...HEAD
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.15.2...HEAD
+[0.15.2]: https://github.com/ozgurulukir/rubik/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/ozgurulukir/rubik/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/ozgurulukir/rubik/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/ozgurulukir/rubik/compare/v0.13.0...v0.14.0
