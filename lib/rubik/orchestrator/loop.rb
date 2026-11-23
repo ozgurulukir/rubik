@@ -179,9 +179,8 @@ module Rubik
       def continue_loop(extra_steps = 20, plan_only: false, auto: false)
         # run()'ın ensure'i eski alt bağlamı imha etti; resume_turn! ile aynı
         # disiplin (issue #595-3, §C): bayat bağlamı imha et, taze ctx.extend
-        # kur, koşu sonunda imha et — yoksa her devam ölü çocuk sızdırır.
-        @loop_context&.dispose
-        @loop_context = @runtime_manager&.context&.extend
+        # kur — ResumeWindow tek home (#475 disiplini), koşu sonunda imha et.
+        resume_window.reopen_context!
         begin
           subagent_notice_inbox.keep_for_continuation # retention seam: SubagentNoticeInbox#keep_for_continuation
           extend_budget(extra_steps)
@@ -199,7 +198,7 @@ module Rubik
           @history << { role: "user", content: continuation_msg }
           execute_steps(opts: opts, plan_only: plan_only)
         ensure
-          @loop_context&.dispose
+          resume_window.close_context!
         end
       end
 
@@ -254,9 +253,9 @@ module Rubik
       def resume_turn!(reason: "llm_error_recovery", on_step: nil)
         @on_step = on_step if on_step
         # run()'ın ensure'i eski alt bağlamı imha etti; taze ctx.extend kur ve
-        # koşu sonunda imha et (§C scoped sub-context disiplini).
-        @loop_context&.dispose
-        @loop_context = @runtime_manager&.context&.extend
+        # koşu sonunda imha et (§C scoped sub-context disiplini — ResumeWindow
+        # üzerinden, tek home).
+        resume_window.reopen_context!
         begin
           # Plan 61 D-14 mold: marker kendi user mesajı olarak gider.
           @history << { role: "user", content: "<turn_resumed reason=\"#{Rubik::Platform.xml_escape(reason.to_s)[0, 300]}\" " \
@@ -264,7 +263,7 @@ module Rubik
                                                "Resuming the SAME task with full context and step budget preserved. Continue working toward completion.\" />" }
           execute_steps(opts: resume_request_opts)
         ensure
-          @loop_context&.dispose
+          resume_window.close_context!
           @loop_context = nil
         end
       end
