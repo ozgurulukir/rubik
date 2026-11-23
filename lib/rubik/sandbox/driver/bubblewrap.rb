@@ -38,6 +38,11 @@ module Rubik
         end
 
         def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0") # rubocop:disable Lint/UnusedMethodArgument
+          # Defense-in-depth: re-run the shared session guard before spawning,
+          # the same way the docker/podman/process drivers do, so a caller
+          # that forgot its own pre-check is still gated by operator policy.
+          verify_command_safety!(cmd)
+
           workspace = File.expand_path(chdir)
 
           bwrap_cmd = ["bwrap"]
@@ -72,17 +77,7 @@ module Rubik
             error_message: "Bubblewrap execution error"
           )
 
-          {
-            ok: res[:ok],
-            exit_code: res[:exit_code],
-            # Explicit timeout flag plumbed to the tool layer (#597-3).
-            timed_out: res[:timed_out] == true,
-            stdout: res[:stdout],
-            stderr: res[:stderr],
-            output: res[:output],
-            duration: res[:duration],
-            driver: "bwrap"
-          }
+          finalize_result(res)
         end
 
         # Probe the installed bwrap once. bubblewrap's --tmpfs has only ever

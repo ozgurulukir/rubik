@@ -39,23 +39,12 @@ module Rubik
           )
 
           stderr_out = resolved[:note] ? "#{resolved[:note]}\n#{res[:stderr]}" : res[:stderr]
-          require_relative "../../security/redactor" unless defined?(Rubik::Security::Redactor)
-          clean_stdout = Rubik::Security::Redactor.redact(res[:stdout])
-          clean_stderr = Rubik::Security::Redactor.redact(stderr_out)
 
-          {
-            ok: res[:ok],
-            exit_code: res[:exit_code],
-            # Explicit timeout flag plumbed to the tool layer (#597-3): a
-            # legitimate timeout(1) exit 124 must not read as a runner kill.
-            timed_out: res[:timed_out] == true,
-            stdout: clean_stdout,
-            stderr: clean_stderr,
-            output: [clean_stdout, clean_stderr].reject(&:empty?).join("\n"),
-            duration: res[:duration],
-            driver: "process",
-            shell: resolved[:shell]
-          }
+          finalize_result(
+            res,
+            stderr: stderr_out,
+            extra: { shell: resolved[:shell] }
+          )
         end
 
         private
@@ -131,23 +120,6 @@ module Rubik
           return unless CMD_DANGEROUS_CONSTRUCTS.any? { |p| cmd.to_s.match?(p) }
 
           raise_dangerous(cmd.to_s, rule_name: "cmd.exe_construct")
-        end
-
-        # Security guard gating cmd.exe spawns. The Runner injects the shared
-        # session guard via driver_opts (options[:guard]) so operator policy —
-        # the live command allowlist above all — applies here too; the lazy
-        # local fallback (silent audit, zero policy) serves only standalone /
-        # test-constructed drivers.
-        def guard
-          @options[:guard] || (@guard ||= Rubik::Security::Guard.new(audit_log_path: nil))
-        end
-
-        # Re-run the security guard's classification, scoped to the given shell
-        # so cmd.exe semantics are enforced when spawned via cmd. Blocks a
-        # POSIX-safe-but-cmd-dangerous command with BlockedWriteError.
-        def verify_command_safety!(cmd, shell: nil)
-          guard.verify_command_safety!(cmd, shell: shell)
-          true
         end
 
         # Raise the standard BlockedWriteError used throughout the guard

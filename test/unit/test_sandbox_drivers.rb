@@ -152,6 +152,76 @@ class TestSandboxDrivers < Minitest::Test
     refute_includes captured_args, "--network"
   end
 
+  # Output-hygiene parity: every container driver must redact credential-
+  # shaped output and recompute `output` from the redacted parts, the same
+  # way ProcessDriver always has. A command that prints a credential inside
+  # a sandbox must not reach model-visible output unmasked.
+  def test_container_drivers_redact_credential_output
+    secret = "sk-1234567890abcdef12345678"
+    fake_res = {
+      ok: true, exit_code: 0, timed_out: false,
+      stdout: "key=#{secret}\n",
+      stderr: "using #{secret}\n",
+      output: "key=#{secret}\nusing #{secret}\n",
+      duration: 0.01
+    }
+
+    [
+      Rubik::Sandbox::Driver::DockerDriver,
+      Rubik::Sandbox::Driver::PodmanDriver,
+      Rubik::Sandbox::Driver::BubblewrapDriver
+    ].each do |klass|
+      driver = klass.new
+      driver.stub :system, true do
+        Rubik::Platform.stub :popen_capture, fake_res do
+          res = driver.run("echo ok", chdir: @temp_dir)
+          refute_includes res[:stdout], secret, "#{klass} leaked stdout credential"
+          refute_includes res[:stderr], secret, "#{klass} leaked stderr credential"
+          refute_includes res[:output], secret, "#{klass} leaked the combined output credential"
+        end
+      end
+    end
+  end
+
+  def test_podman_driver_timeout_cleans_up_container
+    driver = Rubik::Sandbox::Driver::PodmanDriver.new
+    captured_rm = nil
+    timed_out_res = {
+      ok: false, exit_code: 124, timed_out: true,
+      stdout: "", stderr: "timed out", output: "timed out", duration: 1.0
+    }
+
+    Rubik::Platform.stub :popen_capture, timed_out_res do
+      driver.stub :system, lambda { |*args|
+        captured_rm = args
+        true
+      } do
+        res = driver.run("sleep 30", timeout: 0.1, chdir: @temp_dir)
+        assert res[:timed_out]
+      end
+    end
+
+    assert_equal "podman", captured_rm[0]
+    assert_equal "rm", captured_rm[1]
+    assert_equal "-f", captured_rm[2]
+    refute_nil captured_rm[3], "the force-remove targets the named container"
+  end
+
+  def test_podman_driver_names_its_container
+    driver = Rubik::Sandbox::Driver::PodmanDriver.new(image: "podman-sandbox:v1")
+    captured_args = nil
+    Open3.stub :popen3, lambda { |*args, &block|
+      captured_args = args
+      mock_thr = Struct.new(:value).new(Struct.new(:exitstatus).new(0))
+      block.call(StringIO.new, StringIO.new("podman ok"), StringIO.new(""), mock_thr)
+    } do
+      driver.stub :system, true do
+        driver.run("echo hi", chdir: @temp_dir)
+      end
+    end
+    assert_includes captured_args, "--name"
+  end
+
   def test_bwrap_driver_registration
     bwrap_driver = Rubik::Sandbox::Driver.resolve("bwrap")
     assert_instance_of Rubik::Sandbox::Driver::BubblewrapDriver, bwrap_driver
@@ -393,6 +463,7 @@ class TestSandboxDrivers < Minitest::Test
         assert res[:ok]
         assert_includes res[:stderr], "not found"
         assert_includes res[:stdout], "still-runs"
+        assert_includes res[:output], "not found", "output is recomputed from the composed stderr"
       end
     end
   end

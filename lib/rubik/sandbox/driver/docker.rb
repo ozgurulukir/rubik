@@ -58,17 +58,7 @@ module Rubik
             Rubik::Log.warn(:sandbox, "docker container '#{container_name}' could not be removed") unless removed
           end
 
-          {
-            ok: res[:ok],
-            exit_code: res[:exit_code],
-            # Explicit timeout flag plumbed to the tool layer (#597-3).
-            timed_out: res[:timed_out] == true,
-            stdout: res[:stdout],
-            stderr: res[:stderr],
-            output: res[:output],
-            duration: res[:duration],
-            driver: "docker"
-          }
+          finalize_result(res, driver: "docker")
         end
       end
     end
