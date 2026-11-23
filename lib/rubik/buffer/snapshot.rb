@@ -10,11 +10,19 @@ require_relative "../platform"
 module Rubik
   module Buffer
     class Snapshot
-      attr_reader :id, :timestamp, :files
+      # JSON cannot emit invalid UTF-8, so binary buffer contents are tagged
+      # and hex-encoded before deflate (issue #628 + #629).
+      BINARY_MARKER = "__rubik_binary_hex_v1__"
 
-      def initialize(id: nil, timestamp: nil, files: {})
+      attr_reader :id, :timestamp, :files, :created_at
+
+      def initialize(id: nil, timestamp: nil, files: {}, created_at: nil)
+        now = Time.now
         @id = id || SecureRandom.hex(6)
-        @timestamp = timestamp || Time.now.to_i
+        @timestamp = timestamp || now.to_i
+        # Sub-second creation time orders undo steps made in the same second
+        # (issue #629); older files without it fall back to their timestamp.
+        @created_at = created_at || (timestamp ? timestamp.to_f : now.to_f)
         @files = files
       end
 
@@ -22,6 +30,7 @@ module Rubik
         {
           "id" => @id,
           "timestamp" => @timestamp,
+          "created_at" => @created_at,
           "files" => @files
         }
       end
@@ -30,17 +39,33 @@ module Rubik
         new(
           id: hash["id"],
           timestamp: hash["timestamp"],
+          created_at: hash["created_at"],
           files: hash["files"] || {}
         )
       end
 
       def compress
-        Zlib::Deflate.deflate(JSON.dump(to_h))
+        payload = to_h
+        payload["files"] = @files.transform_values { |content| encode_file_content(content) }
+        Zlib::Deflate.deflate(JSON.dump(payload))
       end
 
       def self.decompress(binary_data)
-        decompressed = Zlib::Inflate.inflate(binary_data)
-        from_h(JSON.parse(decompressed))
+        payload = JSON.parse(Zlib::Inflate.inflate(binary_data))
+        payload["files"] = (payload["files"] || {}).transform_values { |value| decode_file_content(value) }
+        from_h(payload)
+      end
+
+      def encode_file_content(content)
+        return content unless content.is_a?(String) && !content.dup.force_encoding(Encoding::UTF_8).valid_encoding?
+
+        { BINARY_MARKER => content.b.unpack1("H*") }
+      end
+
+      def self.decode_file_content(value)
+        return value unless value.is_a?(Hash) && value.key?(BINARY_MARKER)
+
+        [value[BINARY_MARKER]].pack("H*").force_encoding(Encoding::BINARY)
       end
     end
 
@@ -49,8 +74,9 @@ module Rubik
 
       # Issue #589: in-memory snapshots stay per-edit (undo granularity is
       # untouched), but the whole-buffer deflate+disk persist is debounced to
-      # at most one write per interval — the IO is the expensive part and the
-      # files are durability artifacts, never read back by undo/rollback.
+      # at most one write per interval — the IO is the expensive part. The
+      # files are durability artifacts: load_snapshots restores them at
+      # startup so undo/rollback survive a restart (issue #629).
       # 0 disables debouncing (the historical per-write persistence, still
       # the default so standalone/test stores keep exact per-edit durability).
       DEFAULT_MIN_INTERVAL = 0.0
@@ -88,6 +114,33 @@ module Rubik
       def record_baseline(buffer_manager)
         @monitor.synchronize do
           @baseline = buffer_manager.snapshot_state
+        end
+      end
+
+      # Restores persisted snapshots so undo/rollback work after a restart
+      # (issue #629). Called once from the composition root at startup.
+      # Defensive: a corrupt or incompatible file is skipped with a warning,
+      # never allowed to break buffer startup. Idempotent.
+      #
+      # @return [Integer] number of snapshots restored
+      def load_snapshots
+        @monitor.synchronize do
+          return @snapshots.size if @snapshots.any?
+
+          entries = Dir.glob(File.join(@storage_dir, "*.zdeflate")).filter_map do |path|
+            snapshot = load_snapshot_file(path)
+            [path, snapshot] if snapshot
+          end
+          # Second-resolution timestamps tie for rapid edits and glob order
+          # follows random hex ids. created_at carries sub-second precision.
+          entries.sort_by! { |_path, snapshot| [snapshot.created_at.to_f, snapshot.timestamp.to_s.to_i] }
+
+          excess = entries.size - @max_snapshots
+          entries = entries.drop(excess) if excess.positive?
+
+          @snapshots = entries.map { |_path, snapshot| snapshot }
+          @current_index = @snapshots.empty? ? -1 : @snapshots.size - 1
+          @snapshots.size
         end
       end
 
@@ -181,6 +234,20 @@ module Rubik
           @current_index = target_idx
           true
         end
+      end
+
+      private
+
+      def load_snapshot_file(path)
+        snapshot = Snapshot.decompress(File.binread(path))
+        return nil unless snapshot.is_a?(Snapshot) && snapshot.files.is_a?(Hash)
+        return nil unless snapshot.id.is_a?(String) && !snapshot.id.empty?
+        return nil unless snapshot.files.all? { |key, value| key.is_a?(String) && value.is_a?(String) }
+
+        snapshot
+      rescue StandardError => e
+        warn "[Buffer] skipping unreadable snapshot #{File.basename(path)}: #{e.class}: #{e.message}"
+        nil
       end
     end
   end

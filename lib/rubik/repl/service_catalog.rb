@@ -143,7 +143,7 @@ module Rubik
             Rubik::Buffer::SnapshotStore.new(
               storage_dir: File.join(s.home_dir, ".rubik", "snapshots", File.basename(s.root_dir)),
               min_interval: 1.0, max_snapshots: 200
-            )
+            ).tap(&:load_snapshots)
           end,
           provide: Rubik::Coeffects::SNAPSHOT_STORE
         ),

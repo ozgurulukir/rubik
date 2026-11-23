@@ -24,6 +24,31 @@ class TestSnapshot < Minitest::Test
     assert_equal snapshot.files, decompressed.files
   end
 
+  def test_binary_content_survives_compress_decompress
+    binary = "\xFF\xFE\x00PNG-data".b
+    snapshot = Rubik::Buffer::Snapshot.new(files: { "image.png" => binary })
+
+    restored = Rubik::Buffer::Snapshot.decompress(snapshot.compress)
+
+    assert_equal Encoding::BINARY, restored.files["image.png"].encoding
+    assert_equal binary, restored.files["image.png"]
+  end
+
+  def test_binary_content_survives_persist_and_restart
+    binary = "\xFF\xFE\x00PNG-data".b
+    @manager.write("image.png", binary)
+    @store.create_snapshot(@manager)
+    @manager.write("image.png", "later bytes".b)
+    @store.create_snapshot(@manager)
+
+    restarted = Rubik::Buffer::SnapshotStore.new(storage_dir: @snap_dir)
+    assert_equal 2, restarted.load_snapshots
+    assert_equal binary, restarted.snapshots.first.files["image.png"]
+
+    assert restarted.undo(@manager)
+    assert_equal binary, @manager.read("image.png")
+  end
+
   def test_write_undo_cycle
     @manager.write("a.rb", "v1")
     @store.create_snapshot(@manager)
@@ -82,6 +107,51 @@ class TestSnapshot < Minitest::Test
     snapshot = Rubik::Buffer::Snapshot.new(files: { "a.rb" => crlf })
 
     assert_equal crlf, Rubik::Buffer::Snapshot.decompress(snapshot.compress).files["a.rb"]
+  end
+
+  def test_undo_after_restart_loads_persisted_snapshots
+    @manager.write("a.rb", "v1")
+    first = @store.create_snapshot(@manager)
+    @manager.write("a.rb", "v2")
+    @store.create_snapshot(@manager)
+
+    # Simulate a restart: fresh manager and store over the same on-disk history.
+    restarted_manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
+    restarted = Rubik::Buffer::SnapshotStore.new(storage_dir: @snap_dir)
+    assert_equal 2, restarted.load_snapshots
+
+    assert restarted.undo(restarted_manager)
+    assert_equal "v1", restarted_manager.read("a.rb")
+    assert restarted.rollback(first.id, restarted_manager)
+    assert_equal "v1", restarted_manager.read("a.rb")
+  end
+
+  def test_load_snapshots_keeps_persist_order_for_equal_timestamps
+    @manager.write("a.rb", "v1")
+    @store.create_snapshot(@manager)
+    @manager.write("a.rb", "v2")
+    @store.create_snapshot(@manager)
+
+    restarted = Rubik::Buffer::SnapshotStore.new(storage_dir: @snap_dir)
+    assert_equal 2, restarted.load_snapshots
+    manager = Rubik::Buffer::Manager.new(root_dir: @temp_dir)
+    assert restarted.undo(manager)
+    assert_equal "v1", manager.read("a.rb")
+  end
+
+  def test_load_snapshots_skips_corrupt_and_incompatible_files
+    @manager.write("a.rb", "v1")
+    @store.create_snapshot(@manager)
+
+    File.binwrite(File.join(@snap_dir, "corrupt.zdeflate"), "not deflate")
+    File.binwrite(File.join(@snap_dir, "wrong.ext"), "ignored")
+    File.binwrite(File.join(@snap_dir, "incompatible.zdeflate"),
+                  Zlib::Deflate.deflate(JSON.dump({ "id" => "x", "files" => "not a hash" })))
+
+    restarted = Rubik::Buffer::SnapshotStore.new(storage_dir: @snap_dir)
+    _out, err = capture_io { assert_equal 1, restarted.load_snapshots }
+    assert_includes err, "skipping unreadable snapshot"
+    assert restarted.undo(Rubik::Buffer::Manager.new(root_dir: @temp_dir))
   end
 
   def test_default_storage_dir_uses_platform_home_dir
