@@ -21,6 +21,7 @@ module Rubik
         @reading = false
         @collecting = false
         @inbox = []
+        @write_monitor = Monitor.new
       end
 
       def reading?
@@ -38,23 +39,18 @@ module Rubik
         return false if text.nil? || text.to_s.empty?
 
         clean_text = text.to_s.sub(/\A\n+/, "")
-
-        synchronize do
+        buffered, reading = synchronize do
           if @quiet && !force
             @inbox << clean_text
-            return false
-          end
-
-          if @reading
-            @output.print "\r\e[2K"
-            @output.puts clean_text
-            redisplay_cleanly
+            [true, false]
           else
-            @output.puts clean_text
+            [false, @reading]
           end
-          @output.flush if @output.respond_to?(:flush)
-          true
         end
+        return false if buffered
+
+        write_notices([clean_text], reading: reading)
+        true
       end
 
       def quiet?
@@ -74,19 +70,16 @@ module Rubik
       end
 
       def flush_notices!
-        items = flush_inbox!
-        return false if items.empty?
+        items, reading = synchronize do
+          next [nil, false] if @inbox.empty?
 
-        synchronize do
-          if @reading
-            @output.print "\r\e[2K"
-            items.each { |item| @output.puts item }
-            redisplay_cleanly
-          else
-            items.each { |item| @output.puts item }
-          end
-          @output.flush if @output.respond_to?(:flush)
+          drained = @inbox.dup
+          @inbox.clear
+          [drained, @reading]
         end
+        return false if items.nil?
+
+        write_notices(items, reading: reading)
         true
       end
 
@@ -146,6 +139,17 @@ module Rubik
       end
 
       private
+
+      # Terminal writes happen outside the monitor (issue #635): a blocked
+      # stdout must not stall every thread waiting on guard state.
+      def write_notices(items, reading:)
+        @write_monitor.synchronize do
+          @output.print "\r\e[2K" if reading
+          items.each { |item| @output.puts item }
+          redisplay_cleanly if reading
+          @output.flush if @output.respond_to?(:flush)
+        end
+      end
 
       def redisplay_cleanly
         if @reline.respond_to?(:line_editor) && @reline.line_editor

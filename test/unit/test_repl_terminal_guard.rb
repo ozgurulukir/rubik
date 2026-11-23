@@ -2,6 +2,7 @@
 
 require_relative "../test_helper"
 require "stringio"
+require "timeout"
 
 class TestReplTerminalGuard < Minitest::Test
   class FakeReline
@@ -127,6 +128,40 @@ class TestReplTerminalGuard < Minitest::Test
     assert_empty @guard.inbox
   end
 
+  # Issue #635: a stalled stdout must not hold the guard monitor hostage.
+  def test_notice_write_happens_outside_the_monitor
+    entered = Queue.new
+    gate = Queue.new
+    output = blocking_output(entered, gate)
+    guard = Rubik::REPL::TerminalGuard.new(output: output, reline: @reline)
+
+    writer = Thread.new { guard.print_safe_notice("blocking notice") }
+    Timeout.timeout(3) { entered.pop }
+    probe = Thread.new { guard.synchronize { :acquired } }
+    assert_equal :acquired, Timeout.timeout(3) { probe.value }
+  ensure
+    gate << :go if gate
+    writer&.join(1)
+    probe&.join(1)
+  end
+
+  def test_inbox_flush_write_happens_outside_the_monitor
+    entered = Queue.new
+    gate = Queue.new
+    output = blocking_output(entered, gate)
+    guard = Rubik::REPL::TerminalGuard.new(output: output, reline: @reline, quiet: true)
+    guard.print_safe_notice("queued notice")
+
+    writer = Thread.new { guard.flush_notices! }
+    Timeout.timeout(3) { entered.pop }
+    probe = Thread.new { guard.synchronize { :acquired } }
+    assert_equal :acquired, Timeout.timeout(3) { probe.value }
+  ensure
+    gate << :go if gate
+    writer&.join(1)
+    probe&.join(1)
+  end
+
   def test_thread_safe_concurrent_notices
     threads = 10.times.map do |i|
       Thread.new do
@@ -139,5 +174,18 @@ class TestReplTerminalGuard < Minitest::Test
 
     lines = @output.string.lines.map(&:chomp)
     assert_equal 50, lines.size
+  end
+
+  private
+
+  def blocking_output(entered, gate)
+    output = Object.new
+    output.define_singleton_method(:print) { |*_args| nil }
+    output.define_singleton_method(:puts) do |*_args|
+      entered << true
+      gate.pop
+    end
+    output.define_singleton_method(:flush) { nil }
+    output
   end
 end

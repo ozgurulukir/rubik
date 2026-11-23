@@ -135,4 +135,19 @@ class TestActivityLog < Minitest::Test
       assert_nil @log.record("write", evil_args, :ok)
     end
   end
+
+  # Issue #621: a capped chronicle must show the latest tool calls, not the
+  # oldest ones at the start of the run.
+  def test_chronological_summary_keeps_most_recent_entries
+    30.times { |i| @log.record("tool_#{i}", {}, :ok) }
+
+    summary = @log.chronological_summary(max_entries: 20)
+    lines = summary.lines.map(&:strip)
+
+    assert_equal 21, lines.size, "20 entries plus the dropped-count marker"
+    assert_equal "1. tool_10", lines.first
+    assert_equal "20. tool_29", lines[-2]
+    assert_equal "... (10 more)", lines.last
+    refute_includes lines, "1. tool_0"
+  end
 end

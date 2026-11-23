@@ -47,7 +47,7 @@ module Rubik
       def chronological_summary(max_entries: 20)
         return "" if @entries.empty?
 
-        lines = @entries.first(max_entries).map.with_index(1) do |entry, i|
+        lines = @entries.last(max_entries).map.with_index(1) do |entry, i|
           status_tag = entry[:status] == :error ? " [FAILED]" : ""
           "  #{i}. #{entry[:tool]}#{status_tag}"
         end
