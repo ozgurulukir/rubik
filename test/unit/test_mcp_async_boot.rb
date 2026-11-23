@@ -89,16 +89,6 @@ class TestMcpAsyncBoot < Minitest::Test
     { "mcp.servers" => { name => { "command" => "fake-#{name}" } } }
   end
 
-  def wait_until(timeout = 5.0)
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-    until yield
-      return false if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
-
-      sleep 0.005
-    end
-    true
-  end
-
   def tool_def(tool_name)
     { "name" => tool_name, "description" => "fake", "inputSchema" => { "type" => "object" } }
   end
