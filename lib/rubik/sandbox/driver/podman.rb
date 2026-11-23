@@ -53,10 +53,14 @@ module Rubik
           ensure
             # Mirror DockerDriver: the watchdog kills the podman client process
             # tree on timeout, and --rm removal is performed by that client, so
-            # a timed-out run would otherwise orphan the container. Best-effort
-            # cleanup; a failed `podman rm -f` leaves a trace.
-            removed = system("podman", "rm", "-f", container_name, out: File::NULL, err: File::NULL)
-            Rubik::Log.warn(:sandbox, "podman container '#{container_name}' could not be removed") unless removed
+            # a timed-out run would otherwise orphan the container. Only a
+            # killed or failed run needs the force-remove — a clean exit
+            # already removed itself via --rm, and rm-ing it would warn noise.
+            # Best-effort cleanup; a failed `podman rm -f` leaves a trace.
+            if res.nil? || res[:timed_out] == true || res[:ok] != true
+              removed = system("podman", "rm", "-f", container_name, out: File::NULL, err: File::NULL)
+              Rubik::Log.warn(:sandbox, "podman container '#{container_name}' could not be removed") unless removed
+            end
           end
 
           finalize_result(res, driver: "podman")

@@ -463,6 +463,7 @@ class TestSandboxDrivers < Minitest::Test
         assert res[:ok]
         assert_includes res[:stderr], "not found"
         assert_includes res[:stdout], "still-runs"
+        assert_includes res[:output], "not found", "output is recomputed from the composed stderr"
       end
     end
   end
