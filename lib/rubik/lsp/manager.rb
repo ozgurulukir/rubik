@@ -197,33 +197,30 @@ module Rubik
       def sync_buffer_file(file_path, content)
         return false unless enabled?
 
-        client = client_for(file_path)
-        return false unless client&.running
-
-        # Try did_change, or did_open if not yet opened
-        if client.document_open?(file_path)
-          client.did_change(file_path, content)
-        else
-          client.did_open(file_path, content, document_language_id(file_path))
+        with_running_client(file_path, ->(_client) { false }) do |client|
+          # Try did_change, or did_open if not yet opened
+          if client.document_open?(file_path)
+            client.did_change(file_path, content)
+          else
+            client.did_open(file_path, content, document_language_id(file_path))
+          end
         end
       end
 
       def did_save_file(file_path, content = nil)
         return false unless enabled?
 
-        client = client_for(file_path)
-        return false unless client&.running
-
-        client.did_save(file_path, content)
+        with_running_client(file_path, ->(_client) { false }) do |client|
+          client.did_save(file_path, content)
+        end
       end
 
       def did_close_file(file_path)
         return false unless enabled?
 
-        client = client_for(file_path)
-        return false unless client&.running
-
-        client.did_close(file_path)
+        with_running_client(file_path, ->(_client) { false }) do |client|
+          client.did_close(file_path)
+        end
       end
 
       def sync_buffer_file_if_needed(file_path, buffer_manager)
@@ -257,24 +254,21 @@ module Rubik
       end
 
       def diagnostics_for(file_path)
-        client = client_for(file_path)
-        return [] unless client&.running
-
-        client.diagnostics_for(file_path)
+        with_running_client(file_path, ->(_client) { [] }) do |client|
+          client.diagnostics_for(file_path)
+        end
       end
 
       def diagnostics_snapshot_for(file_path)
-        client = client_for(file_path)
-        return { state: :unavailable, diagnostics: [], document_version: nil, published_version: nil } unless client&.running
-
-        client.diagnostics_snapshot_for(file_path)
+        with_running_client(file_path, ->(_client) { Client::UNAVAILABLE_SNAPSHOT }) do |client|
+          client.diagnostics_snapshot_for(file_path)
+        end
       end
 
       def wait_for_diagnostics(file_path, timeout: 0.2)
-        client = client_for(file_path)
-        return { state: :unavailable, diagnostics: [], document_version: nil, published_version: nil } unless client&.running
-
-        client.wait_for_diagnostics(file_path, timeout: timeout)
+        with_running_client(file_path, ->(_client) { Client::UNAVAILABLE_SNAPSHOT }) do |client|
+          client.wait_for_diagnostics(file_path, timeout: timeout)
+        end
       end
 
       def all_diagnostics
@@ -316,24 +310,21 @@ module Rubik
       end
 
       def hover(file_path, line, character)
-        client = client_for(file_path)
-        return { ok: false, error: inactive_client_error(file_path, client) } unless client&.running
-
-        client.hover(file_path, line, character)
+        with_running_client(file_path, ->(client) { { ok: false, error: inactive_client_error(file_path, client) } }) do |client|
+          client.hover(file_path, line, character)
+        end
       end
 
       def definition(file_path, line, character)
-        client = client_for(file_path)
-        return { ok: false, error: inactive_client_error(file_path, client) } unless client&.running
-
-        client.definition(file_path, line, character)
+        with_running_client(file_path, ->(client) { { ok: false, error: inactive_client_error(file_path, client) } }) do |client|
+          client.definition(file_path, line, character)
+        end
       end
 
       def references(file_path, line, character)
-        client = client_for(file_path)
-        return { ok: false, error: inactive_client_error(file_path, client) } unless client&.running
-
-        client.references(file_path, line, character)
+        with_running_client(file_path, ->(client) { { ok: false, error: inactive_client_error(file_path, client) } }) do |client|
+          client.references(file_path, line, character)
+        end
       end
 
       def status_summary
@@ -497,6 +488,18 @@ module Rubik
         @monitor.synchronize do
           @recovery_errors[lang] || "LSP not active for '#{file_path}'"
         end
+      end
+
+      # One running-client funnel for the file-scoped delegation methods:
+      # resolves the client and yields it while running; otherwise calls the
+      # fallback lambda with the (possibly nil) client. The fallback owns the
+      # per-method inactive shape (false, [], the unavailable snapshot, the
+      # hover-error hash) so observable outputs stay byte-identical.
+      def with_running_client(file_path, fallback)
+        client = client_for(file_path)
+        return fallback.call(client) unless client&.running
+
+        yield client
       end
     end
   end
