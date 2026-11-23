@@ -125,9 +125,13 @@ module Rubik
             cm.absorb_partial_rows!(@deps.history)
             @deps.history << { role: "assistant", content: accumulated }
           end
+          # The buffered text now lives in history as one row. Flush the
+          # manager so a resumed run neither duplicates it nor re-inherits an
+          # exhausted strike count (issue #613: truncation is resumable).
+          cm.reset!
 
           @deps.on_step&.call(type: :error, content: trunc_action[:error], step: @deps.step_count, max_steps: @deps.max_steps)
-          @deps.loop_instance.turn_result(success: false, error: trunc_action[:error])
+          @deps.loop_instance.turn_result(success: false, error: trunc_action[:error], reason: :output_truncated)
         end
 
         # ── nudge texts ──

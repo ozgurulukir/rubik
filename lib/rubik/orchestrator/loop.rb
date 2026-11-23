@@ -285,13 +285,13 @@ module Rubik
         default
       end
 
-      # Turn-result contract (public: the TurnExecutor user-channel adapter
-      # builds every terminal through it, and the shell drives
-      # continue_loop off the carried loop_instance).
-      def turn_result(success:, error: nil, output: nil)
+      # Turn-result contract (public: the user-channel adapter builds every
+      # terminal through it; the shell drives continue_loop off loop_instance).
+      def turn_result(success:, error: nil, output: nil, reason: nil)
         r = { ok: success, steps: @step_count, tokens: @total_tokens, streamed: @last_turn_streamed == true, loop_instance: self }
         r[:output] = output if output
         r[:error] = error if error
+        r[:reason] = reason if reason
         r
       end
 

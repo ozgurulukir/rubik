@@ -47,6 +47,30 @@ class TestPlanAndGoal < Minitest::Test
     end
   end
 
+  # Issue #613: a long final report burns the auto-continue ceiling. The
+  # provider emits `truncated_count` length responses, then a normal finish.
+  class TruncatingThenFinishProvider < Rubik::LLM::BaseProvider
+    def initialize(truncated_count)
+      super()
+      @truncated = truncated_count
+    end
+
+    def complete(_messages, _opts = {})
+      if @truncated.positive?
+        @truncated -= 1
+        return Rubik::LLM::Response.new(
+          text: "partial report chunk ",
+          raw: { "finish_reason" => "length" },
+          usage: { input_tokens: 10, output_tokens: 20 }
+        )
+      end
+      Rubik::LLM::Response.new(
+        text: '{"tool": "finish", "args": {"message": "report delivered"}}',
+        usage: { input_tokens: 10, output_tokens: 20 }
+      )
+    end
+  end
+
   def setup
     @temp_dir = Dir.mktmpdir("rubik_plan_test")
     @temp_home = Dir.mktmpdir("rubik_plan_home")
@@ -369,6 +393,34 @@ class TestPlanAndGoal < Minitest::Test
     assert_equal "Survive the DNS outage", registry.latest.goal_text, "resume revives the MOST RECENT suspension"
   end
 
+  def test_suspend_with_binary_provider_error_message_is_sanitized
+    # A charset-less HTTP body makes a transient ClientError message BINARY
+    # (commit 7cc85b9 fixed the fail path; the suspend path must sanitize
+    # too — the ledger meta goes through JSON, which raises on invalid
+    # bytes, diverting the run into the fail path).
+    binary = (+"Network error calling api.example.com: \xFF\xFE (gave up after 2 retries)").force_encoding(Encoding::BINARY)
+    @shell.instance_variable_get(:@llm_registry).register(
+      "ollama",
+      FlakyThenGoodProvider.new([Rubik::LLM::ClientError.new(binary, transient: true)])
+    )
+    @shell.execute_input("!goal Survive the DNS outage")
+
+    out = @output.string
+    assert_includes out, "Suspended after", "a binary transient error must still suspend, not crash or fail"
+
+    state = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal :suspended, state.status, "the binary message must not divert the run into the fail path"
+
+    ledger = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_LEDGER)
+    refute_nil ledger
+    assert ledger.snapshot[:suspended], "the ledger meta must survive a binary reason (JSON-safe)"
+
+    contents = @shell.conversation_history.map { |m| m[:content].to_s }
+    pair = contents.find { |c| c.start_with?("[Goal suspended after") }
+    refute_nil pair, "the suspend pair must be recorded"
+    assert pair.valid_encoding?, "the recorded pair must be valid UTF-8"
+  end
+
   def test_goal_resume_revives_the_same_loop_in_process
     suspended_goal_via_transient_transport_failure
     registry = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_REGISTRY)
@@ -396,6 +448,45 @@ class TestPlanAndGoal < Minitest::Test
     # provider registered after. That continuity IS the in-process contract.
     assert lines.any? { |e| e["type"] == "assistant_response" && e["payload"]["content"].to_s.include?("done") },
            "the completion pair must come from the revived loop's own provider"
+  end
+
+  def test_output_truncation_suspends_goal_and_resume_restores_the_run
+    @config.set("llm.max_auto_continues", 3)
+    @shell.instance_variable_get(:@llm_registry).register(
+      "ollama", TruncatingThenFinishProvider.new(4)
+    )
+    @shell.execute_input("!goal Write the final report")
+
+    out = @output.string
+    assert_includes out, "Suspended after", "ceiling truncation must suspend, not fail (issue #613)"
+    assert_includes out, "automatic continue attempts were exhausted"
+    assert_includes out, "!goal resume"
+    refute_includes out, "Goal could not be completed"
+
+    state = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_STATE)
+    assert_equal :suspended, state.status
+    assert_nil state.snapshot[:finished_at], "suspension is not terminal"
+
+    ledger = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_LEDGER)
+    refute_nil ledger
+    assert ledger.snapshot[:suspended], "Σ ledger must be stamped suspended"
+    refute ledger.snapshot[:finalized], "the ledger must NOT be finalized failed"
+
+    registry = @shell.runtime_manager.context.get(Rubik::Coeffects::GOAL_REGISTRY)
+    refute_nil registry
+    assert_equal 1, registry.size
+    suspended_loop = registry.latest.loop
+    refute_nil suspended_loop, "the live loop must be retained for in-process resume"
+
+    partials = suspended_loop.history.select { |m| m[:role] == "assistant" && m[:content].to_s.include?("partial report chunk") }
+    assert_equal 1, partials.size, "history keeps exactly one stitched partial assistant row"
+    assert_equal "partial report chunk " * 4, partials.first[:content]
+
+    @shell.execute_input("!goal resume")
+
+    assert_includes @output.string, "Goal Achieved"
+    assert_equal :completed, state.status, "resume revives the SAME GoalState to completion"
+    assert registry.empty?, "a terminal path must drop the registry entry"
   end
 
   def test_resume_then_interrupt_abandons_the_suspension_as_stopped
