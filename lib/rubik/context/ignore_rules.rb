@@ -88,7 +88,10 @@ module Rubik
         @prunable_needles = @patterns.filter_map do |pattern|
           next unless (m = PRUNABLE_PATTERN.match(pattern))
 
-          m[1].split("/")
+          stem = m[1]
+          # A leading "/" anchors the ignore to the scan root; an unanchored
+          # stem (including the "**/" prefix) matches at any depth.
+          [stem.delete_prefix("/").split("/"), stem.start_with?("/")]
         end.freeze
         @file_regexes = compile(@patterns).freeze
         # The git fast path skips prunable subtree patterns with literal
@@ -107,7 +110,9 @@ module Rubik
       def prune_dir?(rel_comps)
         return true if HARD_PRUNE_ROOTS.include?(rel_comps.first)
 
-        @prunable_needles.any? { |needle| contiguous_components?(rel_comps, needle) }
+        @prunable_needles.any? do |needle, anchored|
+          anchored ? rel_comps[0, needle.size] == needle : contiguous_components?(rel_comps, needle)
+        end
       end
 
       # Walker-dialect file filter: reserved roots plus every ignore pattern

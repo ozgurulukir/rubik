@@ -102,8 +102,38 @@ class TestASTExtractor < Minitest::Test
     end
   end
 
+  def test_broken_ruby_parse_is_reported_as_failed_not_ok
+    skip "prism unavailable" unless Rubik::AST::RubyExtractor::PRISM_AVAILABLE
+
+    broken = "class Foo\n  def ok; end\nend\ndef baz(; end\n"
+    result = Rubik::AST::Extractor.extract_result("broken.rb", broken)
+
+    assert_equal :failed, result.status
+    assert_equal :ruby, result.source
+    refute result.trustworthy?
+    assert_match(/Prism/, result.detail.to_s)
+  end
+
+  def test_broken_ruby_file_is_not_cached_or_indexed_as_valid
+    skip "prism unavailable" unless Rubik::AST::RubyExtractor::PRISM_AVAILABLE
+
+    Dir.mktmpdir("ast_broken_ruby") do |dir|
+      FileUtils.mkdir_p(File.join(dir, ".rubik"))
+      path = File.join(dir, "broken.rb")
+      File.write(path, "class Foo\n  def ok; end\nend\ndef baz(; end\n")
+
+      graph = Rubik::AST::Graph.new
+      graph.index_file(path)
+      assert_equal :failed, graph.extraction_status(path)
+
+      store = Rubik::AST::CacheStore.new(root_dir: dir)
+      assert graph.save_to_cache(store)
+      assert_empty store.load, "a failed extraction must not be persisted as a valid cache entry"
+    end
+  end
+
   def test_extract_graceful_rescue_on_exception
-    Rubik::AST::RubyExtractor.stub(:extract, ->(*_args) { raise StandardError, "Parse error" }) do
+    Rubik::AST::RubyExtractor.stub(:extract_result, ->(*_args) { raise StandardError, "Parse error" }) do
       symbols = Rubik::AST::Extractor.extract("broken.rb", "class Broken")
       assert_equal [], symbols
     end

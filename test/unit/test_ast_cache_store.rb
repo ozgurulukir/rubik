@@ -300,6 +300,33 @@ class TestASTCacheStore < Minitest::Test
     refute @store.valid_entry?("bad\0path.rb", { "size" => 10 })
   end
 
+  def test_load_rejects_tampered_paths_outside_root
+    outside_dir = Dir.mktmpdir("rubik_cache_outside")
+    outside_file = File.join(outside_dir, "secret.rb")
+    File.write(outside_file, "def secret; end\n")
+    stat = File.stat(outside_file)
+    digest = Digest::SHA1.file(outside_file).hexdigest
+
+    entry = {
+      "size" => stat.size, "mtime" => stat.mtime.to_i, "mtime_f" => stat.mtime.to_f,
+      "digest" => digest,
+      "symbols" => [{ "name" => "secret", "kind" => "function", "line_start" => 1, "line_end" => 1 }]
+    }
+    cache_path = @store.cache_path
+    FileUtils.mkdir_p(File.dirname(cache_path))
+    payload = {
+      "version" => Rubik::AST::CacheStore::SCHEMA_VERSION,
+      "files" => { outside_file => entry, "../../outside.rb" => entry }
+    }
+    File.write(cache_path, JSON.generate(payload))
+
+    assert_empty @store.load, "paths outside the root must never be loaded from cache"
+    refute @store.valid_entry?(outside_file, entry)
+    refute @store.valid_entry?("../../outside.rb", entry)
+  ensure
+    remove_temp_dir(outside_dir) if outside_dir
+  end
+
   def test_clear_deletes_cache_file
     file_path = File.join(@temp_root, "sample.rb")
     File.write(file_path, "def sample; end\n")

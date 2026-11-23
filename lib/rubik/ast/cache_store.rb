@@ -150,6 +150,19 @@ module Rubik
       # Same entries as #load, paired with the persisted per-file extraction
       # status keyed by the same expanded paths (issue #147 across the cache
       # boundary: a cache-loaded file must not report "never attempted").
+      # A rel_path read back from cache JSON is untrusted: confine it under
+      # @root_dir so a tampered ".." or absolute entry cannot make the loader
+      # stat/hash (and key symbols by) a file outside the project root.
+      def confined_path(rel_path)
+        full = File.expand_path(rel_path, @root_dir)
+        prefix = @root_dir.end_with?(File::SEPARATOR) ? @root_dir : "#{@root_dir}#{File::SEPARATOR}"
+        return nil unless full == @root_dir || full.start_with?(prefix)
+
+        full
+      rescue ArgumentError, TypeError
+        nil
+      end
+
       def load_with_statuses
         target_path = cache_path
         return [{}, {}] unless File.exist?(target_path)
@@ -161,7 +174,8 @@ module Rubik
         result = {}
         statuses = {}
         data["files"].each do |rel_path, cached_info|
-          full_path = File.expand_path(rel_path, @root_dir)
+          full_path = confined_path(rel_path)
+          next unless full_path
           next unless valid_entry?(full_path, cached_info)
 
           symbols_raw = cached_info["symbols"] || []
@@ -209,7 +223,8 @@ module Rubik
       def valid_entry?(file_path, cached_info)
         return false unless cached_info.is_a?(Hash)
 
-        full_path = File.expand_path(file_path, @root_dir)
+        full_path = confined_path(file_path)
+        return false unless full_path
         return false unless File.exist?(full_path) && File.file?(full_path)
 
         stat = File.stat(full_path)

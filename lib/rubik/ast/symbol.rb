@@ -55,9 +55,14 @@ module Rubik
       def self.read_source_range(file, l_start, l_end)
         return nil unless file && l_start && File.exist?(file)
 
-        lines = File.readlines(file)
-        selected = lines[(l_start - 1)..(l_end - 1)] if l_start >= 1
-        scrub_if_invalid(selected&.join)
+        selected = []
+        File.foreach(file).with_index(1) do |line, line_no|
+          next if line_no < l_start
+          break if line_no > l_end
+
+          selected << line
+        end
+        scrub_if_invalid(selected.join)
       rescue Errno::ENOENT, Errno::EACCES, Errno::EISDIR
         nil
       end

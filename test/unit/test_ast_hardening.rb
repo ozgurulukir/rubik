@@ -17,6 +17,36 @@ class TestASTHardening < Minitest::Test
     assert_empty Thread.current[:rubik_ts_parsers]
   end
 
+  def test_treesitter_clear_parsers_invalidates_other_threads
+    skip "tree-sitter unavailable" unless Rubik::AST::TreeSitterExtractor.available?
+
+    ready = Queue.new
+    resume = Queue.new
+    observed = Queue.new
+    factory = ->(_lang) { Object.new }
+
+    worker = Thread.new do
+      TreeSitterLanguagePack.stub(:get_parser, factory) do
+        first = Rubik::AST::TreeSitterExtractor.parser_for("python")
+        ready << true
+        resume.pop
+        second = Rubik::AST::TreeSitterExtractor.parser_for("python")
+        observed << [first, second]
+      end
+    end
+
+    begin
+      ready.pop
+      Rubik::AST::TreeSitterExtractor.clear_parsers!
+    ensure
+      resume << true
+    end
+    first, second = observed.pop
+    worker.join
+
+    refute_same first, second, "clear_parsers! must invalidate parsers cached in every thread"
+  end
+
   def test_treesitter_extractor_returns_nil_on_syntax_error_with_no_symbols
     return unless Rubik::AST::TreeSitterExtractor.available?
 

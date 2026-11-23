@@ -20,6 +20,9 @@ require_relative "treesitter/zig_walker"
 module Rubik
   module AST
     class TreeSitterExtractor
+      @parser_generation = 0
+      @generation_mutex = Mutex.new
+
       LANGUAGE_MAP = {
         ".py" => { parser: "python", walker: TreeSitter::PythonWalker },
         ".go" => { parser: "go", walker: TreeSitter::GoWalker },
@@ -49,12 +52,17 @@ module Rubik
         end
 
         def parser_for(lang_name)
-          Thread.current[:rubik_ts_parsers] ||= {}
+          generation = @generation_mutex.synchronize { @parser_generation }
+          if Thread.current[:rubik_ts_parser_generation] != generation
+            Thread.current[:rubik_ts_parsers] = {}
+            Thread.current[:rubik_ts_parser_generation] = generation
+          end
           Thread.current[:rubik_ts_parsers][lang_name] ||= TreeSitterLanguagePack.get_parser(lang_name)
         end
 
         def clear_parsers!
-          Thread.current[:rubik_ts_parsers]&.clear
+          @generation_mutex.synchronize { @parser_generation += 1 }
+          Thread.current[:rubik_ts_parsers] = {}
         end
 
         # Array-or-nil seam (unchanged contract for every existing caller):
@@ -78,7 +86,6 @@ module Rubik
           return ExtractionResult.new(symbols: [], status: :ok, source: :tree_sitter) if code.empty?
 
           code = code.encode("UTF-8", invalid: :replace, undef: :replace) unless code.valid_encoding?
-
           parser = parser_for(mapping[:parser])
           return failed_result("no parser for #{mapping[:parser]}") unless parser
 

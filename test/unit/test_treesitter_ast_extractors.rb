@@ -161,6 +161,27 @@ class TestTreeSitterASTExtractors < Minitest::Test
     refute_includes proc_sym.calls, "foo"
   end
 
+  def test_python_nested_classes_are_qualified_by_enclosing_scope
+    skip "tree-sitter unavailable" unless Rubik::AST::TreeSitterExtractor.available?
+
+    code = <<~PY
+      class OuterA:
+          class Inner:
+              def a(self): pass
+
+      class OuterB:
+          class Inner:
+              def b(self): pass
+    PY
+    names = Rubik::AST::Extractor.extract("nested.py", code).map(&:name)
+
+    assert_includes names, "OuterA.Inner"
+    assert_includes names, "OuterA.Inner.a"
+    assert_includes names, "OuterB.Inner"
+    assert_includes names, "OuterB.Inner.b"
+    refute_includes names, "Inner", "bare nested class names collide across parents"
+  end
+
   def test_graceful_fallback_when_treesitter_fails
     code = <<~GO
       package main

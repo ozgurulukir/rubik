@@ -53,7 +53,9 @@ module Rubik
       def parse_go(text)
         entries = []
         text.each_line do |line|
-          next unless (m = line.match(/^([^:]+):(\d+):(\d+):(.*)$/))
+          # Greedy filename: backtrack to the LAST :line:col: so filenames
+          # containing colons (Windows drives, "a:b.go") parse correctly.
+          next unless (m = line.match(/^(.+):(\d+):(\d+):(.*)$/))
 
           msg = m[4].strip
           cat = msg.start_with?("undefined:") ? :undefined_ref : :syntax
