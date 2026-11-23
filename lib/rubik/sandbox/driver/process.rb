@@ -29,6 +29,12 @@ module Rubik
 
         def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0") # rubocop:disable Lint/UnusedMethodArgument -- sürücü arayüzü kwarg'leri korunuyor
           resolved = ShellResolver.resolve(cmd, preference: @options[:shell] || "auto")
+          # Defense in depth: the POSIX argv path used to reach spawn with no
+          # gate at all (only the cmd.exe branch re-verified). Gate every spawn
+          # at this boundary; the cmd branch is already gated inside
+          # verify_cmd_safe with shell: "cmd" semantics, so skip it here to
+          # avoid a duplicate audit entry and a second approval prompt.
+          verify_command_safety!(cmd) unless resolved[:shell] == "cmd"
           env = child_env
 
           res = Rubik::Platform.popen_capture(

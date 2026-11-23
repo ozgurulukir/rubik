@@ -14,9 +14,13 @@ module Rubik
       INVALID_PATH_CHARS = [",", "?", "*", '"', "<", ">", "|", "\0"].freeze
 
       class << self
-        # Checks whether a file path is valid for writing.
+        # Narrow garbage-path filter, NOT a containment check: it rejects LLM
+        # code-fragment leakage, but deliberately accepts absolute paths so
+        # configured external dirs can be written. Containment lives in
+        # BufferManager#sanitize_path and the apply-time recheck; callers that
+        # take model-supplied paths should also use contained_relative?.
         #
-        # A path is valid if it:
+        # A path passes this filter if it:
         #   1. Is non-nil and non-blank
         #   2. Contains no invalid characters (see INVALID_PATH_CHARS)
         #   3. Matches at least one positive pattern:
@@ -47,6 +51,18 @@ module Rubik
 
           # 5. No condition matched — garbage
           false
+        end
+
+        # Shape gate for model-supplied paths: workspace-relative, no drive
+        # prefix, no "~" and no ".." segment. Complements (does not replace)
+        # the filesystem-level containment checks.
+        def contained_relative?(path)
+          cleaned = path.to_s.strip
+          return false unless valid?(cleaned)
+          return false if cleaned.start_with?("/", "\\", "~")
+          return false if cleaned.match?(%r{\A[a-zA-Z]:[\\/]})
+
+          !cleaned.split(%r{[/\\]}, -1).include?("..")
         end
 
         private

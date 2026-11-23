@@ -250,7 +250,7 @@ class TestSecurityGuard < Minitest::Test
   def test_allow_unknown_flag_keeps_non_shell_input_flowing
     # The synthesis seam: Ruby source classifies UNKNOWN through the shell
     # classifier and must not be gated as an unvetted binary here.
-    assert @guard.verify_command_safety!("->(args) { args.fetch('x') }", allow_unknown: true)
+    assert @guard.verify_synthesis_source!("->(args) { args.fetch('x') }")
   end
 
   def test_readonly_commands_unaffected_by_unknown_gate

@@ -63,6 +63,14 @@ module Rubik
       # whose ONLY arguments are these flags is read-only by construction.
       SAFE_PROBE_FLAGS = ["--version", "-v", "--help", "-h"].freeze
 
+      # Human-facing rendering only. C0/C1 controls (newlines, ESC, NUL, DEL)
+      # are escaped so command text cannot forge log lines or repaint the
+      # approval prompt. Classification, execution and the JSON audit record
+      # keep the exact original bytes.
+      CONTROL_ESCAPES = { "\n" => "\\n", "\r" => "\\r", "\t" => "\\t", "\0" => "\\0", "\e" => "\\e" }.freeze
+      CONTROL_CHAR_PATTERN = /[\x00-\x1F\x7F\u0080-\u009F]/
+      SHELL_METACHAR_PATTERN = /[;&|`$<>(){}\n\r]/
+
       attr_accessor :shell, :root_dir
 
       def initialize(allowlist:, audit:, path_policy:, allow_safe_probes: true,
@@ -123,6 +131,11 @@ module Rubik
       def probe_shape?(cmd_str)
         str = cmd_str.to_s
         return false if str.match?(/[\r\n]/)
+        # ShellResolver passes the raw string to `sh -c`/`bash -c`, while this
+        # detector tokenizes with Shellwords. Exact-flag allowlisting already
+        # excludes metacharacters; keep the explicit check so a future flag
+        # addition cannot reopen the gap.
+        return false if str.match?(SHELL_METACHAR_PATTERN)
 
         tokens = shell_tokens(str)
         return false unless tokens
@@ -216,11 +229,11 @@ module Rubik
           # today) keeps flowing into its own deny layers
           # (DANGEROUS_SYNTHESIS_PATTERNS + RubyVM walk) after this gate.
           if allow_unknown
-            Rubik::Log.warn(:security, "[WARN] AST classification error on non-shell input, continuing to synthesis deny layers: #{e.message}")
+            Rubik::Log.warn(:security, "[WARN] AST classification error on non-shell input, continuing to synthesis deny layers: #{display_command(e.message)}")
             @audit.log_audit("classifier_error", command: cmd_str, reason: "#{e.class}: #{e.message}",
                                                  decision: "synthesis_layers")
           else
-            Rubik::Log.warn(:security, "[WARN] AST classification error, failing closed: #{e.class}: #{e.message}")
+            Rubik::Log.warn(:security, "[WARN] AST classification error, failing closed: #{e.class}: #{display_command(e.message)}")
             block_on_classifier_failure!(cmd_str, e)
           end
         end
@@ -233,14 +246,22 @@ module Rubik
 
         @audit.log_audit("blocked_command", command: cmd_str, reason: "dangerous_pattern")
         raise BlockedWriteError.new(
-          "Dangerous command execution blocked: #{cmd_str}",
+          "Dangerous command execution blocked: #{display_command(cmd_str)}",
           kind: :dangerous_pattern,
-          blocked_command: cmd_str,
+          blocked_command: display_command(cmd_str),
           rule_name: "dangerous_pattern"
         )
       end
 
       private
+
+      # Escape control characters for human-facing text. `scrub` keeps an
+      # invalid-encoding command from raising inside the gate's error paths.
+      def display_command(value)
+        value.to_s.scrub.gsub(CONTROL_CHAR_PATTERN) do |ch|
+          CONTROL_ESCAPES.fetch(ch) { format("\\x%02X", ch.ord) }
+        end
+      end
 
       # Shellword tokenization for probe-shape detection; nil when the string
       # has none (unbalanced quotes). The caller fails closed on nil rather
@@ -304,7 +325,7 @@ module Rubik
       def dangerous_segment_report_or_nil(commands)
         SegmentReport.build(commands)
       rescue StandardError => e
-        Rubik::Log.warn(:security, "[Guard] segment report failed: #{e.class}: #{e.message}")
+        Rubik::Log.warn(:security, "[Guard] segment report failed: #{e.class}: #{display_command(e.message)}")
         nil
       end
 
@@ -318,9 +339,9 @@ module Rubik
         # the exemption is disabled, so safe_probe? would be constantly
         # false and the variant-(a) probe guidance would be dead code.
         raise BlockedWriteError.new(
-          "Dangerous command execution blocked: #{cmd_str} (reason: #{reason})",
+          "Dangerous command execution blocked: #{display_command(cmd_str)} (reason: #{reason})",
           kind: :dangerous_command,
-          blocked_command: cmd_str,
+          blocked_command: display_command(cmd_str),
           rule_name: dangerous_rule_name(ast.commands) || (expression_reason ? "expression_level" : "dangerous_pattern"),
           probe_like: probe_shape?(cmd_str),
           segment_report: report,
@@ -341,7 +362,7 @@ module Rubik
         theme = (effective_shell.respond_to?(:ui_theme) && effective_shell.ui_theme) ||
                 (defined?(Rubik::UI::Theme) ? Rubik::UI::Theme.new : nil)
 
-        question = "Allow unclassified command execution: '#{cmd_str}'?"
+        question = "Allow unclassified command execution: '#{display_command(cmd_str)}'?"
         answer = if defined?(Rubik::UI::Approvals)
                    Rubik::UI::Approvals.keypress_yes_no(effective_shell, question, theme: theme, default: "n")
                  else
@@ -357,11 +378,11 @@ module Rubik
       def block_unknown_command!(cmd_str)
         @audit.log_audit("blocked_command", command: cmd_str, reason: "unknown_command")
         raise BlockedWriteError.new(
-          "Unknown command execution blocked (fail-closed): #{cmd_str}. The binary is not in the " \
+          "Unknown command execution blocked (fail-closed): #{display_command(cmd_str)}. The binary is not in the " \
           "command database, so its effects cannot be classified. If it is genuinely safe, the " \
           "operator can allowlist the exact prefix: !allow-cmd add \"<binary> [args]\"",
           kind: :unknown_command,
-          blocked_command: cmd_str,
+          blocked_command: display_command(cmd_str),
           rule_name: "unknown_command",
           probe_like: probe_shape?(cmd_str),
           segment_report: nil
@@ -372,9 +393,9 @@ module Rubik
         @audit.log_audit("blocked_command", command: cmd_str, reason: "parse_ambiguous",
                                             parse_warnings: ast.parse_warnings.to_a.size)
         raise BlockedWriteError.new(
-          "Command AST could not be fully parsed (tree-sitter syntax error); execution blocked (fail-closed): #{cmd_str}",
+          "Command AST could not be fully parsed (tree-sitter syntax error); execution blocked (fail-closed): #{display_command(cmd_str)}",
           kind: :parse_ambiguous,
-          blocked_command: cmd_str,
+          blocked_command: display_command(cmd_str),
           rule_name: "parse_ambiguous",
           probe_like: probe_shape?(cmd_str),
           segment_report: nil
@@ -444,9 +465,9 @@ module Rubik
         verify_command_fallback_regex!(cmd_str)
         @audit.log_audit("blocked_command", command: cmd_str, reason: "classifier_error")
         raise BlockedWriteError.new(
-          "AST evaluation failed, so the command could not be classified; execution blocked (fail-closed): #{cmd_str}",
+          "AST evaluation failed, so the command could not be classified; execution blocked (fail-closed): #{display_command(cmd_str)}",
           kind: :classifier_error,
-          blocked_command: cmd_str,
+          blocked_command: display_command(cmd_str),
           rule_name: "classifier_error",
           probe_like: probe_shape?(cmd_str),
           segment_report: nil

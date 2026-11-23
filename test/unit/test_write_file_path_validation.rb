@@ -72,6 +72,15 @@ class TestWriteFilePathValidation < Minitest::Test
     refute Rubik::Buffer::PathValidator.valid?("file?.rb")
   end
 
+  def test_contained_relative_rejects_absolute_and_traversal_paths
+    ["/etc/passwd", "../secret.rb", "lib/../../secret.rb", "C:\\Windows\\system.ini", "~/secret.rb", ".."].each do |path|
+      refute Rubik::Buffer::PathValidator.contained_relative?(path), "#{path.inspect} must be shape-invalid"
+    end
+    assert Rubik::Buffer::PathValidator.contained_relative?("lib/app.rb")
+    # The narrow garbage filter still accepts absolute paths for allowed roots.
+    assert Rubik::Buffer::PathValidator.valid?("/tmp/allowed/root/file.rb")
+  end
+
   def test_validator_rejects_null_byte
     refute Rubik::Buffer::PathValidator.valid?("file\0.rb")
   end

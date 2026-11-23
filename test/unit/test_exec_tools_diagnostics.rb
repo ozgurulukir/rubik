@@ -2,6 +2,7 @@
 
 require "minitest/autorun"
 require_relative "../../lib/rubik/tools/builtins/exec"
+require_relative "../../lib/rubik/tools/result"
 require_relative "../../lib/rubik/adapter/base"
 require_relative "../../lib/rubik/adapter/registry"
 require_relative "../../lib/rubik/runtime/diagnostic_engine"
@@ -61,6 +62,36 @@ class TestExecToolsDiagnostics < Minitest::Test
     @guard = Rubik::Security::Guard.new
     @runner = MockRunner.new
     @run_cmd_tool = Rubik::Tools::RunCommandTool.new(guard: @guard, runner: @runner)
+  end
+
+  def test_run_command_rejects_empty_command
+    result = @run_cmd_tool.execute("command" => "   ")
+
+    assert result.error?
+    assert_includes result, "must not be empty"
+  end
+
+  def test_run_command_rejects_stringy_background_flag_instead_of_coercing_it
+    @runner.mock_run_res = { ok: true, exit_code: 0, output: "foreground" }
+
+    result = @run_cmd_tool.execute("command" => "echo hi", "background" => "false")
+
+    assert result.error?
+    assert_includes result, "background must be a boolean"
+  end
+
+  def test_run_command_accepts_typed_background_flag
+    @runner.mock_run_res = { ok: true, exit_code: 0, output: "foreground" }
+    task_manager = Object.new
+    task_manager.define_singleton_method(:start) do |_cmd, **_kw|
+      Struct.new(:id, :pid).new("task-1", 1234)
+    end
+    @run_cmd_tool.task_manager = task_manager
+
+    result = @run_cmd_tool.execute("command" => "echo hi", "background" => false)
+
+    assert result.ok?
+    assert_includes result.output, "foreground"
   end
 
   # (1) fixture başarısız test çıktısı -> araç çıktısında :test_failure kategorisi + öneri satırı

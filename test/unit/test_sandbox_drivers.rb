@@ -23,6 +23,15 @@ class TestSandboxDrivers < Minitest::Test
     assert_equal "process", res[:driver]
   end
 
+  def test_process_driver_gates_posix_spawn_even_when_called_directly
+    skip "POSIX argv spawn path" if Gem.win_platform?
+
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    assert_raises(Rubik::Security::BlockedWriteError) do
+      driver.run("rm -rf /", chdir: @temp_dir)
+    end
+  end
+
   def test_process_driver_timeout
     driver = Rubik::Sandbox::Driver::ProcessDriver.new
     res = driver.run("sleep 2", timeout: 0.1, chdir: @temp_dir)

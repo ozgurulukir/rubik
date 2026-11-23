@@ -81,6 +81,17 @@ class TestPluginManager < Minitest::Test
     assert_equal :failed, fiber.state
   end
 
+  def test_load_plugin_gem_preserves_load_error_class_and_backtrace
+    runtime_manager = Rubik::Runtime::Manager.new
+    @manager.load_plugin_gem("non_existent_plugin_xyz_123", runtime_manager: runtime_manager)
+
+    fiber = runtime_manager.fibers["plugin_non_existent_plugin_xyz_123"]
+    assert_equal :failed, fiber.state
+    assert_kind_of LoadError, fiber.last_error
+    assert_includes fiber.last_error.message, "non_existent_plugin_xyz_123"
+    refute_empty fiber.last_error.backtrace.to_a
+  end
+
   def test_empty_or_nil_alias_rejected
     refute @manager.register_alias("", "test")
     refute @manager.register_alias("rt", "")

@@ -111,6 +111,8 @@ module Rubik
           return ToolOutput.error("Error: Invalid file path '#{path}'. Path must be a valid file path " \
                                   "relative to the project root (e.g. 'lib/app.rb', 'src/main.go', 'Gemfile').")
         end
+        shape_ok = Rubik::Buffer::PathValidator.contained_relative?(path)
+        return ToolOutput.error(DiagnosticReporter.render_traversal_blocked(path)) unless shape_ok
 
         # NB: reset_baseline defaults to false on purpose. The buffer only
         # replaces the tracked baseline for files that have no baseline yet
