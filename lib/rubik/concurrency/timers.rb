@@ -91,7 +91,14 @@ module Rubik
       def prune!
         return unless @staleness
 
+        before = @heap.size
         @heap.reject! { |entry| @staleness.call(entry[1], entry[3]) }
+        return if @heap.size == before || @heap.empty?
+
+        # reject! compacts the array but does not preserve the heap property:
+        # a stale root leaves its former child at index 0, which is not the
+        # minimum. Rebuild bottom-up so next_gap/fire_due! can trust @heap[0].
+        ((@heap.size / 2) - 1).downto(0) { |index| sift_down(index) }
       end
 
       def sift_up(index)

@@ -22,6 +22,8 @@ module Rubik
       @pool = {}
       @pool_locks = {}
       @pool_locks_guard = Mutex.new
+      @pool_owners = {}
+      @pool_owners_guard = Mutex.new
       @integrity_lost_errors = nil
 
       class << self
@@ -46,42 +48,42 @@ module Rubik
         # Yields an HTTP session for (host, port, scheme), reusing the pooled
         # keep-alive session when one exists. Same-thread re-entry falls back
         # to a private single-use connection (see the class comment).
-        def with_connection(uri, timeout:, open_timeout:)
+        def with_connection(uri, timeout:, open_timeout:, &block)
           key = [uri.host, uri.port, uri.scheme == "https"]
           lock = @pool_locks_guard.synchronize { @pool_locks[key] ||= Mutex.new }
 
-          begin
-            lock.synchronize do
-              http = @pool_mutex.synchronize { @pool[key] }
-              if http&.started?
-                http.read_timeout = timeout
-                http.open_timeout = open_timeout
-              else
-                http = default_http(uri, timeout: timeout, open_timeout: open_timeout)
-                http.keep_alive_timeout = CONNECTION_IDLE_TIMEOUT
-                http.start
-                @pool_mutex.synchronize { @pool[key] = http }
-              end
+          # Only a genuine same-thread re-entry takes the private-connection
+          # path. A ThreadError raised by the caller's callback is an ordinary
+          # application error: it must propagate, never re-issue the request.
+          return with_private_connection(uri, timeout: timeout, open_timeout: open_timeout, &block) if owned_by_current_thread?(key)
 
-              begin
-                yield http
-              rescue *integrity_lost_errors
-                drop(key, http)
-                raise
-              end
+          unless lock.try_lock
+            # Held by another thread — queue normally; try_lock never waits.
+            lock.lock
+          end
+
+          begin
+            @pool_owners_guard.synchronize { @pool_owners[key] = Thread.current }
+            http = @pool_mutex.synchronize { @pool[key] }
+            if http&.started?
+              http.read_timeout = timeout
+              http.open_timeout = open_timeout
+            else
+              http = default_http(uri, timeout: timeout, open_timeout: open_timeout)
+              http.keep_alive_timeout = CONNECTION_IDLE_TIMEOUT
+              http.start
+              @pool_mutex.synchronize { @pool[key] = http }
             end
-          rescue ThreadError
-            # Re-entrant call on the same thread (nested LLM call from inside a
-            # streaming callback, or a second Enumerator#next fiber) — the
-            # per-key mutex cannot be taken. Serve this call on a private,
-            # single-use connection instead of deadlocking.
-            http = default_http(uri, timeout: timeout, open_timeout: open_timeout)
-            http.start
-            begin
-              yield http
-            ensure
-              http.finish if http.started?
+
+            block.call(http)
+          rescue *integrity_lost_errors
+            drop(key, http)
+            raise
+          ensure
+            @pool_owners_guard.synchronize do
+              @pool_owners.delete(key) if @pool_owners[key].equal?(Thread.current)
             end
+            lock.unlock
           end
         end
 
@@ -103,6 +105,22 @@ module Rubik
           http.open_timeout = open_timeout
           http.read_timeout = timeout
           http
+        end
+
+        private
+
+        def owned_by_current_thread?(key)
+          @pool_owners_guard.synchronize { @pool_owners[key].equal?(Thread.current) }
+        end
+
+        def with_private_connection(uri, timeout:, open_timeout:, &block)
+          http = default_http(uri, timeout: timeout, open_timeout: open_timeout)
+          http.start
+          begin
+            block.call(http)
+          ensure
+            http.finish if http.started?
+          end
         end
       end
     end

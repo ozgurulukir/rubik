@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
+require "minitest/mock"
+require "timeout"
 
 # Rubik::Storage::Store — merkezi sanal FS-DB çekirdeği: id/row/karma
 # kimlikleri, çözüm formları, refs, arama, indeks, izolasyon, tembellik.
@@ -324,6 +326,39 @@ class TestStorageStore < Minitest::Test
     threads.each(&:join)
     rows = @store.list(type: "note").map { |s| s[:row] }.sort
     assert_equal (1..40).to_a, rows, "monitor must serialize row allocation — no duplicates, no gaps"
+  end
+
+  # Issue #626: @monitor is per-Store, so two projects writing the central
+  # index concurrently used to read the same snapshot and lose one update.
+  def test_concurrent_index_writes_from_different_projects_both_survive
+    alpha = Rubik::Storage::Store.new(root: @root, project: "alpha")
+    beta = Rubik::Storage::Store.new(root: @root, project: "beta")
+    reads = Queue.new
+    release = Queue.new
+    original = Rubik::Storage::Store.method(:index_snapshot)
+
+    # Widen the read-modify-write window: every reader pauses after reading,
+    # so writers that share a stale snapshot would overwrite each other.
+    Rubik::Storage::Store.stub(:index_snapshot, lambda { |root|
+      snapshot = original.call(root)
+      reads << :read
+      release.pop
+      snapshot
+    }) do
+      writers = [
+        Thread.new { alpha.put(type: "goal", title: "alpha goal") },
+        Thread.new { beta.put(type: "goal", title: "beta goal") }
+      ]
+      Timeout.timeout(5) { reads.pop }
+      sleep 0.05 # give a racing writer time to reach the flock-guarded read
+      2.times { release << :go }
+      writers.each { |writer| writer.join(5) or flunk("index writer did not finish") }
+    end
+
+    snapshot = Rubik::Storage::Store.index_snapshot(@root)
+    assert_equal ["alpha", "beta"], snapshot["projects"].keys.sort, "both projects must survive the concurrent index writes"
+    assert_equal({ "goal" => 1 }, snapshot["projects"]["alpha"]["entity_counts"])
+    assert_equal({ "goal" => 1 }, snapshot["projects"]["beta"]["entity_counts"])
   end
 
   def test_unknown_type_and_blank_title_are_rejected

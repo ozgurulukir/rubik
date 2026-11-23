@@ -3,6 +3,8 @@
 require_relative "../test_helper"
 require "rbconfig"
 require "tempfile"
+require "minitest/mock"
+require "timeout"
 
 class TestMcpClient < Minitest::Test
   def setup
@@ -160,6 +162,52 @@ class TestMcpClient < Minitest::Test
     @client.start!
     latency = @client.ping
     assert_operator latency, :>=, 0.0
+  end
+
+  # Issue #636: running?, spawn and @running assignment were not under one
+  # lock, so two concurrent opens could spawn two children. Open3 is stubbed:
+  # no real process is ever created.
+  def test_concurrent_open_spawns_exactly_one_child_process
+    transport = Rubik::MCP::Transport::Stdio.new(@ruby, guard: @guard)
+    entered = Queue.new
+    release = Queue.new
+    spawn_count = 0
+    count_lock = Mutex.new
+    wait_state = { alive: true }
+    fake_wait = Object.new
+    fake_wait.define_singleton_method(:alive?) { wait_state[:alive] }
+    fake_wait.define_singleton_method(:pid) { 424_242 }
+    fake_wait.define_singleton_method(:join) do |_timeout = nil|
+      wait_state[:alive] = false
+      fake_wait
+    end
+    fake_io = Object.new
+    fake_io.define_singleton_method(:closed?) { false }
+    fake_io.define_singleton_method(:close) { nil }
+
+    popen = lambda do |*_args, **_kwargs|
+      count_lock.synchronize { spawn_count += 1 }
+      entered << :in
+      release.pop
+      [fake_io, fake_io, fake_io, fake_wait]
+    end
+
+    transport.stub(:start_reader_thread, nil) do
+      transport.stub(:start_stderr_thread, nil) do
+        Open3.stub(:popen3, popen) do
+          Rubik::Platform.stub(:kill_tree, nil) do
+            openers = [Thread.new { transport.open }, Thread.new { transport.open }]
+            Timeout.timeout(5) { entered.pop }
+            sleep 0.05 # widened spawn window: a racing open must reach popen3
+            2.times { release << :go }
+            openers.each { |opener| opener.join(5) or flunk("concurrent open did not finish") }
+            transport.close
+          end
+        end
+      end
+    end
+
+    assert_equal 1, spawn_count, "concurrent opens must spawn exactly one child"
   end
 
   def test_stop_cleans_up_process

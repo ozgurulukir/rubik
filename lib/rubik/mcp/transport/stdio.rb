@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "open3"
+require "monitor"
 require "json"
 require "shellwords"
 require_relative "../errors"
@@ -42,6 +43,9 @@ module Rubik
           @stderr_mutex = Mutex.new
           @stderr_tail = []
           @mutex = Mutex.new
+          # Serializes the whole check-spawn-assign lifecycle; close takes the
+          # same monitor so a concurrent teardown cannot race an open.
+          @lifecycle_monitor = Monitor.new
           # Writes are serialized on their OWN mutex, never @mutex: @mutex is
           # also taken by close/wait_for_response/the reader, so a stalled
           # write holding it would wedge teardown and response delivery.
@@ -54,68 +58,70 @@ module Rubik
         end
 
         def open
-          return if running?
+          @lifecycle_monitor.synchronize do
+            return if running?
 
-          # A previous incarnation whose child died on its own (the reader's
-          # ensure cleared @running) still holds pipe FDs and an unreaped
-          # wait thread; re-spawning over them leaks both. close is
-          # idempotent and a no-op when nothing lingers.
-          close if @wait_thr || @reader_thr || @stderr_thr
+            # A previous incarnation whose child died on its own (the reader's
+            # ensure cleared @running) still holds pipe FDs and an unreaped
+            # wait thread; re-spawning over them leaks both. close is
+            # idempotent and a no-op when nothing lingers.
+            close if @wait_thr || @reader_thr || @stderr_thr
 
-          cmd_parts = if @args.empty? && @command.is_a?(String)
-                        begin
-                          Shellwords.split(@command)
-                        rescue ArgumentError => e
-                          raise ConnectionError, "Invalid command syntax: #{e.message}"
+            cmd_parts = if @args.empty? && @command.is_a?(String)
+                          begin
+                            Shellwords.split(@command)
+                          rescue ArgumentError => e
+                            raise ConnectionError, "Invalid command syntax: #{e.message}"
+                          end
+                        else
+                          [@command.to_s] + @args
                         end
-                      else
-                        [@command.to_s] + @args
-                      end
 
-          bin = cmd_parts.first
-          raise ConnectionError, "MCP command cannot be empty" if bin.nil? || bin.empty?
+            bin = cmd_parts.first
+            raise ConnectionError, "MCP command cannot be empty" if bin.nil? || bin.empty?
 
-          # Red-Team Defense: Verify command safety against destructive operations.
-          # Route the MCP spawn command through the same Guard#verify_command_safety!
-          # call that RunCommandTool uses — the narrow DANGEROUS_COMMAND_PATTERNS
-          # subset below was a bypass: it misses many dangerous commands the
-          # classifier flags. Fails closed on any dangerous/unmanaged command.
-          full_cmd = Shellwords.shelljoin(cmd_parts)
-          begin
-            @guard.verify_command_safety!(full_cmd)
-          rescue Rubik::Security::BlockedWriteError => e
-            # No manual audit here: verify_command_safety! already logged
-            # "blocked_command" with the TRUE classifier reason before raising
-            # — a second hardcoded entry would double-log and mislabel it.
-            raise ConnectionError, "Security blocked MCP process: #{e.message}"
+            # Red-Team Defense: Verify command safety against destructive operations.
+            # Route the MCP spawn command through the same Guard#verify_command_safety!
+            # call that RunCommandTool uses — the narrow DANGEROUS_COMMAND_PATTERNS
+            # subset below was a bypass: it misses many dangerous commands the
+            # classifier flags. Fails closed on any dangerous/unmanaged command.
+            full_cmd = Shellwords.shelljoin(cmd_parts)
+            begin
+              @guard.verify_command_safety!(full_cmd)
+            rescue Rubik::Security::BlockedWriteError => e
+              # No manual audit here: verify_command_safety! already logged
+              # "blocked_command" with the TRUE classifier reason before raising
+              # — a second hardcoded entry would double-log and mislabel it.
+              raise ConnectionError, "Security blocked MCP process: #{e.message}"
+            end
+
+            resolved_bin = Rubik::Platform.which(bin)
+            cmd_parts[0] = resolved_bin if resolved_bin
+
+            # Match the LSP client's spawn hygiene: the host's bundler/Ruby
+            # runtime variables are unset for the child, so an MCP server never
+            # inherits a foreign BUNDLE_GEMFILE/RUBYOPT. Explicitly configured
+            # env: entries merge on top and win.
+            begin
+              @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(spawn_env, *cmd_parts, chdir: @root_dir)
+            rescue SystemCallError => e
+              raise ConnectionError, "Failed to spawn MCP process '#{bin}': #{e.message}"
+            end
+
+            @mutex.synchronize do
+              @running = true
+              @closed = false
+              @generation += 1
+              @req_id = 0
+              @responses.clear
+              @pending_requests.clear
+            end
+            @stderr_mutex.synchronize { @stderr_tail.clear }
+
+            start_stderr_thread
+            start_reader_thread
+            self
           end
-
-          resolved_bin = Rubik::Platform.which(bin)
-          cmd_parts[0] = resolved_bin if resolved_bin
-
-          # Match the LSP client's spawn hygiene: the host's bundler/Ruby
-          # runtime variables are unset for the child, so an MCP server never
-          # inherits a foreign BUNDLE_GEMFILE/RUBYOPT. Explicitly configured
-          # env: entries merge on top and win.
-          begin
-            @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(spawn_env, *cmd_parts, chdir: @root_dir)
-          rescue SystemCallError => e
-            raise ConnectionError, "Failed to spawn MCP process '#{bin}': #{e.message}"
-          end
-
-          @mutex.synchronize do
-            @running = true
-            @closed = false
-            @generation += 1
-            @req_id = 0
-            @responses.clear
-            @pending_requests.clear
-          end
-          @stderr_mutex.synchronize { @stderr_tail.clear }
-
-          start_stderr_thread
-          start_reader_thread
-          self
         end
         alias start open
 
@@ -162,87 +168,89 @@ module Rubik
         end
 
         def close
-          # Never take @write_mutex here: a writer may be stalled in
-          # write_until, and killing the child (below) is precisely what
-          # unblocks it. Waiting for the write lock would deadlock teardown.
-          child_died = false
-          # Capture before @wait_thr is nil'd below: the child-died diagnostic
-          # must still report WHICH server process failed to start.
-          exited_pid = @wait_thr&.pid
-          @mutex.synchronize do
-            return if @closed
+          @lifecycle_monitor.synchronize do
+            # Never take @write_mutex here: a writer may be stalled in
+            # write_until, and killing the child (below) is precisely what
+            # unblocks it. Waiting for the write lock would deadlock teardown.
+            child_died = false
+            # Capture before @wait_thr is nil'd below: the child-died diagnostic
+            # must still report WHICH server process failed to start.
+            exited_pid = @wait_thr&.pid
+            @mutex.synchronize do
+              return if @closed
 
-            child_died = !@running
-            @closed = true
-            @running = false
-          end
+              child_died = !@running
+              @closed = true
+              @running = false
+            end
 
-          begin
-            @reader_thr&.kill
-          rescue StandardError
-            nil
-          end
-
-          begin
-            @stderr_thr&.kill
-          rescue StandardError
-            nil
-          end
-
-          if @wait_thr&.alive?
-            pid_to_kill = @wait_thr.pid
-            Rubik::Platform.kill_tree(pid_to_kill)
             begin
-              @wait_thr.join(0.5)
+              @reader_thr&.kill
             rescue StandardError
               nil
             end
 
-            if @wait_thr.alive?
-              abandoned_waiter = @wait_thr
-              Thread.new do
-                begin
-                  abandoned_waiter.join(2.5)
-                rescue StandardError
-                  nil
+            begin
+              @stderr_thr&.kill
+            rescue StandardError
+              nil
+            end
+
+            if @wait_thr&.alive?
+              pid_to_kill = @wait_thr.pid
+              Rubik::Platform.kill_tree(pid_to_kill)
+              begin
+                @wait_thr.join(0.5)
+              rescue StandardError
+                nil
+              end
+
+              if @wait_thr.alive?
+                abandoned_waiter = @wait_thr
+                Thread.new do
+                  begin
+                    abandoned_waiter.join(2.5)
+                  rescue StandardError
+                    nil
+                  end
+                  Rubik::Log.warn(:mcp, "abandoned child process pid #{pid_to_kill} did not exit within reaper window") if abandoned_waiter.alive?
                 end
-                Rubik::Log.warn(:mcp, "abandoned child process pid #{pid_to_kill} did not exit within reaper window") if abandoned_waiter.alive?
               end
             end
-          end
-          @wait_thr = nil
+            @wait_thr = nil
 
-          [@stdin, @stdout, @stderr].each do |io|
-            io&.close unless io&.closed?
-          rescue StandardError
-            nil
-          end
+            [@stdin, @stdout, @stderr].each do |io|
+              io&.close unless io&.closed?
+            rescue StandardError
+              nil
+            end
 
-          begin
-            @reader_thr&.join(0.5)
-          rescue StandardError
-            nil
-          ensure
-            @reader_thr = nil
-          end
+            begin
+              @reader_thr&.join(0.5)
+            rescue StandardError
+              nil
+            ensure
+              @reader_thr = nil
+            end
 
-          begin
-            @stderr_thr&.join(0.5)
-          rescue StandardError
-            nil
-          ensure
-            @stderr_thr = nil
-          end
+            begin
+              @stderr_thr&.join(0.5)
+            rescue StandardError
+              nil
+            ensure
+              @stderr_thr = nil
+            end
 
-          if child_died
-            hint = stderr_tail.last(5).join(" | ")[0, 512]
-            Rubik::Log.warn(:mcp, "MCP child process (pid #{exited_pid}) had already exited; recent stderr: #{hint}") unless hint.empty?
-          end
+            if child_died
+              hint = stderr_tail.last(5).join(" | ")[0, 512]
+              Rubik::Log.warn(:mcp, "MCP child process (pid #{exited_pid}) had already exited; recent stderr: #{hint}") unless hint.empty?
+            end
 
-          @mutex.synchronize do
-            @responses.clear
-            @pending_requests.clear
-            @cv.broadcast
+            @mutex.synchronize do
+              @responses.clear
+              @pending_requests.clear
+              @cv.broadcast
+            end
           end
         end
         alias stop close

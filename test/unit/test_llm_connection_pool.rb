@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../test_helper"
+require "minitest/mock"
 require "socket"
 require_relative "../../lib/rubik/llm/client"
 
@@ -256,6 +257,33 @@ class TestLLMConnectionPool < Minitest::Test
       @server = saved_server
       @socket_error = saved_error
     end
+  end
+
+  # Issue #630: a ThreadError from the caller used to be caught as if the
+  # per-key mutex were re-entered, opening a second connection and invoking
+  # the callback twice. It must propagate and run the callback exactly once.
+  def test_caller_thread_error_is_propagated_without_reissuing_the_request
+    uri = URI.parse("http://127.0.0.1:9/v1/chat")
+    http = Object.new
+    http.define_singleton_method(:started?) { true }
+    http.define_singleton_method(:start) { self }
+    http.define_singleton_method(:finish) { nil }
+    http.define_singleton_method(:read_timeout=) { |_value| nil }
+    http.define_singleton_method(:open_timeout=) { |_value| nil }
+    http.define_singleton_method(:keep_alive_timeout=) { |_value| nil }
+
+    calls = 0
+    Rubik::LLM::ConnectionPool.stub(:default_http, http) do
+      error = assert_raises(ThreadError) do
+        Rubik::LLM::ConnectionPool.with_connection(uri, timeout: 1, open_timeout: 1) do |_session|
+          calls += 1
+          raise ThreadError, "caller blew up"
+        end
+      end
+      assert_equal "caller blew up", error.message
+    end
+
+    assert_equal 1, calls, "a caller ThreadError must never re-issue the request"
   end
 
   # Issue #587: a StandardError raised inside the streaming chunk callback

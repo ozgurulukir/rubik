@@ -467,16 +467,30 @@ module Rubik
 
       # Merkezi indeksi günceller: bu projenin girdisi canlı meta'dan
       # yeniden yazılır, diğer projelerin girdileri korunur.
+      # @monitor yalnızca TEK Store örneğini serileştirir; farkı projelerin
+      # Store'ları (ve ayrı süreçler) aynı indeksi hedefleyebilir. Okuma-değiştirme-
+      # yazımı indeksten türetilen sabit bir kilit dosyasında flock ile seri
+      # hale getiririz; kilit yalnızca bu kısa kritik bölümü kapsar.
       def touch_index(meta)
-        snapshot = self.class.index_snapshot(@root)
-        snapshot["projects"][@project] = {
-          "path" => project_dir,
-          "entity_counts" => meta.fetch("counts", {}).dup,
-          "created_at" => (snapshot["projects"][@project] || {})["created_at"] || meta["created_at"],
-          "updated_at" => meta["updated_at"]
-        }
-        snapshot["updated_at"] = meta["updated_at"]
-        Rubik::Platform.atomic_write(Layout.index_path(@root), JSON.pretty_generate(snapshot))
+        path = Layout.index_path(@root)
+        lock_path = "#{path}.lock"
+        FileUtils.mkdir_p(File.dirname(lock_path))
+        File.open(lock_path, File::RDWR | File::CREAT, 0o644) do |lock|
+          lock.flock(File::LOCK_EX)
+          begin
+            snapshot = self.class.index_snapshot(@root)
+            snapshot["projects"][@project] = {
+              "path" => project_dir,
+              "entity_counts" => meta.fetch("counts", {}).dup,
+              "created_at" => (snapshot["projects"][@project] || {})["created_at"] || meta["created_at"],
+              "updated_at" => meta["updated_at"]
+            }
+            snapshot["updated_at"] = meta["updated_at"]
+            Rubik::Platform.atomic_write(path, JSON.pretty_generate(snapshot))
+          ensure
+            lock.flock(File::LOCK_UN)
+          end
+        end
       end
     end
   end
