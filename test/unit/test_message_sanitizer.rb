@@ -73,4 +73,26 @@ class TestMessageSanitizer < Minitest::Test
     assert_empty Rubik::LLM::MessageSanitizer.normalize(nil)
     assert_empty Rubik::LLM::MessageSanitizer.normalize([])
   end
+
+  # Issue #634: a rejected message used to be logged via msg.inspect, exposing
+  # full prompts and tool arguments even in debug mode.
+  def test_rejected_message_log_only_reports_class_and_short_preview
+    prompt_tail = "DISTINCTIVE_PROMPT_TAIL_7c2e"
+    secret = "sk-#{'a' * 30}"
+    rejected = "api_key=#{secret} " + ("prefix " * 40) + prompt_tail
+    old = ENV.fetch("RUBIK_DEBUG", nil)
+    ENV["RUBIK_DEBUG"] = "1"
+
+    _out, err = capture_io do
+      Rubik::LLM::MessageSanitizer.normalize([rejected, { role: "user", content: "ok" }])
+    end
+
+    assert_includes err, "class=String"
+    refute_includes err, prompt_tail
+    refute_includes err, secret
+    assert_includes err, Rubik::Security::Redactor::MASK_STRING
+    assert_operator err.lines.first.to_s.length, :<, 200
+  ensure
+    ENV["RUBIK_DEBUG"] = old
+  end
 end
