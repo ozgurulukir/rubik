@@ -48,6 +48,7 @@ module Rubik
         stderr_str = ""
         exit_code = 127
         pid = nil
+        child_identity = nil
         watchdog = nil
         deadline_hit = false
         timed_out = false
@@ -55,6 +56,12 @@ module Rubik
         begin
           Open3.popen3(*, chdir: chdir) do |stdin, stdout, stderr, wait_thr|
             pid = wait_thr.pid if wait_thr.respond_to?(:pid)
+            # Snapshot identity on the spawning thread, before either kill
+            # path can run. The watchdog used to snapshot it itself, but the
+            # outer Timeout rescue called kill_tree(pid) without identity —
+            # which re-snapshotted the CURRENT occupant and signaled an
+            # unrelated process after a PID reuse.
+            child_identity = process_identity(pid)
             # Deadline watchdog (issue #479): kill the tree from a separate
             # thread the moment the deadline fires, so a hung child never
             # outlives `timeout`. The kill must NOT ride Timeout.timeout's
@@ -65,11 +72,7 @@ module Rubik
             # Timeout::Error is raised only after the block has returned.
             # Cancelled in the inner ensure to keep the watchdog from firing
             # into a recycled pid after normal exit.
-            watchdog = Thread.new(pid, timeout.to_f) do |w_pid, w_deadline|
-              # Snapshot identity BEFORE the sleep: if the child exits and its
-              # PID is recycled while we wait, the captured starttime no longer
-              # matches and kill_tree refuses to signal the new process.
-              identity = process_identity(w_pid)
+            watchdog = Thread.new(pid, timeout.to_f, child_identity) do |w_pid, w_deadline, w_identity|
               slept = false
               begin
                 sleep w_deadline
@@ -78,8 +81,10 @@ module Rubik
                 # actually targets a still-live process — a child that completes
                 # exactly as the deadline fires keeps its real exit status
                 # instead of being relabeled exit 124.
-                deadline_hit = true if process_alive?(w_pid)
-                kill_tree(w_pid, identity: identity)
+                # A recycled PID is "alive" but is not our child: do not
+                # relabel its success as a timeout and do not signal it.
+                deadline_hit = true if identity_unchanged?(w_pid, w_identity) && process_alive?(w_pid)
+                kill_tree(w_pid, identity: w_identity)
               rescue StandardError => e
                 # Issue #597-2 follow-up: a kill-path failure at the deadline
                 # must never silently drop the timeout — the deadline has
@@ -139,7 +144,7 @@ module Rubik
           raise Timeout::Error, "execution expired" if deadline_hit
         rescue Timeout::Error
           timed_out = true
-          kill_tree(pid) if pid
+          kill_tree(pid, identity: child_identity) if pid
           stderr_str = timeout_message || "Execution timed out after #{timeout} seconds"
           exit_code = 124
         rescue Errno::ENOENT => e

@@ -357,6 +357,47 @@ class TestPlatformProcess < Minitest::Test
     assert_empty signalled, "a recycled PID must not be signalled"
   end
 
+  # The outer Timeout rescue used to call kill_tree(pid) with no identity, so
+  # kill_tree re-snapshotted the CURRENT occupant of a recycled PID and could
+  # signal an unrelated process. The spawn-time identity must be threaded
+  # through both kill paths.
+  def test_timeout_rescue_reuses_spawn_time_identity
+    skip "identity re-check is /proc-backed" if Gem.win_platform?
+
+    identity_calls = 0
+    identity_stub = lambda do |*_args|
+      identity_calls += 1
+      identity_calls == 1 ? "start-original" : "start-recycled"
+    end
+    kills = []
+    kill_stub = lambda do |pid, identity: nil|
+      kills << [pid, identity]
+      nil
+    end
+    stub_popen = lambda do |*_cmd, **_kw, &popen_block|
+      stdin = Object.new
+      stdin.define_singleton_method(:close) {}
+      stdout = StringIO.new("")
+      stderr = StringIO.new("")
+      wait_thr = Object.new
+      wait_thr.define_singleton_method(:pid) { 42_424 }
+      wait_thr.define_singleton_method(:value) { raise Timeout::Error, "simulated deadline" }
+      popen_block.call(stdin, stdout, stderr, wait_thr)
+    end
+
+    res = nil
+    Rubik::Platform.stub(:process_identity, identity_stub) do
+      Rubik::Platform.stub(:kill_tree, kill_stub) do
+        Open3.stub(:popen3, stub_popen) do
+          res = Rubik::Platform.popen_capture("any", timeout: 5)
+        end
+      end
+    end
+
+    assert_equal 124, res[:exit_code]
+    assert_equal ["start-original"], kills.map(&:last).uniq
+  end
+
   def test_process_identity_is_stable_for_a_live_process
     skip "identity is /proc-backed" unless File.directory?("/proc/#{::Process.pid}")
 

@@ -2,6 +2,19 @@
 
 module Rubik
   module Security
+    CONTROL_ESCAPES = { "\n" => "\\n", "\r" => "\\r", "\t" => "\\t", "\0" => "\\0", "\e" => "\\e" }.freeze
+    CONTROL_CHAR_PATTERN = /[\x00-\x1F\x7F\u0080-\u009F]/
+
+    # Escape control characters before command text reaches human- or
+    # model-facing output (errors, warnings, approval prompts). Raw bytes still
+    # drive classification, execution and the JSONL audit record. Shared so
+    # every BlockedWriteError raise site renders identically (#638).
+    def self.display_command(value)
+      value.to_s.scrub.gsub(CONTROL_CHAR_PATTERN) do |ch|
+        CONTROL_ESCAPES.fetch(ch) { format("\\x%02X", ch.ord) }
+      end
+    end
+
     # Carries structured context (command, rule name, probe-ness, block kind,
     # offending path) so callers can render situation-specific guidance
     # instead of regex-munging #message. Kept in its own file: consumers that

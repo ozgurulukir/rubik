@@ -63,12 +63,6 @@ module Rubik
       # whose ONLY arguments are these flags is read-only by construction.
       SAFE_PROBE_FLAGS = ["--version", "-v", "--help", "-h"].freeze
 
-      # Human-facing rendering only. C0/C1 controls (newlines, ESC, NUL, DEL)
-      # are escaped so command text cannot forge log lines or repaint the
-      # approval prompt. Classification, execution and the JSON audit record
-      # keep the exact original bytes.
-      CONTROL_ESCAPES = { "\n" => "\\n", "\r" => "\\r", "\t" => "\\t", "\0" => "\\0", "\e" => "\\e" }.freeze
-      CONTROL_CHAR_PATTERN = /[\x00-\x1F\x7F\u0080-\u009F]/
       SHELL_METACHAR_PATTERN = /[;&|`$<>(){}\n\r]/
 
       attr_accessor :shell, :root_dir
@@ -255,12 +249,10 @@ module Rubik
 
       private
 
-      # Escape control characters for human-facing text. `scrub` keeps an
-      # invalid-encoding command from raising inside the gate's error paths.
+      # Human-facing rendering only; the shared helper keeps every block-error
+      # raise site consistent. Raw bytes still drive execution and the audit.
       def display_command(value)
-        value.to_s.scrub.gsub(CONTROL_CHAR_PATTERN) do |ch|
-          CONTROL_ESCAPES.fetch(ch) { format("\\x%02X", ch.ord) }
-        end
+        Rubik::Security.display_command(value)
       end
 
       # Shellword tokenization for probe-shape detection; nil when the string

@@ -95,6 +95,28 @@ class TestCommandGateFallback < Minitest::Test
     assert @guard.verify_synthesis_source!("->(args) { args.fetch('x') }")
   end
 
+  def test_display_command_escapes_control_characters
+    rendered = Rubik::Security.display_command("echo\n\e[31mhi\e[0m")
+
+    assert_includes rendered, "\\n"
+    assert_includes rendered, "\\e"
+    refute_includes rendered, "\n"
+    refute_includes rendered, "\e"
+  end
+
+  def test_blocked_guidance_escapes_control_characters_from_any_raise_site
+    message_err = Rubik::Security::BlockedWriteError.new("boom\n[WARN] forged", kind: :critical_path_write)
+    command_err = Rubik::Security::BlockedWriteError.new("blocked", blocked_command: "echo\nhi", kind: :critical_path_write)
+
+    message_text = Rubik::Security::BlockedGuidance.render(message_err)
+    command_text = Rubik::Security::BlockedGuidance.render(command_err)
+
+    refute_includes message_text, "\n[WARN]"
+    assert_includes message_text, "boom\\n[WARN] forged"
+    assert_includes command_text, "echo\\nhi"
+    refute_includes command_text, "echo\nhi"
+  end
+
   def test_fallback_regex_still_allows_benign_safe_classification
     # The fix adds a defense-in-depth check; it must not turn the gate into an
     # allowlist-only valve. A clean readonly verdict still passes.
