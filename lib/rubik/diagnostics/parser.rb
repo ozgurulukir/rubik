@@ -5,6 +5,12 @@ require_relative "entry"
 module Rubik
   module Diagnostics
     class Parser
+      # Match the FIRST ":line:col:" so a location mentioned inside the
+      # diagnostic message cannot be mistaken for the file location. The
+      # message tail is outside the matched portion, so colon-heavy input
+      # cannot trigger catastrophic backtracking (CodeQL ReDoS).
+      GO_DIAGNOSTIC = /^(\S+?):(\d+):(\d+):(.*)$/m
+
       def self.parse(output, lang = :unknown)
         new.parse(output, lang)
       end
@@ -51,15 +57,20 @@ module Rubik
       end
 
       def parse_go(text)
-        entries = []
-        text.each_line do |line|
-          next unless (m = line.match(/^([^:]+):(\d+):(\d+):(.*)$/))
+        text.each_line.filter_map do |line|
+          parts = go_diagnostic_parts(line.chomp)
+          next unless parts
 
-          msg = m[4].strip
-          cat = msg.start_with?("undefined:") ? :undefined_ref : :syntax
-          entries << Entry.new(file: m[1], line: m[2], col: m[3], message: msg, category: cat, raw_text: line)
+          file, line_no, col, msg = parts
+          category = msg.start_with?("undefined:") ? :undefined_ref : :syntax
+          Entry.new(file: file, line: line_no, col: col, message: msg,
+                    category: category, raw_text: line)
         end
-        entries
+      end
+
+      def go_diagnostic_parts(text)
+        m = GO_DIAGNOSTIC.match(text)
+        m && [m[1], m[2], m[3], m[4].strip]
       end
 
       def parse_rust(text)

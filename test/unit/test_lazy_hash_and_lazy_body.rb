@@ -127,6 +127,14 @@ class TestLazyHashAndLazyBody < Minitest::Test
     refute_includes second.body, "return 1"
   end
 
+  def test_read_source_range_streams_only_requested_lines
+    path = File.join(@temp_dir, "range.rb")
+    File.write(path, (1..100).map { |i| "line_#{i}\n" }.join)
+
+    body = Rubik::AST::Symbol.read_source_range(path, 8, 10)
+    assert_equal "line_8\nline_9\nline_10\n", body
+  end
+
   def test_cache_loaded_symbol_body_still_reads_from_source
     graph = Rubik::AST::Graph.new
     path = File.join(@temp_dir, "sample.rb")

@@ -203,7 +203,7 @@ class TestASTIssue560 < Minitest::Test
     File.write(file, "def disk_target; 42; end\n")
 
     # No in-memory body and no body_loader: Symbol#body must fall back to
-    # File.readlines, which we block to observe whether the graph lock is held.
+    # read_source_range, which we block to observe whether the graph lock is held.
     sym = Rubik::AST::Symbol.new(
       name: "disk_target",
       kind: :function,
@@ -215,16 +215,16 @@ class TestASTIssue560 < Minitest::Test
 
     read_started = Queue.new
     read_release = Queue.new
-    real_readlines = File.method(:readlines)
-    blocking_readlines = lambda do |*args, **kwargs|
+    real_read = Rubik::AST::Symbol.method(:read_source_range)
+    blocking_read = lambda do |*_args|
       read_started << true
       read_release.pop
-      real_readlines.call(*args, **kwargs)
+      real_read.call(file, 1, 1)
     end
 
     Rubik::AST::Extractor.stub(:extract_result, ->(_path, _content = nil) { result }) do
       graph.index_file(file, "def disk_target; 42; end\n")
-      File.stub(:readlines, blocking_readlines) do
+      Rubik::AST::Symbol.stub(:read_source_range, blocking_read) do
         worker = Thread.new { graph.symbol_definition("disk_target") }
         probe = nil
         begin

@@ -23,7 +23,7 @@ module Rubik
             child = node.named_child(i)
             case child.kind
             when "class_definition"
-              walk_class(child, symbols, depth: depth + 1)
+              walk_class(child, symbols, depth: depth + 1, scope: current_class)
             when "function_definition"
               walk_function(child, symbols, current_class)
             when "import_statement", "import_from_statement"
@@ -34,16 +34,17 @@ module Rubik
           end
         end
 
-        def walk_class(node, symbols, depth: 0)
+        def walk_class(node, symbols, depth: 0, scope: nil)
           name_node = node.child_by_field_name("name")
           return unless name_node
 
           class_name = text_for(name_node)
+          qualified_name = scope ? "#{scope}.#{class_name}" : class_name
           sig = text_for(node).lines.first.to_s.strip.sub(/:$/, "")
           docstring = extract_docstring(node.child_by_field_name("body"))
 
           symbols << build_symbol(
-            name: class_name,
+            name: qualified_name,
             kind: :class,
             node: node,
             signature: sig,
@@ -51,7 +52,7 @@ module Rubik
           )
 
           body = node.child_by_field_name("body")
-          walk_children(body, symbols, class_name, depth: depth + 1) if body
+          walk_children(body, symbols, qualified_name, depth: depth + 1) if body
         end
 
         def walk_function(node, symbols, current_class)
