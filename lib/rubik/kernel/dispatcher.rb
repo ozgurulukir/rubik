@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../config/secret_policy"
 
 module Rubik
   module Kernel
@@ -144,12 +145,14 @@ module Rubik
       def invoke_listener(listener, event)
         listener.arity.zero? ? listener.call : listener.call(event.payload)
       rescue StandardError => e
+        # A subscriber may raise with a fetched secret in the message (#622).
+        safe_msg = Rubik::Security::Redactor.redact(e.message.to_s)
         begin
-          @dmesg&.log(:kernel, :err, "Subscriber error on #{event.name}: #{e.class}: #{e.message}")
+          @dmesg&.log(:kernel, :err, "Subscriber error on #{event.name}: #{e.class}: #{safe_msg}")
         rescue StandardError
           nil
         end
-        @logger&.error("EventBus subscriber error on event '#{event.name}': #{e.class}: #{e.message}")
+        @logger&.error("EventBus subscriber error on event '#{event.name}': #{e.class}: #{safe_msg}")
       end
 
       def log_to_dmesg(event)
@@ -157,9 +160,12 @@ module Rubik
 
         data = event.payload.is_a?(Hash) ? event.payload.dup : { value: event.payload }
         fac_id = data.delete(:facility_id) || event.facility_id
-        safe_data = {}
-        data.each do |k, v|
-          safe_data[k.to_sym] = v
+        # Defense in depth (#622): never copy a raw secret into dmesg.
+        secret = Rubik::Config::SecretPolicy.secret_key?(data[:key] || data["key"])
+        safe_data = data.each_with_object({}) do |(k, v), out|
+          key = k.to_sym
+          redact = (secret && [:value, :old_val, :new_val, :error].include?(key)) || Rubik::Config::SecretPolicy.secret_key?(k)
+          out[key] = redact ? Rubik::Config::SecretPolicy::REDACTED_VALUE : v
         rescue StandardError
           nil
         end

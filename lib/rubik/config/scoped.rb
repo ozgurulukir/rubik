@@ -65,7 +65,10 @@ module Rubik
       def set(key, value, persist: nil)
         raise ArgumentError, "Scoped child configurations cannot persist to disk (scope: #{persist.inspect})" if persisting?(persist)
 
-        @monitor.synchronize do
+        should_notify = false
+        new_val = nil
+        old_val = nil
+        res = @monitor.synchronize do
           old_val = fetch(key)
           typed_val = parse_scalar_value(value)
           typed_val = Schema.coerce(key, typed_val)
@@ -77,24 +80,32 @@ module Rubik
             validate_schema(typed_val, section, key.to_s) if section.is_a?(Hash) && !section.empty?
           end
           deep_set_key(@overrides, key, typed_val)
-          notify_change(key, typed_val, old_val) if old_val != typed_val
+          should_notify = old_val != typed_val
+          new_val = typed_val
           { ok: true }
         end
+        notify_change(key, new_val, old_val) if should_notify
+        res
       end
 
       def delete(key, persist: nil)
         raise ArgumentError, "Scoped child configurations cannot persist to disk" if persisting?(persist)
 
-        @monitor.synchronize do
+        should_notify = false
+        new_val = nil
+        old_val = nil
+        res = @monitor.synchronize do
           old_val = fetch(key)
           deep_delete(@overrides, key)
           new_val = fetch(key)
-          if old_val != new_val
-            notify_change(key, new_val, old_val)
-            @event_bus&.emit(:config_deleted, key: key.to_s, old_val: old_val)
-          end
+          should_notify = old_val != new_val
           { ok: true }
         end
+        if should_notify
+          notify_change(key, new_val, old_val)
+          @event_bus&.emit(:config_deleted, key: key.to_s, old_val: redact_secret_value(key, old_val))
+        end
+        res
       end
 
       def model_spec(role = :default)
