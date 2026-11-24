@@ -58,7 +58,10 @@ module Rubik
           return with_private_connection(uri, timeout: timeout, open_timeout: open_timeout, &block) if owned_by_current_thread?(key)
 
           unless lock.try_lock
-            # Held by another thread — queue normally; try_lock never waits.
+            # Held by another thread — re-check for a same-thread re-entry that
+            # landed between the first check and try_lock, then queue normally.
+            return with_private_connection(uri, timeout: timeout, open_timeout: open_timeout, &block) if owned_by_current_thread?(key)
+
             lock.lock
           end
 

@@ -361,6 +361,18 @@ class TestStorageStore < Minitest::Test
     assert_equal({ "goal" => 1 }, snapshot["projects"]["beta"]["entity_counts"])
   end
 
+  # The index lock path is derived from the index path. A pre-placed symlink
+  # must not redirect the flock to a file outside the storage root.
+  def test_index_lock_refuses_symlinked_lock_path
+    lock_path = File.join(@root, "index.json.lock")
+    target = File.join(@root, "victim.lock")
+    File.write(target, "original")
+    File.symlink(target, lock_path)
+
+    assert_raises(Errno::ELOOP) { @store.put(type: "goal", title: "x") }
+    assert_equal "original", File.read(target)
+  end
+
   def test_unknown_type_and_blank_title_are_rejected
     assert_raises(ArgumentError) { @store.put(type: "bogus", title: "x") }
     assert_raises(ArgumentError) { @store.put(type: "goal", title: "  ") }

@@ -24,8 +24,9 @@ module Rubik
     #   fiziki  => <root>/<project>/store/{meta.json,<type>.jsonl}
     #   indeks  => <root>/index.json (merkezi; proje sayıları + zaman damgaları)
     #
-    # Tek kullanıcı CLI ölçeği: süreç içi Monitor ile thread-güvenli; çapraz
-    # süreç yazımlarında meta/index last-writer-wins (belgelenmiş sınırlama).
+    # Tek kullanıcı CLI ölçeği: süreç içi Monitor ile thread-güvenli; index.json
+    # çapraz süreç yazımlarında flock ile serileştirilir, meta.json ise
+    # last-writer-wins (belgelenmiş sınırlama).
     # Yazmalar Platform.atomic_write ile tmp+rename; kurulum tembeldir —
     # ilk mutasyona kadar hiçbir dizin oluşturulmaz (standalone/test
     # kurulumu dosya sistemine dokunmaz).
@@ -475,7 +476,9 @@ module Rubik
         path = Layout.index_path(@root)
         lock_path = "#{path}.lock"
         FileUtils.mkdir_p(File.dirname(lock_path))
-        File.open(lock_path, File::RDWR | File::CREAT, 0o644) do |lock|
+        # NOFOLLOW+0600: a pre-placed symlink at the derived lock path must not
+        # redirect the flock to an arbitrary file in a shared storage root.
+        File.open(lock_path, File::RDWR | File::CREAT | File::NOFOLLOW, 0o600) do |lock|
           lock.flock(File::LOCK_EX)
           begin
             snapshot = self.class.index_snapshot(@root)
