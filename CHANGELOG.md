@@ -8,6 +8,44 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.15.3] - 2026-11-24
+
+The hardening wave: eight fix branches landed back-to-back, closing
+concurrency, buffer-integrity, security and tooling regressions across the
+orchestrator, storage, config redaction, AST indexing and LLM streaming.
+
+### Fixed
+
+- **Concurrency (PR #641, #620/#626/#630/#636):** the priority heap invariant
+  is restored after re-prioritization, index writes are serialized, and spawn
+  guards cover the remaining race windows; stdio MCP teardown now passes
+  spawn-time identity so the right child is killed.
+- **Buffer integrity (PR #643, #628/#629):** buffer edits preserve binary
+  bytes, and snapshots restore correctly after restart.
+- **Security hardening (PR #646, #624/#637/#638):** every spawn path is
+  gated, absolute helper paths are trusted, tool inputs are hardened,
+  secrets are redacted in subscriber/listener error messages, rejected
+  message previews escape control characters, and timeout kills thread the
+  spawn identity through.
+- **Orchestrator + REPL (PR #642, #619/#621/#635):** subagent completion is
+  guaranteed (no silently dropped results), recent activity is kept, notice
+  injection is atomic with window trim, and the terminal guard stays within
+  the line cap.
+- **Config secrets (PR #640, #622/#623/#625):** secrets are redacted in
+  events, and dispatch no longer happens while holding the monitor.
+- **AST indexing (PR #644, #627/#633):** parse status is reported honestly,
+  index/cache paths are hardened against traversal, per-entry realpath is
+  dropped from cache load, the first Go location parses, and binary-tagged
+  source is normalized (CodeQL alerts cleared).
+- **Buffer streaming (PR #645, #631/#634):** stream buffers are bounded and
+  deadline frame body reads enforced in the LLM and LSP transports.
+- **Snapshot (PR #645 wave):** startup restore is hardened against malformed
+  and hostile files.
+- **Dev tooling (PR #647, #632/#639):** temp-root cleanup is safe, the serial
+  performance gate is documented with real CI signal, lock-probe timeouts
+  are widened for loaded CI runners, and symlinked index locks are refused
+  with the pool re-entry window closed (POSIX NOFOLLOW guarded for Windows).
+
 ## [0.15.2] - 2026-11-23
 
 The suspend-and-redact patch: output-token truncation suspends a goal
@@ -1947,7 +1985,8 @@ installation section.
 
 - Agent loop: token budget autonomy with auto-continuation, wait hints,
   reactive wakeups, and structured failure notices (Plan 90, 109).
-- Kernel: deterministic event dispatcher, kworker queue, monotonic dmesg ring
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.15.3...HEAD
+[0.15.3]: https://github.com/ozgurulukir/rubik/compare/v0.15.2...v0.15.3
   buffer with `!dmesg` (Plans 102–104).
 - Tools: `ask_question` interactive dialog (Plan 92), async background task
   manager with `manage_task` (Plan 93), native search with rg fallback,
@@ -1985,8 +2024,6 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.15.2...HEAD
-[0.15.2]: https://github.com/ozgurulukir/rubik/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/ozgurulukir/rubik/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/ozgurulukir/rubik/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/ozgurulukir/rubik/compare/v0.13.0...v0.14.0
