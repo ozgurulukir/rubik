@@ -107,6 +107,32 @@ class TestBuffer < Minitest::Test
     assert_includes diff, "+BETA"
   end
 
+  # Issue #628: two distinct byte strings scrub to the same text. A
+  # scrubbing hasher misses the external edit and applying corrupts the file.
+  def test_binary_round_trip_detects_external_conflict_and_preserves_bytes
+    path = "assets/icon.bin"
+    disk_path = File.join(@temp_dir, path)
+    original = "\xFF\xFEPNG-data".b
+    replacement = "\x80\x81PNG-data".b
+    FileUtils.mkdir_p(File.dirname(disk_path))
+    File.binwrite(disk_path, original)
+
+    assert_equal original, @manager.read(path)
+    assert_equal Encoding::ASCII_8BIT, @manager.read(path).encoding
+    assert_equal "PNG-data", Rubik::Platform.safe_utf8(original)
+    assert_equal "PNG-data", Rubik::Platform.safe_utf8(replacement)
+
+    @manager.write(path, original)
+    File.binwrite(disk_path, replacement)
+
+    refute_includes @manager.apply!, path, "scrubbed hashes would miss this external edit"
+    assert_includes @manager.last_conflicts, path
+    assert_equal replacement, File.binread(disk_path), "a conflicted apply must not write"
+
+    assert_equal [path], @manager.apply!(path, policy: "overwrite")
+    assert_equal original, File.binread(disk_path), "apply must write byte-identical binary"
+  end
+
   def test_write_records_snapshot_when_store_is_attached
     store = Rubik::Buffer::SnapshotStore.new(storage_dir: File.join(@temp_dir, "snaps"))
     @manager.snapshot_store = store

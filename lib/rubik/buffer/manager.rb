@@ -171,10 +171,10 @@ module Rubik
       end
 
       # Reads a file from the buffer (if dirty) or from disk. Raw bytes —
-      # including CRLF line endings — are preserved end-to-end: a read/edit/
-      # write cycle on a CRLF file must not rewrite every line ending to LF
-      # (issue #544). Newline normalization is confined to conflict-detection
-      # hashing, never to the content that is buffered or applied to disk.
+      # including CRLF line endings and invalid UTF-8 sequences — are
+      # preserved end-to-end: a read/edit/write cycle must not normalize
+      # line endings (issue #544) or scrub binary content (issue #628).
+      # Conflict-detection hashes are computed from those same raw bytes.
       #
       # @param path [String] file path relative to the root directory
       # @param reload [Boolean] force reload from disk, discarding in-memory buffer if present
@@ -194,7 +194,7 @@ module Rubik
             full_path = File.expand_path(rel_path, @root_dir)
             return nil unless File.exist?(full_path)
 
-            return read_bytes_as_utf8(full_path)
+            return read_file_content(full_path)
           elsif @buffer.key?(rel_path)
             return @buffer[rel_path]
           end
@@ -202,7 +202,7 @@ module Rubik
           full_path = File.expand_path(rel_path, @root_dir)
           return nil unless File.exist?(full_path)
 
-          content = read_bytes_as_utf8(full_path)
+          content = read_file_content(full_path)
           @original_hashes[rel_path] = Digest::SHA256.hexdigest(content)
           content
         end
@@ -225,7 +225,7 @@ module Rubik
           rel_path = sanitize_path(path, for_write: true)
           if reset_baseline || !@original_hashes.key?(rel_path)
             full_path = File.expand_path(rel_path, @root_dir)
-            @original_hashes[rel_path] = (Digest::SHA256.hexdigest(read_bytes_as_utf8(full_path)) if File.exist?(full_path))
+            @original_hashes[rel_path] = (Digest::SHA256.hexdigest(read_file_content(full_path)) if File.exist?(full_path))
           end
 
           @buffer[rel_path] = content
@@ -326,7 +326,7 @@ module Rubik
 
         diffs = snapshot.map do |rel_path, new_content|
           full_path = File.expand_path(rel_path, @root_dir)
-          orig_content = File.exist?(full_path) ? read_bytes_as_utf8(full_path) : ""
+          orig_content = File.exist?(full_path) ? read_file_content(full_path) : ""
           Diff.unified_diff(rel_path, orig_content, new_content)
         end
 
@@ -437,19 +437,22 @@ module Rubik
         full_path = File.expand_path(rel_path, @root_dir)
         return nil unless File.exist?(full_path)
 
-        Digest::SHA256.hexdigest(read_bytes_as_utf8(full_path))
+        Digest::SHA256.hexdigest(read_file_content(full_path))
       rescue Errno::ENOENT, Errno::EACCES
         nil
       end
 
       private
 
-      # Platform.read_text uses File.read (text mode), which translates
-      # CRLF to LF on Windows and would silently break the raw-byte
-      # newline contract (issue #544). File.binread keeps the bytes;
-      # safe_utf8 re-tags and scrubs exactly as read_text does.
-      def read_bytes_as_utf8(full_path)
-        Rubik::Platform.safe_utf8(File.binread(full_path))
+      # File.binread keeps raw bytes (text-mode File.read would normalize
+      # CRLF on Windows, issue #544). Valid UTF-8 bytes are re-tagged as
+      # UTF-8 for the text pipeline; invalid sequences stay verbatim as
+      # ASCII-8BIT instead of being scrubbed away, so distinct binary files
+      # hash differently and apply byte-identically (issue #628).
+      def read_file_content(full_path)
+        raw = File.binread(full_path)
+        text = raw.dup.force_encoding(Encoding::UTF_8)
+        text.valid_encoding? ? text : raw
       end
     end
   end
