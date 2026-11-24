@@ -89,14 +89,25 @@ module Rubik
           @result_archive = ResultArchive.new(config: @config)
 
           if @event_bus.respond_to?(:subscribe)
-            @event_bus.subscribe(Notices::ERROR_PAUSED_EVENT) { notify_wait! }
-            @event_bus.subscribe(Notices::BUDGET_EXHAUSTED_EVENT) { notify_wait! }
-            @event_bus.subscribe(Notices::COMPLETED_EVENT) { notify_wait! }
-            @event_bus.subscribe(Notices::QUESTION_EVENT) { notify_wait! } if defined?(Notices::QUESTION_EVENT)
+            @wake_subscriptions = [
+              [Notices::ERROR_PAUSED_EVENT, @event_bus.subscribe(Notices::ERROR_PAUSED_EVENT) { notify_wait! }],
+              [Notices::BUDGET_EXHAUSTED_EVENT, @event_bus.subscribe(Notices::BUDGET_EXHAUSTED_EVENT) { notify_wait! }],
+              [Notices::COMPLETED_EVENT, @event_bus.subscribe(Notices::COMPLETED_EVENT) { notify_wait! }]
+            ]
+            if defined?(Notices::QUESTION_EVENT)
+              @wake_subscriptions << [Notices::QUESTION_EVENT,
+                                      @event_bus.subscribe(Notices::QUESTION_EVENT) { notify_wait! }]
+            end
           end
 
-          # Register inverse in root context (maestro hook)
-          @root_context.register_disposable { shutdown_all } if @root_context.respond_to?(:register_disposable)
+          # Register inverse in root context (maestro hook): drop the wake
+          # subscriptions and then unwind the subagent instances (LIFO).
+          return unless @root_context.respond_to?(:register_disposable)
+
+          @root_context.register_disposable do
+            @event_bus.unsubscribe(*@wake_subscriptions.shift) while @wake_subscriptions&.any?
+            shutdown_all
+          end
         end
 
         def get(id) = @monitor.synchronize { @instances[id.to_s] || @finished[id.to_s] || queued_spec(id.to_s) }
