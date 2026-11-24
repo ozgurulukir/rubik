@@ -102,14 +102,11 @@ module Rubik
 
           # Register inverse in root context (maestro hook): drop the wake
           # subscriptions and then unwind the subagent instances (LIFO).
-          if @root_context.respond_to?(:register_disposable)
-            @root_context.register_disposable do
-              if @event_bus.respond_to?(:unsubscribe)
-                @wake_subscriptions&.each { |(event, token)| @event_bus.unsubscribe(event, token) }
-              end
-              @wake_subscriptions = nil
-              shutdown_all
-            end
+          return unless @root_context.respond_to?(:register_disposable)
+
+          @root_context.register_disposable do
+            @event_bus.unsubscribe(*@wake_subscriptions.shift) while @wake_subscriptions&.any?
+            shutdown_all
           end
         end
 
