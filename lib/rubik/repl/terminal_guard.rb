@@ -61,14 +61,6 @@ module Rubik
         synchronize { @inbox.dup }
       end
 
-      def flush_inbox!
-        synchronize do
-          items = @inbox.dup
-          @inbox.clear
-          items
-        end
-      end
-
       def flush_notices!
         items, reading = synchronize do
           next [nil, false] if @inbox.empty?
