@@ -145,9 +145,9 @@ class TestActivityLog < Minitest::Test
     lines = summary.lines.map(&:strip)
 
     assert_equal 21, lines.size, "20 entries plus the dropped-count marker"
-    assert_equal "1. tool_10", lines.first
-    assert_equal "20. tool_29", lines[-2]
-    assert_equal "... (10 more)", lines.last
+    assert_equal "... (10 earlier calls omitted)", lines.first
+    assert_equal "1. tool_10", lines[1]
+    assert_equal "20. tool_29", lines.last
     refute_includes lines, "1. tool_0"
   end
 end

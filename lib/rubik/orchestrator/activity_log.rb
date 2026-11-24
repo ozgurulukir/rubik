@@ -51,7 +51,8 @@ module Rubik
           status_tag = entry[:status] == :error ? " [FAILED]" : ""
           "  #{i}. #{entry[:tool]}#{status_tag}"
         end
-        lines << "  ... (#{@entries.size - max_entries} more)" if @entries.size > max_entries
+        dropped = @entries.size - max_entries
+        lines.unshift("  ... (#{dropped} earlier calls omitted)") if dropped.positive?
         lines.join("\n")
       end
 

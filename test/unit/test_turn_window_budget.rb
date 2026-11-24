@@ -118,6 +118,42 @@ class TestTurnWindowBudget < Minitest::Test
     def current_model_spec = { "provider" => "fake", "name" => "model" }
   end
 
+  class RacingTrimHarness < TrimHarness
+    attr_accessor :notice_router
+  end
+
+  # Issue #557: a notice appended by the bus thread just before the trim's
+  # critical section must survive the array replacement, not be written to a
+  # snapshot taken before the lock.
+  def test_trim_keeps_notice_injected_before_the_critical_section
+    harness = RacingTrimHarness.new(build_pairs(25), nil)
+    notice = { role: "user", content: "<subagent_notifications>late notice</subagent_notifications>" }
+    mutex = Object.new
+    mutex.define_singleton_method(:synchronize) do |&block|
+      harness.conversation_history << notice
+      block.call
+    end
+    router = Object.new
+    router.define_singleton_method(:subagent_notices_mutex) { mutex }
+    harness.notice_router = router
+
+    harness.trim_conversation_window!
+
+    assert_includes harness.conversation_history, notice
+  end
+
+  def test_trim_merges_markers_from_other_compaction_paths
+    window = build_pairs(25)
+    window.insert(2, { role: "user", content: '<compacted_summary count="7" />' })
+    harness = TrimHarness.new(window, nil)
+
+    harness.trim_conversation_window!
+
+    summaries = harness.conversation_history.select { |row| row[:content].to_s.include?("<compacted_summary") }
+    assert_equal 1, summaries.size, "markers from all compaction paths merge into one"
+    assert_includes summaries.first[:content], 'count="17"'
+  end
+
   def test_trim_summary_survives_repeated_trims_in_a_long_session
     harness = TrimHarness.new(build_pairs(25), nil)
     harness.trim_conversation_window!
