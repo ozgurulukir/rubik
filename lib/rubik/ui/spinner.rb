@@ -2,6 +2,7 @@
 
 require "tty-spinner"
 
+require_relative "../log"
 require_relative "../storage/layout"
 
 module Rubik
@@ -72,7 +73,7 @@ module Rubik
             rescue StandardError => e
               # A dead tick thread must not take the REPL down, but the
               # failure is never silent (AGENTS.md §5): report, then exit.
-              warn "[rubik] spinner tick failed: #{e.class}: #{e.message}"
+              Rubik::Log.warn(:ui, "spinner tick failed: #{e.class}: #{e.message}")
               Thread.exit
             end
           end
@@ -97,7 +98,7 @@ module Rubik
               # Cleanup must never mask the caller's in-flight exception
               # (AGENTS.md §5): report the IO failure and still nil @spinner
               # so repeated stops stay idempotent.
-              warn "[rubik] spinner cleanup failed: #{e.class}: #{e.message}"
+              Rubik::Log.warn(:ui, "spinner cleanup failed: #{e.class}: #{e.message}")
             ensure
               @spinner = nil
             end
