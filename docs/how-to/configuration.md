@@ -39,7 +39,7 @@ Rubik merges configuration in a layered, transactional (`YAML::Store`) model (de
 | **Exclude files or directories** | `context.exclude: ["dist", "tmp"]` | Exclude paths from workspace indexing and search. |
 | **Connect language servers (LSP)** | `lsp.enabled: true`<br>`lsp.servers.<lang>: ...` | Enable live compiler diagnostics and define language server binaries. |
 | **Enable sandbox isolation** | `sandbox.driver: docker`<br>`sandbox.image: "alpine:latest"` | Run commands inside a bubblewrap, docker, or podman sandbox. |
-| **Assign model roles** | `models.roles.fast: ...`<br>`models.roles.advanced: ...` | Route routine tasks vs. complex tasks to specialized models. |
+| **Assign model roles** | `models.fast: ...`<br>`models.advanced: ...` | Route routine tasks vs. complex tasks to specialized models, e.g. `models.fast: { provider: ollama, name: qwen3.5:9b, endpoint: http://localhost:11434 }`. |
 | **Adjust prompt grace window** | `ui.prompt_grace_window_ms: 1000` | Adjust the delay before prompt execution to allow editing via Esc. |
 
 ## 📄 Fully Annotated Configuration Template
