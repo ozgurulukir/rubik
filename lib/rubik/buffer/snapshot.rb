@@ -5,6 +5,7 @@ require "json"
 require "fileutils"
 require "securerandom"
 require "monitor"
+require_relative "../log"
 require_relative "../platform"
 
 module Rubik
@@ -180,7 +181,7 @@ module Rubik
               path = entry[0]
               File.delete(path)
             rescue SystemCallError => e
-              warn "[Buffer] could not remove excess snapshot #{safe_basename(path)}: #{e.class}"
+              Rubik::Log.warn(:buffer, "could not remove excess snapshot #{safe_basename(path)}: #{e.class}")
             end
           end
 
@@ -294,7 +295,7 @@ module Rubik
 
         snapshot
       rescue StandardError => e
-        warn "[Buffer] skipping unreadable snapshot #{safe_basename(path)}: #{e.class}: #{safe_message(e)}"
+        Rubik::Log.warn(:buffer, "skipping unreadable snapshot #{safe_basename(path)}: #{e.class}: #{safe_message(e)}")
         nil
       end
 

@@ -159,7 +159,8 @@ module Rubik
         keys_to_delete.each do |secret_path|
           Rubik::Security::SecretStore.delete(secret_name(secret_path, scope))
         end
-      rescue Rubik::Security::SecretStore::Error
+      rescue Rubik::Security::SecretStore::Error => e
+        Rubik::Log.debug(:config, "secret cleanup during delete failed (#{e.class}: #{e.message})")
         nil
       end
 
