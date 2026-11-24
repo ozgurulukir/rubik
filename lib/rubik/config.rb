@@ -11,6 +11,7 @@ require_relative "config/schema"
 require_relative "config/env_loader"
 require_relative "config/secret_policy"
 require_relative "config/scoped"
+require_relative "security/redactor"
 
 module Rubik
   class Config
@@ -113,6 +114,9 @@ module Rubik
         [res, old_val, typed_val]
       end
       # Dispatch outside the monitor so a kworker subscriber can read Config (#623).
+      # Trade-off: notifications for the same key may arrive out of order relative
+      # to concurrent mutations. Ordering is only guaranteed for sequential
+      # callers; serializing dispatch would reintroduce the subscriber deadlock.
       notify_change(key, new_val, old_val) if old_val != new_val
       res
     end
@@ -249,8 +253,15 @@ module Rubik
           entry[:callback].call(key_str, new_val, old_val)
         rescue StandardError => e
           # A listener error can quote the value that triggered it; never echo
-          # a secret into logs, events, or the dmesg ring buffer (#622).
-          error_text = secret_key?(key_str) ? SecretPolicy::REDACTED_VALUE : e.message
+          # a secret into logs, events, or the dmesg ring buffer (#622). A
+          # secret key is fully masked; any other key still gets the generic
+          # redactor because the error may quote a nested secret (e.g. a
+          # whole-provider write that raised from a prefix listener).
+          error_text = if secret_key?(key_str)
+                         SecretPolicy::REDACTED_VALUE
+                       else
+                         Rubik::Security::Redactor.redact(e.message.to_s)
+                       end
           Rubik::Log.warn(:config, "[WARN] Config listener failed for '#{key_str}': #{error_text}")
           @event_bus&.emit(:config_listener_error, key: key_str, error: error_text)
         end

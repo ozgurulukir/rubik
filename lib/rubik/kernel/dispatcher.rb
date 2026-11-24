@@ -2,6 +2,7 @@
 
 require "monitor"
 require_relative "../config/secret_policy"
+require_relative "../security/redactor"
 
 module Rubik
   module Kernel
@@ -145,12 +146,15 @@ module Rubik
       def invoke_listener(listener, event)
         listener.arity.zero? ? listener.call : listener.call(event.payload)
       rescue StandardError => e
+        # A subscriber can raise with a fetched secret in the message; never
+        # copy it into dmesg or the logger (#622).
+        safe_msg = Rubik::Security::Redactor.redact(e.message.to_s)
         begin
-          @dmesg&.log(:kernel, :err, "Subscriber error on #{event.name}: #{e.class}: #{e.message}")
+          @dmesg&.log(:kernel, :err, "Subscriber error on #{event.name}: #{e.class}: #{safe_msg}")
         rescue StandardError
           nil
         end
-        @logger&.error("EventBus subscriber error on event '#{event.name}': #{e.class}: #{e.message}")
+        @logger&.error("EventBus subscriber error on event '#{event.name}': #{e.class}: #{safe_msg}")
       end
 
       def log_to_dmesg(event)

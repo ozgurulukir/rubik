@@ -311,6 +311,23 @@ class TestConfigSecretPolicy < Minitest::Test
     assert_equal true, resolved.dig("security", "allow_project_secrets")
   end
 
+  def test_listener_error_on_non_secret_key_redacts_nested_secrets
+    secret = "sk-nested-listener-SECRET"
+    bus = Rubik::EventBus.new
+    @config.event_bus = bus
+    errors = []
+    bus.subscribe(:config_listener_error) { |payload| errors << payload[:error] }
+
+    @config.on_change("providers") { raise "failed for #{secret}" }
+    @config.set("providers", { "evil" => { "api_key" => secret } }, persist: nil)
+
+    refute_empty errors
+    refute_includes errors.join(" "), secret
+    assert_includes errors.first, Rubik::Security::Redactor::MASK_STRING
+  ensure
+    bus&.stop
+  end
+
   def test_remove_provider_deletes_stored_keyring_secret
     res = @config.set("providers.openai.api_key", "sk-test-secret", persist: :global)
     assert res[:ok]

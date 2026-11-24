@@ -79,6 +79,17 @@ class TestKernelDispatcher < Minitest::Test
     assert_equal [42, 99], received_second
   end
 
+  def test_subscriber_error_messages_are_redacted
+    secret = "sk-subscriber-error-SECRET"
+    @dispatcher.subscribe(:leaky_event) { raise "failed for #{secret}" }
+
+    @dispatcher.post(:leaky_event, val: 1)
+    assert @dispatcher.sync_drain
+
+    refute_includes @dmesg.formatted, secret
+    assert_includes @dmesg.formatted, Rubik::Security::Redactor::MASK_STRING
+  end
+
   def test_dmesg_automatic_event_telemetry
     @dispatcher.post(
       :subagent_paused,
