@@ -49,8 +49,7 @@ module Rubik
         exit_code = 127
         pid = nil
         child_identity = nil
-        watchdog = nil
-        deadline_hit = false
+        deadline_hit = [false]
         timed_out = false
 
         begin
@@ -62,86 +61,12 @@ module Rubik
             # which re-snapshotted the CURRENT occupant and signaled an
             # unrelated process after a PID reuse.
             child_identity = process_identity(pid)
-            # Deadline watchdog (issue #479): kill the tree from a separate
-            # thread the moment the deadline fires, so a hung child never
-            # outlives `timeout`. The kill must NOT ride Timeout.timeout's
-            # timer thread: its unwind races the kill, and if the unwind wins,
-            # popen3's ensure joins the still-running child and the timeout
-            # merely relabels the result instead of bounding the wall clock.
-            # Instead the watchdog kills first and sets deadline_hit, and the
-            # Timeout::Error is raised only after the block has returned.
-            # Cancelled in the inner ensure to keep the watchdog from firing
-            # into a recycled pid after normal exit.
-            watchdog = Thread.new(pid, timeout.to_f, child_identity) do |w_pid, w_deadline, w_identity|
-              slept = false
-              begin
-                sleep w_deadline
-                slept = true
-                # Race guard (issue #597): only flag a timeout when the kill
-                # actually targets a still-live process — a child that completes
-                # exactly as the deadline fires keeps its real exit status
-                # instead of being relabeled exit 124.
-                # A recycled PID is "alive" but is not our child: do not
-                # relabel its success as a timeout and do not signal it.
-                deadline_hit = true if identity_unchanged?(w_pid, w_identity) && process_alive?(w_pid)
-                kill_tree(w_pid, identity: w_identity)
-              rescue StandardError => e
-                # Issue #597-2 follow-up: a kill-path failure at the deadline
-                # must never silently drop the timeout — the deadline has
-                # fired, so mark it (the caller below raises Timeout::Error
-                # and still attempts its own kill) and log the failure.
-                # `slept` guards against a spurious mark if the thread itself
-                # dies before the deadline. Thread#kill lands as an
-                # uncatchable KillError, so a normal-exit cancellation never
-                # reaches this rescue.
-                if slept
-                  deadline_hit = true
-                  Rubik::Log.warn(:platform, "popen_capture deadline kill failed for pid #{w_pid}: " \
-                                             "#{e.class}: #{e.message}")
-                end
-              end
-            end
-            begin
-              stdin.close
-            rescue StandardError => e
-              on_io_error.call(:stdin_close, e)
-            end
-            t_out = Thread.new do
-              stdout.read
-            rescue StandardError => e
-              on_io_error.call(:stdout_read, e)
-              ""
-            end
-            t_err = Thread.new do
-              stderr.read
-            rescue StandardError => e
-              on_io_error.call(:stderr_read, e)
-              ""
-            end
-            begin
-              stdout_str = t_out.value.to_s
-              stderr_str = t_err.value.to_s
-              status = wait_thr.value
-              exit_code = status.exitstatus || (status.signaled? ? (128 + (status.termsig || 1)) : 1)
-            ensure
-              begin
-                watchdog&.kill
-              rescue StandardError
-                nil
-              end
-              begin
-                t_out.kill
-              rescue StandardError => e
-                on_io_error.call(:stdout_kill, e)
-              end
-              begin
-                t_err.kill
-              rescue StandardError => e
-                on_io_error.call(:stderr_kill, e)
-              end
-            end
+            watchdog = spawn_deadline_watchdog(pid, timeout, child_identity, deadline_hit)
+            t_out, t_err = start_drain_threads(stdin, stdout, stderr, on_io_error)
+            stdout_str, stderr_str, exit_code =
+              collect_drained_output(t_out, t_err, wait_thr, watchdog, on_io_error)
           end
-          raise Timeout::Error, "execution expired" if deadline_hit
+          raise Timeout::Error, "execution expired" if deadline_hit[0]
         rescue Timeout::Error
           timed_out = true
           kill_tree(pid, identity: child_identity) if pid
@@ -168,7 +93,7 @@ module Rubik
           # Explicit timeout flag (issue #597): exit code 124 is also a
           # legitimate exit code of timeout(1) and other workloads, so the
           # tool layer must not re-derive `timed_out` from the exit code.
-          timed_out: timed_out || deadline_hit
+          timed_out: timed_out || deadline_hit[0]
         }
       end
 
@@ -272,6 +197,103 @@ module Rubik
       end
 
       private
+
+      # Deadline watchdog (issue #479): kill the tree from a separate thread
+      # the moment the deadline fires, so a hung child never outlives
+      # `timeout`. The kill must NOT ride Timeout.timeout's timer thread: its
+      # unwind races the kill, and if the unwind wins, popen3's ensure joins
+      # the still-running child and the timeout merely relabels the result
+      # instead of bounding the wall clock. Instead the watchdog kills first
+      # and flags `deadline_hit` (a one-element cell so the flag is visible to
+      # the caller), and the Timeout::Error is raised only after the popen3
+      # block has returned. Cancelled in the inner ensure (see
+      # collect_drained_output) to keep the watchdog from firing into a
+      # recycled pid after normal exit.
+      def spawn_deadline_watchdog(pid, timeout, child_identity, deadline_hit)
+        Thread.new(pid, timeout.to_f, child_identity) do |w_pid, w_deadline, w_identity|
+          slept = false
+          begin
+            sleep w_deadline
+            slept = true
+            # Race guard (issue #597): only flag a timeout when the kill
+            # actually targets a still-live process — a child that completes
+            # exactly as the deadline fires keeps its real exit status
+            # instead of being relabeled exit 124.
+            # A recycled PID is "alive" but is not our child: do not
+            # relabel its success as a timeout and do not signal it.
+            deadline_hit[0] = true if identity_unchanged?(w_pid, w_identity) && process_alive?(w_pid)
+            kill_tree(w_pid, identity: w_identity)
+          rescue StandardError => e
+            # Issue #597-2 follow-up: a kill-path failure at the deadline
+            # must never silently drop the timeout — the deadline has
+            # fired, so mark it (the caller below raises Timeout::Error
+            # and still attempts its own kill) and log the failure.
+            # `slept` guards against a spurious mark if the thread itself
+            # dies before the deadline. Thread#kill lands as an
+            # uncatchable KillError, so a normal-exit cancellation never
+            # reaches this rescue.
+            if slept
+              deadline_hit[0] = true
+              Rubik::Log.warn(:platform, "popen_capture deadline kill failed for pid #{w_pid}: " \
+                                         "#{e.class}: #{e.message}")
+            end
+          end
+        end
+      end
+
+      # Close the child's stdin (the child sees EOF), then spawn one reader
+      # thread per output pipe so the OS pipe buffer never fills and
+      # deadlocks the child. IO errors during the drain are swallowed via
+      # on_io_error so a dying reader cannot crash the capture.
+      def start_drain_threads(stdin, stdout, stderr, on_io_error)
+        begin
+          stdin.close
+        rescue StandardError => e
+          on_io_error.call(:stdin_close, e)
+        end
+        t_out = Thread.new do
+          stdout.read
+        rescue StandardError => e
+          on_io_error.call(:stdout_read, e)
+          ""
+        end
+        t_err = Thread.new do
+          stderr.read
+        rescue StandardError => e
+          on_io_error.call(:stderr_read, e)
+          ""
+        end
+        [t_out, t_err]
+      end
+
+      # Wait for the drain threads and the child, map the exit status to a
+      # code, then tear the threads down in the ensure: the watchdog first
+      # (so it cannot fire into a recycled pid), then the readers.
+      def collect_drained_output(t_out, t_err, wait_thr, watchdog, on_io_error)
+        begin
+          out = t_out.value.to_s
+          err = t_err.value.to_s
+          status = wait_thr.value
+          code = status.exitstatus || (status.signaled? ? (128 + (status.termsig || 1)) : 1)
+        ensure
+          cancel_watchdog(watchdog)
+          stop_drain_thread(t_out, :stdout_kill, on_io_error)
+          stop_drain_thread(t_err, :stderr_kill, on_io_error)
+        end
+        [out, err, code]
+      end
+
+      def cancel_watchdog(watchdog)
+        watchdog&.kill
+      rescue StandardError
+        nil
+      end
+
+      def stop_drain_thread(thread, event, on_io_error)
+        thread.kill
+      rescue StandardError => e
+        on_io_error.call(event, e)
+      end
 
       def signal_all(pids, sig, identities = {})
         pids.each do |tpid|
