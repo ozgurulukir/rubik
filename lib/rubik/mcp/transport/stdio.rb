@@ -54,6 +54,7 @@ module Rubik
           @responses = {}
           @closed = false
           @generation = 0
+          @child_identity = nil
           @pending_requests = Set.new
         end
 
@@ -106,6 +107,14 @@ module Rubik
               @stdin, @stdout, @stderr, @wait_thr = Open3.popen3(spawn_env, *cmd_parts, chdir: @root_dir)
             rescue SystemCallError => e
               raise ConnectionError, "Failed to spawn MCP process '#{bin}': #{e.message}"
+            end
+
+            # Snapshot the child's identity at spawn so teardown cannot signal a
+            # recycled PID (the guard in Platform.kill_tree needs it).
+            @child_identity = begin
+              Rubik::Platform.send(:process_identity, @wait_thr.pid)
+            rescue StandardError
+              nil
             end
 
             @mutex.synchronize do
@@ -198,7 +207,7 @@ module Rubik
 
             if @wait_thr&.alive?
               pid_to_kill = @wait_thr.pid
-              Rubik::Platform.kill_tree(pid_to_kill)
+              Rubik::Platform.kill_tree(pid_to_kill, identity: @child_identity)
               begin
                 @wait_thr.join(0.5)
               rescue StandardError

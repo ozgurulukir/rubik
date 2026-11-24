@@ -230,16 +230,22 @@ class TestMcpStdioErrorPaths < Minitest::Test
     fake_waiter.define_singleton_method(:pid) { 99_997 }
     fake_waiter.define_singleton_method(:join) { |_| self }
     t.instance_variable_set(:@wait_thr, fake_waiter)
+    t.instance_variable_set(:@child_identity, "start-111")
 
     # A writer stalled in write_until holds the write lock. close must NOT
     # take that lock — killing the child is what unblocks the writer.
     write_mutex.lock
     begin
       killed = []
-      Rubik::Platform.stub(:kill_tree, ->(pid) { killed << pid }) do
+      identities = []
+      Rubik::Platform.stub(:kill_tree, lambda { |pid, **kwargs|
+        killed << pid
+        identities << kwargs[:identity]
+      }) do
         Timeout.timeout(1.0) { t.close }
       end
       assert_equal [99_997], killed, "close must reach kill_tree while a write is stalled"
+      assert_equal ["start-111"], identities, "close must pass the spawn-time identity for the PID-reuse guard"
     ensure
       write_mutex.unlock if write_mutex.locked?
     end
