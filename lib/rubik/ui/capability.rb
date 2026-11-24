@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "strings-ansi"
-require_relative "../repl/tee_io"
+require_relative "io_probe"
 
 module Rubik
   module UI
@@ -66,14 +66,10 @@ module Rubik
           out_io.respond_to?(:tty?) && out_io.tty?
       end
 
-      # Resolves the real terminal behind a TeeIO (first target that is a
-      # live TTY); returns nil when every target is a capture buffer
-      # (StringIO#tty? is defined but false), and the IO itself when it is
-      # not a TeeIO.
+      # Resolves the real terminal behind a tee-style output stream
+      # (first target that is a live TTY); see Rubik::UI::IoProbe.
       def unwrap_tee(io)
-        return io unless io.is_a?(Rubik::REPL::TeeIO)
-
-        io.targets.compact.find(&:tty?)
+        IoProbe.unwrap_tee(io)
       end
 
       def clicolor_force?
