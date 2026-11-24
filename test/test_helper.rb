@@ -224,6 +224,7 @@ end
 
 at_exit do
   [[test_home_root, "rubik_test_home"], [created_test_root, "rubik_test_default_root"]].each do |dir, prefix|
+    absolute = dir
     next unless dir && File.directory?(dir)
 
     absolute = File.expand_path(dir)

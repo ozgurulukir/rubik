@@ -272,7 +272,9 @@ verbose suite logs with counts and skip reasons). All three suites run even if
 an earlier suite or package smoke fails, provided dependency installation succeeded.
 Linux runs Ruby 3.4 and 4.0; macOS and Windows run 4.0. This closes the blind spot that let
 `test_mcp_manager_composability` regress for two days: nothing regular ever
-ran the slow-excluded files.
+ran the slow-excluded files. A separate serial `performance` job on Ubuntu/Ruby 4.0
+runs the full unit suite with `RUBIK_TEST_PERF_RELAX` unset, so performance-budget
+assertions remain hard failures, and publishes `ci-results/perf.log` as evidence.
 
 Each CI step reports under its own simplecov command name
 (`RUBIK_COVERAGE_SUITE` = fast/slow/integration): with one shared name every

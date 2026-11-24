@@ -211,7 +211,8 @@ jobs:
           bundler-cache: true
       # Single-process run with RUBIK_TEST_PERF_RELAX unset: perf-budget
       # assertions stay hard failures. The parallel fast gate relaxes them
-      # under load, so on its own it provides no performance signal (#639).
+      # under load; this job is the dedicated, clearly-labelled hard-budget
+      # signal (#639).
       - name: Serial unit suite with hard perf budgets
         run: |
           mkdir -p ci-results
