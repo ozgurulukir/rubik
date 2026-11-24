@@ -24,8 +24,9 @@ module Rubik
     #   fiziki  => <root>/<project>/store/{meta.json,<type>.jsonl}
     #   indeks  => <root>/index.json (merkezi; proje sayıları + zaman damgaları)
     #
-    # Tek kullanıcı CLI ölçeği: süreç içi Monitor ile thread-güvenli; çapraz
-    # süreç yazımlarında meta/index last-writer-wins (belgelenmiş sınırlama).
+    # Tek kullanıcı CLI ölçeği: süreç içi Monitor ile thread-güvenli; index.json
+    # çapraz süreç yazımlarında flock ile serileştirilir, meta.json ise
+    # last-writer-wins (belgelenmiş sınırlama).
     # Yazmalar Platform.atomic_write ile tmp+rename; kurulum tembeldir —
     # ilk mutasyona kadar hiçbir dizin oluşturulmaz (standalone/test
     # kurulumu dosya sistemine dokunmaz).
@@ -34,6 +35,9 @@ module Rubik
       ID_PATTERN = /\A([a-z]+)\.(\d+)\.([0-9a-f]{16})\z/
       HASH_PREFIX_MIN = 8
       REF_PATTERN = /\A[a-zA-Z0-9._-]+\z/
+      # File::NOFOLLOW is POSIX-only; on Windows the advisory-flock guard
+      # remains and only the symlink refusal is unavailable.
+      LOCK_NOFOLLOW = defined?(File::NOFOLLOW) ? File::NOFOLLOW : 0
 
       Summary = Struct.new(:id, :row, :title, :status, :updated_at, :tags, keyword_init: true)
 
@@ -467,16 +471,32 @@ module Rubik
 
       # Merkezi indeksi günceller: bu projenin girdisi canlı meta'dan
       # yeniden yazılır, diğer projelerin girdileri korunur.
+      # @monitor yalnızca TEK Store örneğini serileştirir; farkı projelerin
+      # Store'ları (ve ayrı süreçler) aynı indeksi hedefleyebilir. Okuma-değiştirme-
+      # yazımı indeksten türetilen sabit bir kilit dosyasında flock ile seri
+      # hale getiririz; kilit yalnızca bu kısa kritik bölümü kapsar.
       def touch_index(meta)
-        snapshot = self.class.index_snapshot(@root)
-        snapshot["projects"][@project] = {
-          "path" => project_dir,
-          "entity_counts" => meta.fetch("counts", {}).dup,
-          "created_at" => (snapshot["projects"][@project] || {})["created_at"] || meta["created_at"],
-          "updated_at" => meta["updated_at"]
-        }
-        snapshot["updated_at"] = meta["updated_at"]
-        Rubik::Platform.atomic_write(Layout.index_path(@root), JSON.pretty_generate(snapshot))
+        path = Layout.index_path(@root)
+        lock_path = "#{path}.lock"
+        FileUtils.mkdir_p(File.dirname(lock_path))
+        # NOFOLLOW+0600: a pre-placed symlink at the derived lock path must not
+        # redirect the flock to an arbitrary file in a shared storage root.
+        File.open(lock_path, File::RDWR | File::CREAT | LOCK_NOFOLLOW, 0o600) do |lock|
+          lock.flock(File::LOCK_EX)
+          begin
+            snapshot = self.class.index_snapshot(@root)
+            snapshot["projects"][@project] = {
+              "path" => project_dir,
+              "entity_counts" => meta.fetch("counts", {}).dup,
+              "created_at" => (snapshot["projects"][@project] || {})["created_at"] || meta["created_at"],
+              "updated_at" => meta["updated_at"]
+            }
+            snapshot["updated_at"] = meta["updated_at"]
+            Rubik::Platform.atomic_write(path, JSON.pretty_generate(snapshot))
+          ensure
+            lock.flock(File::LOCK_UN)
+          end
+        end
       end
     end
   end

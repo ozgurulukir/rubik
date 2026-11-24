@@ -149,6 +149,25 @@ class TestConcurrency < Minitest::Test
     assert_equal [], Rubik::Concurrency.map([]) { |i| i }
   end
 
+  # Issue #620: reject! compacts the heap without re-heapifying. A stale ROOT
+  # must not leave a non-minimal entry at @heap[0] gating idle-draining.
+  def test_pruning_a_stale_root_keeps_the_heap_minimal_and_fires_on_time
+    stale = Object.new
+    live = Object.new
+    timers = Rubik::Concurrency::Timers.new { |fiber, _generation| fiber.equal?(stale) }
+
+    timers.add(10.0, stale, :stale, 1)
+    timers.add(1000.0, live, :late, 1)
+    timers.add(20.0, live, :due, 2)
+
+    assert_equal 20.0, timers.next_gap(0.0), "the pruned heap must re-heapify around the stale root"
+
+    fired = []
+    assert_equal 1, timers.fire_due!(25.0) { |_fiber, value, _generation| fired << value }
+    assert_equal [:due], fired, "the next due timer must still fire on time"
+    assert_equal 975.0, timers.next_gap(25.0)
+  end
+
   def test_kill_switch_degrades_to_sequential_execution
     ENV["RUBIK_FIBER_SCHEDULER"] = "off"
     Rubik::Concurrency.reset_disabled_cache!
