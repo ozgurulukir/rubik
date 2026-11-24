@@ -358,7 +358,7 @@ class TestPlatformProcess < Minitest::Test
   end
 
   def test_process_identity_is_stable_for_a_live_process
-    skip "identity is /proc-backed" if Gem.win_platform?
+    skip "identity is /proc-backed" unless File.directory?("/proc/#{::Process.pid}")
 
     pid = ::Process.spawn("sleep", "30")
     begin

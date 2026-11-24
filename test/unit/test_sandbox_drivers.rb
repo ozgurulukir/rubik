@@ -414,6 +414,19 @@ class TestSandboxDrivers < Minitest::Test
     assert_includes res[:stdout], "SILENT_OK"
   end
 
+  def test_process_driver_pwsh_routing_skips_the_posix_gate
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    resolved = { argv: ["echo", "pwsh"], shell: "pwsh", note: nil }
+
+    Rubik::Sandbox::ShellResolver.stub(:resolve, resolved) do
+      driver.stub(:verify_command_safety!, ->(*) { flunk "POSIX gate must not run for pwsh routing" }) do
+        res = driver.run("Get-Date -Format yyyy", chdir: @temp_dir)
+        assert res[:ok]
+        assert_equal "pwsh", res[:shell]
+      end
+    end
+  end
+
   def test_process_driver_pwsh_fingerprint_routing
     skip "pwsh not available" unless Rubik::Platform.which("pwsh")
 
