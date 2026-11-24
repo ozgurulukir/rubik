@@ -83,6 +83,9 @@ module Rubik
       def rejection_detail(msg)
         preview = begin
           text = Rubik::Security::Redactor.redact(msg.inspect)
+          # A custom inspect can embed newlines/ANSI; do not let it forge a
+          # log line through the debug warning below.
+          text = text.gsub(/[[:cntrl:]]/, "?")
           text.length > REJECTED_PREVIEW_CHARS ? "#{text[0, REJECTED_PREVIEW_CHARS]}…" : text
         rescue StandardError
           "<inspect failed>"

@@ -95,4 +95,21 @@ class TestMessageSanitizer < Minitest::Test
   ensure
     ENV["RUBIK_DEBUG"] = old
   end
+
+  def test_rejected_message_preview_escapes_control_characters
+    evil = Object.new
+    evil.define_singleton_method(:inspect) { "ok\n[WARN] forged \e[31mred\e[0m" }
+    old = ENV.fetch("RUBIK_DEBUG", nil)
+    ENV["RUBIK_DEBUG"] = "1"
+
+    _out, err = capture_io do
+      Rubik::LLM::MessageSanitizer.normalize([evil, { role: "user", content: "ok" }])
+    end
+
+    assert_equal 1, err.lines.size, "a crafted inspect must not forge extra log lines"
+    refute_includes err, "\e[31m"
+    assert_includes err, "?"
+  ensure
+    ENV["RUBIK_DEBUG"] = old
+  end
 end
