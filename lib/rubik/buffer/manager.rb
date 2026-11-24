@@ -8,6 +8,7 @@ require "monitor"
 require_relative "apply_transaction"
 require_relative "../storage/layout"
 require_relative "diff"
+require_relative "../log"
 require_relative "../platform"
 require_relative "../security/guard"
 
@@ -245,7 +246,7 @@ module Rubik
         begin
           @snapshot_store&.create_snapshot(self)
         rescue StandardError => e
-          warn "[Buffer] snapshot recording failed: #{e.class}: #{e.message}"
+          Rubik::Log.warn(:buffer, "snapshot recording failed: #{e.class}: #{e.message}")
         end
         content
       end

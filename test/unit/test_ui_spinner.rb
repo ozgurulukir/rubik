@@ -123,7 +123,7 @@ class TestUISpinner < Minitest::Test
       assert wait_until(2.0, step: 0.02) { !spinner.spinning? }, "tick thread must exit after its failure"
 
       refute spinner.spinning?, "tick thread must exit after its failure"
-      assert_includes captured_stderr.string, "[rubik] spinner tick failed:",
+      assert_includes captured_stderr.string, "spinner tick failed:",
                       "tick failure must be reported to stderr, never silently swallowed"
     ensure
       $stderr = original_stderr

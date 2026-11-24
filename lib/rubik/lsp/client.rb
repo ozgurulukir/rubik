@@ -195,11 +195,6 @@ module Rubik
         @transport.server_pid
       end
 
-      def reconnect!
-        stop if running
-        start
-      end
-
       def stop
         return unless running || @transport.resources?
 
