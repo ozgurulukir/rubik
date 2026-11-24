@@ -56,7 +56,7 @@ class TestSandboxDockerHardening < Minitest::Test
     mock_thr = Struct.new(:value, :pid).new(Struct.new(:exitstatus, :signaled?).new(0, false), 99_999)
 
     # kill_tree now takes an optional identity: kwarg for the PID-reuse guard.
-    Rubik::Platform.stub :kill_tree, lambda { |pid, identity: nil|
+    Rubik::Platform.stub :kill_tree, lambda { |pid, **_kwargs|
       killed_pid = pid
     } do
       driver.stub :system, lambda { |*args, **kwargs|
