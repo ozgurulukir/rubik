@@ -137,6 +137,12 @@ module Rubik
       # GoalStateAdapter precedent — a second registration would shadow this
       # one).
       class SubagentTranscriptAdapter
+        FRAGMENT_PARAM_KEYS = ["cursor", "limit", "snapshot"].freeze
+        FRAGMENT_SHAPES = {
+          "cursor" => /\A\d+\z/,
+          "snapshot" => /\A[a-z][a-z0-9_]*:[0-9a-f]{16}\z/
+        }.freeze
+
         def match?(uri)
           Rubik::Uris::SUBAGENT_TRANSCRIPT.match?(uri) || Rubik::Uris::SUBAGENT_RESULT.match?(uri)
         end
@@ -180,12 +186,26 @@ module Rubik
           Rubik::Orchestrator::Subagent::TranscriptReader.render_page(page)
         end
 
-        # Fragment grammar: "#cursor=N&snapshot=TOK" — values are charset-safe
-        # (digits / "live:hex"), so no percent-decoding is needed.
+        # Fragment grammar: "#cursor=N&limit=N&snapshot=SOURCE:HEX". Unknown
+        # keys and malformed values are dropped (the reader falls back to its
+        # own defaults) — no fragment text ever reaches the reader unchecked.
         def fragment_params(uri)
           uri.split("#", 2)[1].to_s.split("&").each_with_object({}) do |pair, acc|
             key, value = pair.split("=", 2)
-            acc[key] = value if key && !key.empty? && value
+            next unless key && value && valid_fragment_param?(key, value)
+
+            acc[key] = value
+          end
+        end
+
+        def valid_fragment_param?(key, value)
+          return false unless FRAGMENT_PARAM_KEYS.include?(key)
+
+          case key
+          when "limit"
+            value.match?(/\A\d+\z/) && value.to_i.between?(1, Rubik::Orchestrator::Subagent::TranscriptReader::MAX_PAGE_CHARS)
+          else
+            FRAGMENT_SHAPES.fetch(key).match?(value)
           end
         end
 

@@ -24,12 +24,14 @@ module Rubik
       # one-liner: `!allow-cmd add "<command>"`.
       def self.render(err)
         cmd = err.respond_to?(:blocked_command) ? err.blocked_command : nil
+        cmd = Rubik::Security.display_command(cmd) if cmd
         rule = err.respond_to?(:rule_name) ? err.rule_name : nil
         kind = err.respond_to?(:kind) ? err.kind : nil
         quoted = cmd ? "\"#{cmd}\"" : nil
         # Unstructured raises (critical-write) carry all their context in
-        # #message — never discard it behind "rule: unknown".
-        message = err.message
+        # #message — never discard it behind "rule: unknown". Defense in depth:
+        # escape control chars even if a raise site forgets to.
+        message = Rubik::Security.display_command(err.message)
         structural = cmd || rule
 
         lines = if kind == :chdir_outside_root

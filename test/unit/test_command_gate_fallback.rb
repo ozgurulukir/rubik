@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require_relative "../test_helper"
 
 # Issue #538: the fallback safety regex is documented as the un-bypassable
@@ -37,6 +38,83 @@ class TestCommandGateFallback < Minitest::Test
         assert_equal DANGEROUS_PIPE_CMD, error.blocked_command
       end
     end
+  end
+
+  def test_control_characters_are_escaped_in_human_facing_block_output
+    cmd = "rm -rf /\n\e[31mRED\e[0m\u009f"
+    error = assert_raises(Rubik::Security::BlockedWriteError) do
+      @guard.verify_command_safety!(cmd)
+    end
+
+    refute_includes error.message, "\n"
+    refute_includes error.message, "\e"
+    assert_includes error.message, "\\n"
+    assert_includes error.message, "\\e[31m"
+    assert_includes error.message, "\\x9F"
+    assert_equal "rm -rf /\\n\\e[31mRED\\e[0m\\x9F", error.blocked_command
+
+    # The JSONL audit record keeps the exact bytes (JSON-escaped) for forensics.
+    entry = JSON.parse(File.readlines(@audit_file).find { |line| line.include?("blocked_command") })
+    assert_equal cmd, entry["details"]["command"]
+  end
+
+  def test_approval_prompt_escapes_control_characters
+    fake_shell = Object.new
+    fake_shell.define_singleton_method(:interactive_input?) { true }
+    question = nil
+    answer_capture = lambda do |_shell, q, **_kw|
+      question = q
+      "n"
+    end
+
+    Rubik::UI::Approvals.stub(:keypress_yes_no, answer_capture) do
+      assert_raises(Rubik::Security::BlockedWriteError) do
+        @guard.verify_command_safety!("rubik_unlisted_audit_binary --version\n\e[31m", shell: fake_shell)
+      end
+    end
+
+    refute_nil question
+    refute_includes question, "\n"
+    refute_includes question, "\e"
+    assert_includes question, "\\n"
+    assert_includes question, "\\e[31m"
+  end
+
+  def test_probe_shape_rejects_shell_metacharacters
+    gate = @guard.instance_variable_get(:@command_gate)
+    assert gate.probe_shape?("bash --version")
+    refute gate.probe_shape?("bash --version; rm -rf /")
+    refute gate.probe_shape?("bash --version`id`")
+    refute gate.probe_shape?("bash --version && whoami")
+  end
+
+  def test_permissive_allow_unknown_is_not_reachable_from_the_general_gate
+    assert_raises(ArgumentError) do
+      @guard.verify_command_safety!("->(args) { args.fetch('x') }", allow_unknown: true)
+    end
+    assert @guard.verify_synthesis_source!("->(args) { args.fetch('x') }")
+  end
+
+  def test_display_command_escapes_control_characters
+    rendered = Rubik::Security.display_command("echo\n\e[31mhi\e[0m")
+
+    assert_includes rendered, "\\n"
+    assert_includes rendered, "\\e"
+    refute_includes rendered, "\n"
+    refute_includes rendered, "\e"
+  end
+
+  def test_blocked_guidance_escapes_control_characters_from_any_raise_site
+    message_err = Rubik::Security::BlockedWriteError.new("boom\n[WARN] forged", kind: :critical_path_write)
+    command_err = Rubik::Security::BlockedWriteError.new("blocked", blocked_command: "echo\nhi", kind: :critical_path_write)
+
+    message_text = Rubik::Security::BlockedGuidance.render(message_err)
+    command_text = Rubik::Security::BlockedGuidance.render(command_err)
+
+    refute_includes message_text, "\n[WARN]"
+    assert_includes message_text, "boom\\n[WARN] forged"
+    assert_includes command_text, "echo\\nhi"
+    refute_includes command_text, "echo\nhi"
   end
 
   def test_fallback_regex_still_allows_benign_safe_classification

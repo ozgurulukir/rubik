@@ -286,13 +286,145 @@ class TestPlatformProcess < Minitest::Test
     assert_empty Rubik::Platform.descendant_pids(4_194_303)
   end
 
-  private
+  # ── Issue #624: helper trust + PID-reuse guard ──
+
+  def test_helper_capture_never_executes_a_path_resolved_fake_pgrep
+    skip "POSIX-only /proc fallback probe" if Gem.win_platform?
+
+    marker = File.join(@tmp_dir, "fake-pgrep-ran")
+    fake_bin = File.join(@tmp_dir, "fake-bin")
+    FileUtils.mkdir_p(fake_bin)
+    File.write(File.join(fake_bin, "pgrep"), "#!/bin/sh\ntouch #{marker.inspect}\necho 999999\n")
+    File.chmod(0o755, File.join(fake_bin, "pgrep"))
+
+    original_directory = File.method(:directory?)
+    no_proc_task = lambda do |path|
+      path.to_s.end_with?("/task") ? false : original_directory.call(path)
+    end
+
+    # Force the helper fallback with a pid that cannot exist; the real
+    # absolute helpers return no children, so the result stays empty.
+    File.stub(:directory?, no_proc_task) do
+      with_path(fake_bin) do
+        assert_empty Rubik::Platform.descendant_pids(4_194_303)
+      end
+    end
+    refute File.exist?(marker), "a PATH-resolved fake pgrep must never be executed"
+  end
+
+  def test_helper_capture_is_deadline_bounded
+    # Stubbing Timeout.timeout itself is unsafe here: this repo prepends a
+    # fiber-native TimeoutPatch, and Minitest's stub/restore aliases that
+    # prepended method into a self-recursive singleton. Measure the real
+    # deadline instead, with only pgrep eligible so one helper call is made.
+    slow_capture = lambda do |*_args, **_kw|
+      sleep 2
+      ["", nil]
+    end
+    only_pgrep = ->(path) { path.to_s.include?("pgrep") }
+
+    started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    File.stub(:executable?, only_pgrep) do
+      Open3.stub(:capture2, slow_capture) do
+        assert_empty Rubik::Platform.descendant_pids(4_194_303)
+      end
+    end
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+    assert_operator elapsed, :<, 1.0, "a hung helper must not stall process teardown (took #{elapsed.round(2)}s)"
+  end
+
+  def test_kill_tree_skips_signal_when_process_identity_changed
+    skip "identity re-check is /proc-backed" if Gem.win_platform?
+
+    calls = 0
+    identity_stub = lambda do |*_args|
+      calls += 1
+      calls == 1 ? "start-111" : "start-999"
+    end
+    signalled = []
+    kill_stub = lambda do |sig, pid|
+      signalled << [sig, pid]
+      nil
+    end
+
+    # Rubik::Platform extends the module, so the call site resolves the
+    # singleton method on Rubik::Platform (not on the module object).
+    Rubik::Platform.stub(:process_identity, identity_stub) do
+      ::Process.stub(:kill, kill_stub) do
+        Rubik::Platform.kill_tree(42_424)
+      end
+    end
+    assert_empty signalled, "a recycled PID must not be signalled"
+  end
+
+  # The outer Timeout rescue used to call kill_tree(pid) with no identity, so
+  # kill_tree re-snapshotted the CURRENT occupant of a recycled PID and could
+  # signal an unrelated process. The spawn-time identity must be threaded
+  # through both kill paths.
+  def test_timeout_rescue_reuses_spawn_time_identity
+    skip "identity re-check is /proc-backed" if Gem.win_platform?
+
+    identity_calls = 0
+    identity_stub = lambda do |*_args|
+      identity_calls += 1
+      identity_calls == 1 ? "start-original" : "start-recycled"
+    end
+    kills = []
+    kill_stub = lambda do |pid, identity: nil|
+      kills << [pid, identity]
+      nil
+    end
+    stub_popen = lambda do |*_cmd, **_kw, &popen_block|
+      stdin = Object.new
+      stdin.define_singleton_method(:close) {}
+      stdout = StringIO.new("")
+      stderr = StringIO.new("")
+      wait_thr = Object.new
+      wait_thr.define_singleton_method(:pid) { 42_424 }
+      wait_thr.define_singleton_method(:value) { raise Timeout::Error, "simulated deadline" }
+      popen_block.call(stdin, stdout, stderr, wait_thr)
+    end
+
+    res = nil
+    Rubik::Platform.stub(:process_identity, identity_stub) do
+      Rubik::Platform.stub(:kill_tree, kill_stub) do
+        Open3.stub(:popen3, stub_popen) do
+          res = Rubik::Platform.popen_capture("any", timeout: 5)
+        end
+      end
+    end
+
+    assert_equal 124, res[:exit_code]
+    assert_equal ["start-original"], kills.map(&:last).uniq
+  end
+
+  def test_process_identity_is_stable_for_a_live_process
+    skip "identity is /proc-backed" unless File.directory?("/proc/#{::Process.pid}")
+
+    pid = ::Process.spawn("sleep", "30")
+    begin
+      first = Rubik::Platform.send(:process_identity, pid)
+      second = Rubik::Platform.send(:process_identity, pid)
+      assert_match(/\A\d+\z/, first.to_s)
+      assert_equal first, second
+    ensure
+      kill_and_reap(pid)
+    end
+  end
 
   def descendant_alive?(pid)
     ::Process.kill(0, pid)
     true
   rescue Errno::ESRCH, Errno::EPERM
     false
+  end
+
+  def with_path(value)
+    previous = ENV.fetch("PATH", nil)
+    ENV["PATH"] = value
+    yield
+  ensure
+    ENV["PATH"] = previous
   end
 
   def kill_and_reap(pid)
