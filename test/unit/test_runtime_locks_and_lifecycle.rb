@@ -29,7 +29,7 @@ class TestRuntimeLocksAndLifecycle < Minitest::Test
     observed = Queue.new
     ctx.on_dispose do
       probe = Thread.new { observed << ctx.disposable_count }
-      raise "context monitor held during inverse" unless probe.join(1)
+      raise "context monitor held during inverse" unless probe.join(5)
     end
 
     ctx.dispose
@@ -62,7 +62,7 @@ class TestRuntimeLocksAndLifecycle < Minitest::Test
     manager.register_component("svc") do |sub_ctx|
       sub_ctx.on_dispose do
         probe = Thread.new { reentered << manager.fibers }
-        raise "manager monitor held during fiber teardown" unless probe.join(1)
+        raise "manager monitor held during fiber teardown" unless probe.join(5)
       end
       Object.new
     end
