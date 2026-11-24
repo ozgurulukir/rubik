@@ -404,15 +404,6 @@ class TestLspIssues245251Regressions < Minitest::Test
     File.readlines(path, chomp: true).map { |line| JSON.parse(line) }
   end
 
-  def wait_until(timeout: 2)
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-    until yield
-      raise "condition not met within #{timeout}s" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-
-      sleep 0.01
-    end
-  end
-
   def spaced_ruby_executable
     return RbConfig.ruby if Rubik::Platform.windows?
 

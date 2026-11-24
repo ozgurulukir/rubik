@@ -26,6 +26,38 @@ class TestDiagnosticsParser < Minitest::Test
     assert_equal :undefined_ref, e.category
   end
 
+  def test_parse_go_filename_containing_colons
+    stderr = "weird:name:file.go:10:5: undefined: my_var"
+    entries = Rubik::Diagnostics::Parser.parse(stderr, :go)
+
+    assert_equal 1, entries.size
+    e = entries.first
+    assert_equal "weird:name:file.go", e.file
+    assert_equal 10, e.line
+    assert_equal 5, e.col
+    assert_equal :undefined_ref, e.category
+  end
+
+  def test_parse_go_ignores_location_inside_message
+    stderr = "foo.go:10:5: error: see bar.go:20:3: details"
+    entries = Rubik::Diagnostics::Parser.parse(stderr, :go)
+
+    assert_equal 1, entries.size
+    e = entries.first
+    assert_equal "foo.go", e.file
+    assert_equal 10, e.line
+    assert_equal 5, e.col
+  end
+
+  def test_parse_go_windows_drive_path
+    stderr = "C:\\src\\main.go:10:5: undefined: my_var"
+    entries = Rubik::Diagnostics::Parser.parse(stderr, :go)
+
+    assert_equal 1, entries.size
+    assert_equal "C:\\src\\main.go", entries.first.file
+    assert_equal 10, entries.first.line
+  end
+
   def test_parse_rust_error
     stderr = "error[E0382]: use of moved value: `x` \n  --> src/main.rs:15:9"
     entries = Rubik::Diagnostics::Parser.parse(stderr, :rust)

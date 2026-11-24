@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../prompt/conversation_rows"
+require_relative "../security/redactor"
 
 module Rubik
   module LLM
@@ -18,6 +19,11 @@ module Rubik
     # * role:"tool" messages are never merged — each carries its own
     #   tool_call_id; strict providers coalesce them at format time.
     module MessageSanitizer
+      # Issue #634: a rejected message used to be logged with msg.inspect,
+      # dumping full prompts and tool arguments into debug logs. Only a short
+      # bounded preview is emitted now.
+      REJECTED_PREVIEW_CHARS = 80
+
       module_function
 
       def normalize(messages)
@@ -26,7 +32,7 @@ module Rubik
         merged = []
         messages.each do |msg|
           unless Prompt::ConversationRows.row?(msg)
-            Rubik::Platform.debug_warn("MessageSanitizer: dropping non-hash message #{msg.inspect}")
+            Rubik::Platform.debug_warn(rejection_detail(msg))
             next
           end
 
@@ -72,6 +78,19 @@ module Rubik
           Rubik::Log.warn(:llm, "message merge failed (#{e.class}: #{e.message}); tool_calls/content may be dropped")
         end
         nil
+      end
+
+      def rejection_detail(msg)
+        preview = begin
+          text = Rubik::Security::Redactor.redact(msg.inspect)
+          # A custom inspect can embed newlines/ANSI; do not let it forge a
+          # log line through the debug warning below.
+          text = text.gsub(/[[:cntrl:]]/, "?")
+          text.length > REJECTED_PREVIEW_CHARS ? "#{text[0, REJECTED_PREVIEW_CHARS]}…" : text
+        rescue StandardError
+          "<inspect failed>"
+        end
+        "MessageSanitizer: dropping non-hash message (class=#{msg.class}) #{preview}"
       end
 
       def join_content(first, second)

@@ -96,6 +96,15 @@ class TestUriResolver < Minitest::Test
     assert_includes resolve("rubik://subagent/sid-100/transcript.jsonl"), "\"line\":1", ".jsonl form"
   end
 
+  def test_transcript_fragment_params_are_allowlisted_and_shape_checked
+    adapter = Rubik::Tools::UriResolver::DEFAULT_SUBAGENT_TRANSCRIPT_ADAPTER
+    params = adapter.send(:fragment_params,
+                          "rubik://subagent/sid/transcript#cursor=12&limit=500&snapshot=live:0123456789abcdef" \
+                          "&evil=../x&cursor=../../etc&limit=999999")
+
+    assert_equal({ "cursor" => "12", "limit" => "500", "snapshot" => "live:0123456789abcdef" }, params)
+  end
+
   def test_goal_adapter_serves_the_live_xml_snapshot_from_the_context
     state = Rubik::Orchestrator::GoalState.new
     state.start!("seam goal", 100)

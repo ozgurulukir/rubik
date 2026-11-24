@@ -25,11 +25,19 @@ require "fileutils"
 require "stringio"
 
 real_cache_dir = ENV["XDG_CACHE_HOME"] || File.expand_path("~/.cache")
-ENV["HOME"] = Dir.mktmpdir("rubik_test_home")
+# Capture absolute paths at setup: at_exit must never re-read HOME/RUBIK_TEST_ROOT,
+# which callers may repoint at unrelated directories before the process exits (#632).
+test_tmp_prefix = File.join(File.expand_path(Dir.tmpdir), "")
+test_home_root = Dir.mktmpdir("rubik_test_home")
+ENV["HOME"] = test_home_root
 ENV["XDG_CACHE_HOME"] ||= real_cache_dir
 ENV["RUBIK_TEST"] = "1"
 ENV["RUBIK_TRUST_WORKSPACE"] = "1"
-ENV["RUBIK_TEST_ROOT"] ||= Dir.mktmpdir("rubik_test_default_root")
+inherited_test_root = ENV.fetch("RUBIK_TEST_ROOT", nil)
+test_root = inherited_test_root || Dir.mktmpdir("rubik_test_default_root")
+ENV["RUBIK_TEST_ROOT"] = test_root
+# An inherited RUBIK_TEST_ROOT belongs to the caller, not to this process.
+created_test_root = inherited_test_root ? nil : test_root
 
 require "minitest"
 
@@ -94,8 +102,9 @@ end
 # Bounded predicate polling for asynchronous state transitions.
 # Returns the truthy result of the block as soon as satisfied; returns falsy on deadline.
 # Supports positional timeout: wait_until(5), keyword: wait_until(timeout: 5, step: 0.01).
-def wait_until(timeout = 5.0, pos_step = nil, step: 0.01)
+def wait_until(pos_timeout = 5.0, pos_step = nil, step: 0.01, timeout: nil)
   step = pos_step if pos_step
+  timeout = pos_timeout if timeout.nil?
   timeout = timeout[:timeout] if timeout.is_a?(Hash) && timeout.key?(:timeout)
   timeout = timeout.to_f
   deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
@@ -214,9 +223,16 @@ def restore_env(snapshot)
 end
 
 at_exit do
-  [ENV.fetch("HOME", nil), ENV.fetch("RUBIK_TEST_ROOT", nil)].each do |dir|
-    FileUtils.remove_entry(dir) if dir && File.directory?(dir)
-  rescue StandardError
-    nil
+  [[test_home_root, "rubik_test_home"], [created_test_root, "rubik_test_default_root"]].each do |dir, prefix|
+    absolute = dir
+    next unless dir && File.directory?(dir)
+
+    absolute = File.expand_path(dir)
+    next unless absolute.start_with?(test_tmp_prefix)
+    next unless File.basename(absolute).start_with?(prefix)
+
+    remove_temp_dir(absolute)
+  rescue StandardError => e
+    warn "[test] could not remove temp root #{absolute}: #{e.class}: #{e.message}"
   end
 end

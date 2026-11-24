@@ -48,6 +48,7 @@ module Rubik
         stderr_str = ""
         exit_code = 127
         pid = nil
+        child_identity = nil
         watchdog = nil
         deadline_hit = false
         timed_out = false
@@ -55,6 +56,12 @@ module Rubik
         begin
           Open3.popen3(*, chdir: chdir) do |stdin, stdout, stderr, wait_thr|
             pid = wait_thr.pid if wait_thr.respond_to?(:pid)
+            # Snapshot identity on the spawning thread, before either kill
+            # path can run. The watchdog used to snapshot it itself, but the
+            # outer Timeout rescue called kill_tree(pid) without identity —
+            # which re-snapshotted the CURRENT occupant and signaled an
+            # unrelated process after a PID reuse.
+            child_identity = process_identity(pid)
             # Deadline watchdog (issue #479): kill the tree from a separate
             # thread the moment the deadline fires, so a hung child never
             # outlives `timeout`. The kill must NOT ride Timeout.timeout's
@@ -65,7 +72,7 @@ module Rubik
             # Timeout::Error is raised only after the block has returned.
             # Cancelled in the inner ensure to keep the watchdog from firing
             # into a recycled pid after normal exit.
-            watchdog = Thread.new(pid, timeout.to_f) do |w_pid, w_deadline|
+            watchdog = Thread.new(pid, timeout.to_f, child_identity) do |w_pid, w_deadline, w_identity|
               slept = false
               begin
                 sleep w_deadline
@@ -74,8 +81,10 @@ module Rubik
                 # actually targets a still-live process — a child that completes
                 # exactly as the deadline fires keeps its real exit status
                 # instead of being relabeled exit 124.
-                deadline_hit = true if process_alive?(w_pid)
-                kill_tree(w_pid)
+                # A recycled PID is "alive" but is not our child: do not
+                # relabel its success as a timeout and do not signal it.
+                deadline_hit = true if identity_unchanged?(w_pid, w_identity) && process_alive?(w_pid)
+                kill_tree(w_pid, identity: w_identity)
               rescue StandardError => e
                 # Issue #597-2 follow-up: a kill-path failure at the deadline
                 # must never silently drop the timeout — the deadline has
@@ -135,7 +144,7 @@ module Rubik
           raise Timeout::Error, "execution expired" if deadline_hit
         rescue Timeout::Error
           timed_out = true
-          kill_tree(pid) if pid
+          kill_tree(pid, identity: child_identity) if pid
           stderr_str = timeout_message || "Execution timed out after #{timeout} seconds"
           exit_code = 124
         rescue Errno::ENOENT => e
@@ -163,7 +172,7 @@ module Rubik
         }
       end
 
-      def kill_tree(pid)
+      def kill_tree(pid, identity: nil)
         return unless pid&.positive?
 
         if windows?
@@ -175,13 +184,20 @@ module Rubik
             nil
           end
         else
+          # PID reuse guard: the deadline watchdog snapshots this identity
+          # before sleeping. A mismatch means the PID now names a different
+          # process — signal nothing rather than kill an unrelated process.
+          expected = identity || process_identity(pid)
+          return unless identity_unchanged?(pid, expected)
+
           # On Unix/Linux, collect descendant PIDs so child processes are not
           # orphaned when the parent process is killed. TERM gets a short
           # grace window before KILL escalates: back-to-back TERM→KILL gave
           # graceful shutdown no scheduling window, so lock/file/socket
           # holders were always hard-killed.
           targets = (descendant_pids(pid) + [pid]).uniq
-          signal_all(targets, "TERM")
+          identities = targets.to_h { |tpid| [tpid, process_identity(tpid)] }
+          signal_all(targets, "TERM", identities)
 
           # Escalate to KILL for whatever is still alive once the grace
           # window lapses (or the loop observes all targets gone early).
@@ -190,16 +206,26 @@ module Rubik
           deadline = ::Process.clock_gettime(::Process::CLOCK_MONOTONIC) + KILL_TREE_GRACE_SECONDS
           still_alive = targets
           until ::Process.clock_gettime(::Process::CLOCK_MONOTONIC) >= deadline
-            still_alive = targets.select { |tpid| process_alive?(tpid) }
+            still_alive = targets.select { |tpid| process_alive?(tpid) && identity_unchanged?(tpid, identities[tpid]) }
             break if still_alive.empty?
 
             sleep 0.01
           end
-          signal_all(still_alive, "KILL")
+          signal_all(still_alive, "KILL", identities)
         end
       end
 
       KILL_TREE_GRACE_SECONDS = 0.2
+
+      # PATH-resolved process helpers are a trust boundary: a poisoned PATH
+      # could make `pgrep`/`ps` print attacker-chosen PIDs into the kill list.
+      # The /proc path below is primary; these absolute locations are the only
+      # fallback, and every capture is deadline-bounded.
+      HELPER_LOCATIONS = {
+        "pgrep" => ["/usr/bin/pgrep", "/bin/pgrep", "/usr/sbin/pgrep", "/sbin/pgrep"],
+        "ps" => ["/usr/bin/ps", "/bin/ps", "/usr/sbin/ps", "/sbin/ps"]
+      }.freeze
+      HELPER_CAPTURE_TIMEOUT_SECONDS = 0.5
 
       # Collect all descendant process IDs recursively (leaves first).
       def descendant_pids(pid)
@@ -247,8 +273,12 @@ module Rubik
 
       private
 
-      def signal_all(pids, sig)
+      def signal_all(pids, sig, identities = {})
         pids.each do |tpid|
+          # Last-moment re-check: a PID recycled after the grace window must
+          # never receive a signal meant for the original child.
+          next unless identity_unchanged?(tpid, identities[tpid])
+
           ::Process.kill(sig, tpid)
         rescue StandardError
           nil
@@ -260,6 +290,39 @@ module Rubik
         true
       rescue StandardError
         false
+      end
+
+      # /proc/<pid>/stat field 22 (starttime) is fixed for a process's whole
+      # lifetime, so it distinguishes the original child from a recycled PID.
+      # nil (no /proc, or an already-reaped pid) means there is no identity to
+      # compare — the liveness check remains the best available guard.
+      def process_identity(pid)
+        return nil unless pid&.positive?
+
+        stat = File.read("/proc/#{pid}/stat")
+        stat.rpartition(")")[2].to_s.split[19]
+      rescue StandardError
+        nil
+      end
+
+      def identity_unchanged?(pid, identity)
+        identity.nil? || process_identity(pid) == identity
+      end
+
+      # Never resolve a process helper through PATH: a poisoned PATH would let
+      # a fake `pgrep` inject arbitrary PIDs into the kill list. Only known
+      # absolute locations are eligible, and each capture is bounded so a
+      # hung helper cannot stall teardown.
+      def capture_helper(name, *)
+        helper = HELPER_LOCATIONS.fetch(name, []).find { |path| File.executable?(path) }
+        return nil unless helper
+
+        Timeout.timeout(HELPER_CAPTURE_TIMEOUT_SECONDS) do
+          out, = Open3.capture2(helper, *, err: File::NULL)
+          out
+        end
+      rescue StandardError
+        nil
       end
 
       def direct_child_pids(pid)
@@ -277,18 +340,10 @@ module Rubik
           return pids.reject(&:zero?) unless pids.empty?
         end
 
-        out, = begin
-          Open3.capture2("pgrep", "-P", pid.to_s, err: File::NULL)
-        rescue StandardError
-          [nil, nil]
-        end
+        out = capture_helper("pgrep", "-P", pid.to_s)
         return out.lines.map(&:to_i).reject(&:zero?) if out && !out.empty?
 
-        out, = begin
-          Open3.capture2("ps", "--ppid", pid.to_s, "-o", "pid=", err: File::NULL)
-        rescue StandardError
-          [nil, nil]
-        end
+        out = capture_helper("ps", "--ppid", pid.to_s, "-o", "pid=")
         return out.lines.map(&:to_i).reject(&:zero?) if out && !out.empty?
 
         []

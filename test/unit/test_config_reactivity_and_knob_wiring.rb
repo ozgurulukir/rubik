@@ -85,6 +85,35 @@ class TestConfigReactivityAndKnobWiring < Minitest::Test
     assert_equal 1, emitted.size
   end
 
+  def test_config_events_do_not_stall_when_subscriber_reads_config
+    config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)
+    bus = Rubik::EventBus.new
+    config.event_bus = bus
+    seen = Thread::Queue.new
+
+    bus.subscribe(:config_changed) do |payload|
+      seen.push([:changed, config.fetch(payload[:key])])
+    end
+    bus.subscribe(:config_deleted) do |payload|
+      config.fetch(payload[:key]) # re-entrant read from the kworker thread
+      seen.push([:deleted, true])
+    end
+
+    start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+    config.set("ui.verbosity", "verbose")
+    config.delete("ui.verbosity")
+    elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - start
+
+    events = []
+    events << seen.pop until seen.empty?
+    assert_includes events, [:changed, "verbose"]
+    assert_includes events, [:deleted, true]
+    assert_operator elapsed, :<, 1.0,
+                    "config set/delete stalled #{elapsed.round(2)}s — monitor held across dispatch"
+  ensure
+    bus&.stop
+  end
+
   # Scenario 4: set_model_spec triggers change notifications
   def test_set_model_spec_notifies_changes
     config = Rubik::Config.new(root_dir: @temp_dir, home_dir: @temp_home)

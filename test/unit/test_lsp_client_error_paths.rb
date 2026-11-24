@@ -134,24 +134,30 @@ class TestLspClientErrorPaths < Minitest::Test
     assert_equal false, @client.running, "reader ensure must stop the transport"
   end
 
+  # Header lines stay scripted, but the body is backed by a real pipe so the
+  # reader's IO.select/readpartial deadline path can be exercised (issue #631).
   class MalformedJsonBodyStdout
+    def initialize
+      @reader, writer = IO.pipe
+      writer.binmode
+      writer.write("{bad_json_body")
+      writer.close
+    end
+
     def closed? = false
 
     def gets
       @calls ||= 0
       @calls += 1
       case @calls
-      when 1 then "Content-Length: 12\r\n"
+      when 1 then "Content-Length: 14\r\n"
       when 2 then "\r\n"
       end
     end
 
-    def read(_len)
-      return nil if @read_done
+    def readpartial(len) = @reader.readpartial(len)
 
-      @read_done = true
-      "{bad_json_body"
-    end
+    def to_io = @reader
   end
 
   def test_reader_loop_handles_malformed_json_message_via_rubik_log

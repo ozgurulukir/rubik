@@ -8,7 +8,7 @@
 #
 # Usage: ruby -Ilib -Itest dev/profile_unit_tests.rb [timeout_per_file=45]
 require "rbconfig"
-require "english"
+require "English"
 require "fileutils"
 
 OUT_DIR = "_report"
@@ -95,7 +95,7 @@ todo.each do |file|
 end
 
 # Final report: top 25 slowest
-lines = File.readlines(OUT, chomp: true).map { |l| l.split(",", 3) }
+lines = File.readlines(OUT, chomp: true).map { |l| l.split(",", 4) } # wall,status,path,summary
 puts
 puts "=== SLOWEST 25 ==="
 lines.sort_by { |p| -p[0].to_f }.first(25).each do |p|

@@ -2,6 +2,7 @@
 
 require_relative "../log"
 require_relative "../security/secret_store"
+require_relative "../security/redactor"
 
 module Rubik
   class Config
@@ -29,11 +30,31 @@ module Rubik
       # Dot-paths that end in an api_key leaf, e.g.
       # "providers.openai.api_key" or a bare "api_key".
       SECRET_LEAF_PATTERN = /\A(?:[\w-]+\.)*api_key\z/
+      REDACTED_VALUE = "[REDACTED]"
 
       module_function
 
       def secret_key?(key)
         key.to_s.match?(SECRET_LEAF_PATTERN)
+      end
+
+      # Mask secret-bearing values before they leave Config in an event.
+      # Covers a direct api_key leaf and nested hashes from whole-provider
+      # writes; non-secret values pass through so ordinary events are intact.
+      def redact_secret_value(key, value)
+        return value if value.nil?
+        return REDACTED_VALUE if secret_key?(key)
+
+        case value
+        when Hash
+          value.each_with_object({}) do |(child_key, child_val), out|
+            out[child_key] = redact_secret_value(child_key, child_val)
+          end
+        when Array
+          value.map { |item| redact_secret_value(key, item) }
+        else
+          value
+        end
       end
 
       # Store-name convention shared by the write guard and `!secrets
@@ -196,7 +217,7 @@ module Rubik
       def warn_secret_store_fallback(error, scope)
         msg = "OS secret store unavailable (#{error.message}); plaintext kept in #{scope} config"
         @warnings << msg
-        Rubik::Log.warn(:config, "[WARN] #{msg}") if ENV["RUBIK_DEBUG"]
+        Rubik::Log.warn(:config, "[WARN] #{msg}")
       end
 
       def plaintext_fallback_info

@@ -58,9 +58,8 @@ module Rubik
       end
 
       def load_plugin_gem(gem_name, runtime_manager: nil, _context: nil)
+        component_name = "plugin_#{gem_name}"
         if runtime_manager
-          component_name = "plugin_#{gem_name}"
-
           if runtime_manager.fibers.key?(component_name)
             runtime_manager.unregister_component(component_name)
             @registered_plugins.delete(gem_name)
@@ -75,15 +74,11 @@ module Rubik
             end
             @registered_plugins << gem_name unless @registered_plugins.include?(gem_name)
             true
-          rescue LoadError => e
-            @logger.error("Failed to load plugin '#{gem_name}': #{e.message}")
-            raise e.message
           rescue StandardError => e
             @logger.error("Plugin '#{gem_name}' raised an error during initialization: #{e.message}")
             raise e
           end
 
-          # Optionally wait for component to be active
           return true
         end
 
@@ -92,6 +87,10 @@ module Rubik
         true
       rescue LoadError => e
         @logger.error("Failed to load plugin '#{gem_name}': #{e.message}")
+        # ComponentFiber re-raises LoadError after rollback; the fiber holds
+        # the original exception, so registration itself still succeeded.
+        return true if runtime_manager&.fibers&.key?(component_name)
+
         false
       rescue StandardError => e
         @logger.error("Plugin '#{gem_name}' raised an error during initialization: #{e.message}")

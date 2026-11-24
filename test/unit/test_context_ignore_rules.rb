@@ -40,6 +40,21 @@ class TestContextIgnoreRules < Minitest::Test
     refute rules.prune_dir?(["docsx"]), "no partial-component matches"
   end
 
+  def test_prune_dir_honors_gitignore_anchoring
+    anchored = build(excludes: ["/generated/**"])
+    assert anchored.prune_dir?(["generated"]), "anchored rule matches the root directory"
+    refute anchored.prune_dir?(["src", "generated"]), "anchored rule must not match at any depth"
+
+    unanchored = build(excludes: ["generated/**"])
+    assert unanchored.prune_dir?(["generated"])
+    assert unanchored.prune_dir?(["src", "generated"]), "unanchored rule matches at any depth"
+
+    nested_anchored = build(excludes: ["/src/generated/**"])
+    assert nested_anchored.prune_dir?(["src", "generated"])
+    refute nested_anchored.prune_dir?(["generated"])
+    refute nested_anchored.prune_dir?(["other", "src", "generated"])
+  end
+
   def test_ignore_file_rejects_reserved_roots_wherever_they_appear
     rules = build
 

@@ -3,6 +3,7 @@
 require_relative "symbol"
 require_relative "body_loader"
 require_relative "fallback_cleaner"
+require_relative "extraction_result"
 
 module Rubik
   module AST
@@ -21,8 +22,17 @@ module Rubik
 
       include BodyLoader
 
+      attr_reader :parse_status, :parse_detail
+
       def self.extract(file_path, content = nil)
         new(file_path, content).extract
+      end
+
+      # Real Prism verdict (issue #627): a broken parse is never a clean :ok.
+      def self.extract_result(file_path, content = nil)
+        extractor = new(file_path, content)
+        symbols = extractor.extract
+        ExtractionResult.new(symbols: symbols, status: extractor.parse_status, source: :ruby, detail: extractor.parse_detail)
       end
 
       def initialize(file_path, content = nil, force_fallback: false)
@@ -34,6 +44,8 @@ module Rubik
         # stubbed; it is resolved at require time).
         @use_prism = PRISM_AVAILABLE && !force_fallback
         @code_lines = nil
+        @parse_status = :ok
+        @parse_detail = nil
       end
 
       # Line array is materialized on demand: the Prism walk only needs AST
@@ -65,10 +77,20 @@ module Rubik
       private
 
       def extract_via_prism(symbols)
-        result = Prism.parse(@content)
+        # valid_encoding? is true for any byte string tagged ASCII-8BIT, so a
+        # binary-tagged source with invalid bytes would be misreported as a
+        # syntax error. Reuse the shared scrubber (it re-tags BINARY first).
+        source = Symbol.scrub_if_invalid(@content)
+        result = Prism.parse(source)
         return unless result.value
 
         walk_node(result.value, nil, symbols)
+        return if result.success?
+
+        # Keep partial symbols as best-effort, but never report :ok: the
+        # graph's stale protection and cache writer both key off the status.
+        @parse_status = :failed
+        @parse_detail = "Prism reported #{result.errors.length} parse error(s)"
       end
 
       def walk_node(node, current_scope, symbols)

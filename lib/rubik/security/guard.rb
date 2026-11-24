@@ -174,8 +174,17 @@ module Rubik
         @command_gate.allow_safe_probes = val
       end
 
-      def verify_command_safety!(cmd, shell: nil, allow_unknown: false)
-        @command_gate.verify_command_safety!(cmd, shell: shell, allow_unknown: allow_unknown)
+      def verify_command_safety!(cmd, shell: nil)
+        @command_gate.verify_command_safety!(cmd, shell: shell)
+      end
+
+      # Restricted seam for non-shell source (synthesis): the permissive
+      # allow_unknown path is NOT reachable from the general shell gate, so a
+      # future caller cannot accidentally let an unclassified binary through
+      # by forwarding an option. Synthesis keeps its own regex + RubyVM deny
+      # layers; this gate only supplies classifier-crash diagnostics.
+      def verify_synthesis_source!(source)
+        @command_gate.verify_command_safety!(source, allow_unknown: true)
       end
 
       def verify_command_fallback_regex!(cmd_str)

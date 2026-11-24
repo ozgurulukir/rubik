@@ -163,7 +163,7 @@ class TestGuardClassifierFailClosed < Minitest::Test
     # AST deny layers after this gate. The crash must not brick synthesis,
     # but it is still recorded with its decision.
     Rubik::Security::Classifier.stub(:classify, @raising_classifier) do
-      assert @guard.verify_command_safety!("->(args) { args.fetch('x') }", allow_unknown: true)
+      assert @guard.verify_synthesis_source!("->(args) { args.fetch('x') }")
     end
 
     crash = audit_entries.find { |e| e["action"] == "classifier_error" }
@@ -204,7 +204,7 @@ class TestGuardClassifierFailClosed < Minitest::Test
   end
 
   def test_parse_warnings_do_not_gate_the_synthesis_seam
-    assert @guard.verify_command_safety!("->(args) { args.fetch('x') }", allow_unknown: true)
+    assert @guard.verify_synthesis_source!("->(args) { args.fetch('x') }")
   end
 
   # ── healthy classifier decisions are unchanged ────────────────────────

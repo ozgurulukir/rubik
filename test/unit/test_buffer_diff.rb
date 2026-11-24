@@ -107,6 +107,16 @@ class TestBufferDiff < Minitest::Test
     assert_includes diff, "+line 5 modified"
   end
 
+  def test_unified_diff_reports_binary_content_as_placeholder
+    diff = Rubik::Buffer::Diff.unified_diff("assets/icon.bin", "\xFF\xFEPNG-data".b, "\x80\x81PNG-data".b)
+
+    assert_includes diff, "Binary files a/assets/icon.bin and b/assets/icon.bin differ"
+    refute_includes diff, "PNG-data"
+
+    nul_diff = Rubik::Buffer::Diff.unified_diff("a.bin", "a\x00b".b, "a\x00c".b)
+    assert_includes nul_diff, "Binary files"
+  end
+
   def test_unified_diff_custom_zero_context
     file_path = "file.txt"
     orig = "line 1\nline 2\nline 3\n"

@@ -69,4 +69,40 @@ class TestLLMErrorMessageEncoding < Minitest::Test
     assert_match(/HTTP Request failed with code 400/, err.message)
     assert_includes err.message, "geçersiz istek 🎉"
   end
+
+  # Issue #634: provider bodies are embedded in exception messages; secrets
+  # must be masked and long bodies bounded unless RUBIK_DEBUG is set.
+  def test_error_body_redacts_secrets_by_default
+    secret = "sk-#{'a' * 30}"
+    body = JSON.generate("error" => "bad api_key=#{secret}")
+
+    err = assert_raises(Rubik::LLM::ClientError) { post_with(body) }
+
+    refute_includes err.message, secret
+    assert_includes err.message, Rubik::Security::Redactor::MASK_STRING
+  end
+
+  def test_error_body_is_bounded_and_drops_distant_prompt_fragment
+    prompt_fragment = "DISTINCTIVE_PROMPT_FRAGMENT_9f3a"
+    body = "#{'filler ' * 200}#{prompt_fragment}"
+
+    err = assert_raises(Rubik::LLM::ClientError) { post_with(body) }
+
+    assert_operator err.message.length, :<, body.length
+    refute_includes err.message, prompt_fragment
+    assert_includes err.message, "truncated"
+  end
+
+  def test_error_body_full_content_only_with_debug_toggle
+    secret = "secret-value-#{'z' * 40}"
+    body = JSON.generate("error" => secret)
+    old = ENV.fetch("RUBIK_DEBUG", nil)
+    ENV["RUBIK_DEBUG"] = "1"
+
+    err = assert_raises(Rubik::LLM::ClientError) { post_with(body) }
+
+    assert_includes err.message, secret
+  ensure
+    ENV["RUBIK_DEBUG"] = old
+  end
 end

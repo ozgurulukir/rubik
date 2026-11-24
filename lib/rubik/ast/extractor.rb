@@ -44,10 +44,7 @@ module Rubik
         ext = File.extname(file_path).downcase
 
         # 1. Ruby files: always use Prism-powered RubyExtractor first
-        if ext == ".rb"
-          return ExtractionResult.new(symbols: RubyExtractor.extract(file_path, content),
-                                      status: :ok, source: :ruby)
-        end
+        return RubyExtractor.extract_result(file_path, content) if ext == ".rb"
 
         # 2. Polyglot files: use the Tree-Sitter AST extractor if available
         if TreeSitterExtractor.available? && TreeSitterExtractor.supports?(ext)

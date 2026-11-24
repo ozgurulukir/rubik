@@ -392,15 +392,4 @@ class TestLspPullDiagnosticsAndIncrementalSync < Minitest::Test
   def messages_from(path)
     File.readlines(path).map { |line| JSON.parse(line) }
   end
-
-  def wait_until(timeout: 5)
-    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + timeout
-    nil
-    until (value = yield)
-      raise "condition not met within #{timeout}s" if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
-
-      sleep 0.01
-    end
-    value
-  end
 end

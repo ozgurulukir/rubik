@@ -103,10 +103,11 @@ module Rubik
         write_targets.uniq.each do |wp|
           if critical_path?(wp)
             @audit.log_audit("blocked_command", command: cmd_str, reason: "critical_path_write", path: wp)
+            display = Rubik::Security.display_command(cmd_str)
             raise BlockedWriteError.new(
-              "Command write to critical path blocked: #{wp} in `#{cmd_str}`",
+              "Command write to critical path blocked: #{wp} in `#{display}`",
               kind: :critical_path_write,
-              blocked_command: cmd_str,
+              blocked_command: display,
               path: wp
             )
           end
@@ -119,20 +120,22 @@ module Rubik
           resolved = Rubik::Platform.resolved_path(wp, strict: true)
           if resolved.nil?
             @audit.log_audit("blocked_command", command: cmd_str, reason: "path_resolution_failed", path: wp)
+            display = Rubik::Security.display_command(cmd_str)
             raise BlockedWriteError.new(
-              "Command write blocked: path could not be safely resolved: #{wp} in `#{cmd_str}`",
+              "Command write blocked: path could not be safely resolved: #{wp} in `#{display}`",
               kind: :critical_path_write,
-              blocked_command: cmd_str,
+              blocked_command: display,
               path: wp
             )
           end
           next unless critical_path?(resolved)
 
           @audit.log_audit("blocked_command", command: cmd_str, reason: "critical_path_write_symlink", path: wp, resolved: resolved)
+          display = Rubik::Security.display_command(cmd_str)
           raise BlockedWriteError.new(
-            "Command write to critical path blocked (symlink-resolved): #{wp} -> #{resolved} in `#{cmd_str}`",
+            "Command write to critical path blocked (symlink-resolved): #{wp} -> #{resolved} in `#{display}`",
             kind: :critical_path_write,
-            blocked_command: cmd_str,
+            blocked_command: display,
             path: wp
           )
         end

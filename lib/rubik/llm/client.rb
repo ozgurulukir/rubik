@@ -5,6 +5,7 @@ require "json"
 require "time"
 require "uri"
 require_relative "../platform"
+require_relative "../security/redactor"
 require_relative "sse_parser"
 require_relative "connection_pool"
 
@@ -76,6 +77,11 @@ module Rubik
       # interactive agent turn indefinitely.
       RATE_LIMIT_MAX_DELAY_S = 60
 
+      # Issue #634: provider bodies are untrusted and can carry prompts, tool
+      # arguments or credentials. Exception messages embed a bounded, redacted
+      # preview by default; the verbatim body is opt-in via RUBIK_DEBUG.
+      MAX_ERROR_BODY_CHARS = 512
+
       # Retry knobs that may be supplied per call (resolved from llm.* config
       # by the orchestrator seams) and forwarded to post_json. Only keys that
       # are explicitly present are forwarded: passing nil would break the
@@ -128,6 +134,21 @@ module Rubik
         delay.clamp(0, max_delay)
       end
 
+      # Bounded, redacted representation of a provider error body for an
+      # exception message (issue #634). The shared Redactor is the SSOT for
+      # secret masking; RUBIK_DEBUG opts back into the full body for diagnosis.
+      def self.error_body_detail(body)
+        text = Rubik::Platform.safe_utf8(body).to_s
+        return text if ENV["RUBIK_DEBUG"]
+        return text if text.empty?
+
+        redacted = Rubik::Security::Redactor.redact(text)
+        return redacted if redacted.length <= MAX_ERROR_BODY_CHARS
+
+        "#{redacted[0, MAX_ERROR_BODY_CHARS]}… (truncated #{redacted.length - MAX_ERROR_BODY_CHARS} chars; " \
+          "set RUBIK_DEBUG for full body)"
+      end
+
       # `retries` is nil on paths that never entered the retry loop (streaming)
       # — the message then omits the attempt count instead of falsely claiming
       # "gave up after 0 retries" (fresh-eye R5).
@@ -142,7 +163,7 @@ module Rubik
         detail = hint ? "server hinted #{hint}s" : "no Retry-After hint"
         budget = retries ? " (gave up after #{retries} rate-limit retries)" : ""
         RateLimitError.new(
-          "HTTP 429 rate limited#{budget}, #{detail}: #{Rubik::Platform.safe_utf8(body || res.body)}",
+          "HTTP 429 rate limited#{budget}, #{detail}: #{error_body_detail(body || res.body)}",
           retry_after: hint
         )
       end
@@ -214,7 +235,7 @@ module Rubik
       def self.parse_json_response(res, uri:, status:)
         unless status >= 200 && status < 300
           raise ClientError.new(
-            "HTTP Request failed with code #{res.code}: #{Rubik::Platform.safe_utf8(res.body)}",
+            "HTTP Request failed with code #{res.code}: #{error_body_detail(res.body)}",
             transient: status >= 500
           )
         end
@@ -394,7 +415,7 @@ module Rubik
               # Same status-decided split as the batch path (issue #106):
               # exhausted 5xx → transient, 4xx → permanent.
               raise ClientError.new(
-                "HTTP Request failed with code #{status_code}: #{Rubik::Platform.safe_utf8(body_chunks.join)}",
+                "HTTP Request failed with code #{status_code}: #{error_body_detail(body_chunks.join)}",
                 transient: status_code >= 500
               )
             end

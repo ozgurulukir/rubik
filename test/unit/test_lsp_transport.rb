@@ -233,4 +233,33 @@ class TestLSPTransport < Minitest::Test
     msg = @transport.wait_for_response(7, timeout: 2)
     assert_equal({ "ok" => true }, msg, "a legal frame must still correlate normally")
   end
+
+  # Issue #631: a valid Content-Length followed by a stalled body used to park
+  # the reader forever while alive? kept reporting a healthy server.
+  def test_stalled_body_read_times_out_and_fails_reader
+    @transport.instance_variable_set(:@running, true)
+    @transport.stub(:body_read_timeout, 0.05) do
+      @transport.start_reader_thread
+      @from_server_w.write("Content-Length: 100\r\n\r\npartial")
+      @from_server_w.flush
+
+      stopped = wait_until(2) { !@transport.instance_variable_get(:@reader_alive) }
+      assert stopped, "reader must give up on a stalled body instead of parking forever"
+    end
+
+    assert_match(/body read timed out/, @transport.instance_variable_get(:@reader_failure))
+    assert @transport.crashed?, "a stalled body must break the reader loop"
+    refute @transport.alive?, "a parked reader must not report a healthy server"
+  end
+
+  def test_eof_mid_body_marks_reader_failed
+    @transport.instance_variable_set(:@running, true)
+    @transport.start_reader_thread
+    @from_server_w.write("Content-Length: 100\r\n\r\npartial")
+    @from_server_w.close
+
+    assert wait_until(2) { !@transport.instance_variable_get(:@reader_alive) }
+    assert_match(/mid-body/, @transport.instance_variable_get(:@reader_failure))
+    refute @transport.alive?
+  end
 end

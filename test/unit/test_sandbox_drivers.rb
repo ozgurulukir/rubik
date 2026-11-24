@@ -23,6 +23,15 @@ class TestSandboxDrivers < Minitest::Test
     assert_equal "process", res[:driver]
   end
 
+  def test_process_driver_gates_posix_spawn_even_when_called_directly
+    skip "POSIX argv spawn path" if Gem.win_platform?
+
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    assert_raises(Rubik::Security::BlockedWriteError) do
+      driver.run("rm -rf /", chdir: @temp_dir)
+    end
+  end
+
   def test_process_driver_timeout
     driver = Rubik::Sandbox::Driver::ProcessDriver.new
     res = driver.run("sleep 2", timeout: 0.1, chdir: @temp_dir)
@@ -403,6 +412,19 @@ class TestSandboxDrivers < Minitest::Test
     res = driver.run("grep nomatch *.rb 2>/dev/null || echo SILENT_OK", chdir: @temp_dir)
     assert res[:ok]
     assert_includes res[:stdout], "SILENT_OK"
+  end
+
+  def test_process_driver_pwsh_routing_skips_the_posix_gate
+    driver = Rubik::Sandbox::Driver::ProcessDriver.new
+    resolved = { argv: ["echo", "pwsh"], shell: "pwsh", note: nil }
+
+    Rubik::Sandbox::ShellResolver.stub(:resolve, resolved) do
+      driver.stub(:verify_command_safety!, ->(*) { flunk "POSIX gate must not run for pwsh routing" }) do
+        res = driver.run("Get-Date -Format yyyy", chdir: @temp_dir)
+        assert res[:ok]
+        assert_equal "pwsh", res[:shell]
+      end
+    end
   end
 
   def test_process_driver_pwsh_fingerprint_routing

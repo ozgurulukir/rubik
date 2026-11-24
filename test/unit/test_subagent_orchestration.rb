@@ -3,6 +3,7 @@
 require_relative "../test_helper"
 require "stringio"
 require "digest"
+require "timeout"
 
 class TestSubagentOrchestration < Minitest::Test
   def setup
@@ -1081,6 +1082,52 @@ class TestSubagentOrchestration < Minitest::Test
     shell.stop
   ensure
     remove_temp_dir(temp_dir) if temp_dir
+  end
+
+  # Issue #619: a failing merge must not skip the remaining choreography,
+  # the terminal notice, or the broadcast that releases a blocked waiter.
+  def test_completion_failure_still_notifies_and_wakes_waiters
+    notices = Queue.new
+    bus = Object.new
+    bus.define_singleton_method(:emit) do |event, payload, **_kw|
+      notices << [event, payload]
+    end
+    gate = Queue.new
+    provider = Object.new
+    provider.define_singleton_method(:complete) do |_h, _o = {}|
+      gate.pop
+      Struct.new(:content, :tool_calls).new("done", [])
+    end
+    supervisor = Rubik::Orchestrator::Subagent::Supervisor.new(
+      root_context: @root_context, buffer_manager: @buffer_manager,
+      tool_registry: @tool_registry, event_bus: bus, provider: provider, root_dir: @ws_root
+    )
+    later_steps = Queue.new
+    supervisor.define_singleton_method(:merge_branch_buffer) { |_inst| raise "merge exploded" }
+    original_reap = supervisor.method(:reap_orphans)
+    supervisor.define_singleton_method(:reap_orphans) do
+      later_steps << :reaped
+      original_reap.call
+    end
+
+    inst = supervisor.spawn(role: "Broken Merge Worker", prompt: "Finish", workspace: "branch")
+    waiter = Thread.new { supervisor.wait([inst.id], timeout: 2) }
+    sleep 0.05 # park the waiter on the condition before the worker settles
+    released_at = Time.now
+    gate << :go
+
+    outcome = Timeout.timeout(5) { waiter.value }
+    assert outcome.settled?, "waiter must observe a settled execution"
+    assert_operator Time.now - released_at, :<, 1.0, "waiter must be woken by the completion broadcast, not its timeout"
+    assert_equal :reaped, Timeout.timeout(2) { later_steps.pop }, "later choreography steps must still run"
+    event, payload = Timeout.timeout(2) { notices.pop }
+    assert_equal Rubik::Orchestrator::Subagent::Notices::COMPLETED_EVENT, event
+    assert_equal inst.id, payload[:id]
+    assert_equal :completed, payload[:state]
+  ensure
+    gate << :go if gate
+    waiter&.join(1)
+    supervisor&.shutdown_all
   end
 
   private

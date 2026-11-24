@@ -3,6 +3,7 @@
 require "stringio"
 require_relative "../base"
 require_relative "../output"
+require_relative "../symbol_tool_support"
 require_relative "../../security/blocked_guidance"
 
 module Rubik
@@ -149,7 +150,10 @@ module Rubik
 
       def execute(args = {})
         cmd = (args["command"] || args[:command]).to_s.strip
-        background = args["background"] || args[:background]
+        return ToolOutput.error("Error: `command` parameter is required and must not be empty.") if cmd.empty?
+
+        background, flag_error = SymbolToolSupport.boolean_argument(args, "background")
+        return flag_error if flag_error
         return execute_background(cmd) if background
 
         timeout = effective_timeout(args)

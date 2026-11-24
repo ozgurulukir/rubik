@@ -29,6 +29,14 @@ module Rubik
 
         def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0") # rubocop:disable Lint/UnusedMethodArgument -- sürücü arayüzü kwarg'leri korunuyor
           resolved = ShellResolver.resolve(cmd, preference: @options[:shell] || "auto")
+          # Defense in depth: the POSIX argv path used to reach spawn with no
+          # gate at all (only the cmd.exe branch re-verified). Gate it here.
+          # cmd is already gated inside verify_cmd_safe with cmd semantics.
+          # PowerShell cmdlets use a different vocabulary the POSIX classifier
+          # cannot classify. pwsh routing therefore relies on the upstream
+          # RunCommandTool gate; direct Sandbox::Runner callers must gate first.
+          # A PowerShell-aware classifier is tracked as a follow-up.
+          verify_command_safety!(cmd) unless ["cmd", "pwsh"].include?(resolved[:shell])
           env = child_env
 
           res = Rubik::Platform.popen_capture(
@@ -125,10 +133,11 @@ module Rubik
         # Raise the standard BlockedWriteError used throughout the guard
         # surface for an explicitly detected dangerous construct.
         def raise_dangerous(cmd, rule_name:)
+          display = Rubik::Security.display_command(cmd)
           raise Rubik::Security::BlockedWriteError.new(
-            "Dangerous command execution blocked: #{cmd}",
+            "Dangerous command execution blocked: #{display}",
             kind: :cmd_construct,
-            blocked_command: cmd,
+            blocked_command: display,
             rule_name: rule_name
           )
         end

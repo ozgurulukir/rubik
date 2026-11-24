@@ -138,20 +138,30 @@ module Rubik
           Rubik::Platform.debug_warn("input ceiling lookup failed (#{e.class}: #{e.message}); using nil budget")
           nil
         end
-        # Serialize the read-compute-replace of the history array with the
-        # bus-thread notice injection (issue #557). Both sides use the same
-        # mutex owned by NoticeRouter; bare EmitHost doubles skip the lock.
-        if respond_to?(:notice_router)
-          notice_router.subagent_notices_mutex.synchronize do
-            @conversation_history = Rubik::Prompt::ContextCompactor.trim_history_to_budget(
-              @conversation_history, ceiling: ceiling, max_entries: MAX_CONVERSATION_ENTRIES
-            )
+        # Merge provenance markers from every compaction path (this trim,
+        # !context compact, emergency compaction) into ONE growing summary
+        # at the head (issue #635).
+        recompute = lambda do
+          summary_count = @conversation_history.sum do |row|
+            compacted_summary_row?(row) ? compacted_summary_count(row) : 0
           end
-        else
-          @conversation_history = Rubik::Prompt::ContextCompactor.trim_history_to_budget(
-            @conversation_history, ceiling: ceiling, max_entries: MAX_CONVERSATION_ENTRIES
+          body = @conversation_history.reject { |row| compacted_summary_row?(row) }
+          trimmed = Rubik::Prompt::ContextCompactor.trim_history_to_budget(
+            body, ceiling: ceiling, max_entries: MAX_CONVERSATION_ENTRIES
           )
+          dropped = body.size - trimmed.size + summary_count
+          dropped.positive? ? [Rubik::Prompt::ContextCompactor.summary_message(dropped), *trimmed] : trimmed
         end
+
+        # The read-compute-replace must be atomic with the bus-thread notice
+        # injection (issue #557): a stale snapshot would silently drop a
+        # notice appended while the trim was running. Both sides use the same
+        # mutex owned by NoticeRouter; bare EmitHost doubles skip the lock.
+        @conversation_history = if respond_to?(:notice_router)
+                                  notice_router.subagent_notices_mutex.synchronize(&recompute)
+                                else
+                                  recompute.call
+                                end
       rescue StandardError => e
         Rubik::Log.warn(:repl, "conversation trim failed (#{e.class}: #{e.message}); window may exceed token budget")
         nil
@@ -247,6 +257,20 @@ module Rubik
         res = Rubik::Session::Manager.restore_session(self, target_file)
         @output.puts "[Rubik::Session] Resumed session: #{File.basename(target_file)} (#{res[:turns_hydrated]} dialogue turns hydrated, 0 API tokens used)" if res[:ok]
         res
+      end
+
+      private
+
+      def compacted_summary_row?(row)
+        row.is_a?(Hash) && compacted_summary_content(row).start_with?("<compacted_summary ")
+      end
+
+      def compacted_summary_count(row)
+        compacted_summary_content(row)[/count="(\d+)"/, 1].to_i
+      end
+
+      def compacted_summary_content(row)
+        (row[:content] || row["content"]).to_s
       end
     end
   end

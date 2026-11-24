@@ -17,6 +17,12 @@ module Rubik
       SSE_TERMINATOR = "\n\n"
       NDJSON_TERMINATOR = "\n"
 
+      # Issue #634: a keepalive-only stream never produces an event, so the
+      # full-body fallback buffer used to grow for the whole connection. Only
+      # the tail is retained; once a real SSE event surfaces the fallback is
+      # disabled, so the cap never affects genuine event parsing.
+      MAX_RAW_BODY_BYTES = 64 * 1024
+
       def initialize(terminator: SSE_TERMINATOR)
         @terminator = terminator
         @terminator_bin = terminator.is_a?(String) ? terminator.b : terminator
@@ -36,7 +42,10 @@ module Rubik
         @buffer << bytes
         # Stop remembering once a real event surfaced — from then on this is
         # a genuine SSE stream and the fallback must never fire.
-        @raw_body << bytes if @sse_mode && !@any_event
+        if @sse_mode && !@any_event
+          @raw_body << bytes
+          @raw_body = @raw_body.byteslice(-MAX_RAW_BODY_BYTES, MAX_RAW_BODY_BYTES) if @raw_body.bytesize > MAX_RAW_BODY_BYTES
+        end
         drain_complete_events(final: false)
       end
 
