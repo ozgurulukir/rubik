@@ -114,6 +114,16 @@ class TestASTExtractor < Minitest::Test
     assert_match(/Prism/, result.detail.to_s)
   end
 
+  def test_binary_tagged_source_with_invalid_bytes_is_not_a_syntax_error
+    skip "prism unavailable" unless Rubik::AST::RubyExtractor::PRISM_AVAILABLE
+
+    source = "class Foo\n  def \xFF; end\nend".b
+    result = Rubik::AST::Extractor.extract_result("binary.rb", source)
+
+    assert_equal :ok, result.status
+    assert_equal :ruby, result.source
+  end
+
   def test_broken_ruby_file_is_not_cached_or_indexed_as_valid
     skip "prism unavailable" unless Rubik::AST::RubyExtractor::PRISM_AVAILABLE
 

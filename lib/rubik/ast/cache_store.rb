@@ -158,8 +158,15 @@ module Rubik
         prefix = @root_dir.end_with?(File::SEPARATOR) ? @root_dir : "#{@root_dir}#{File::SEPARATOR}"
         return nil unless full == @root_dir || full.start_with?(prefix)
 
+        # Lexical confinement alone is not enough: a symlink component under
+        # the root can resolve outside it. Resolve both sides before use.
+        real_root = File.realpath(@root_dir)
+        real_full = File.realpath(full)
+        real_prefix = real_root.end_with?(File::SEPARATOR) ? real_root : "#{real_root}#{File::SEPARATOR}"
+        return nil unless real_full == real_root || real_full.start_with?(real_prefix)
+
         full
-      rescue ArgumentError, TypeError
+      rescue ArgumentError, TypeError, Errno::ENOENT, Errno::EACCES, Errno::ELOOP
         nil
       end
 

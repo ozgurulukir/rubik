@@ -53,7 +53,7 @@ module Rubik
       end
 
       def self.read_source_range(file, l_start, l_end)
-        return nil unless file && l_start && File.exist?(file)
+        return nil unless file && l_start && l_start >= 1 && File.exist?(file)
 
         selected = []
         File.foreach(file).with_index(1) do |line, line_no|

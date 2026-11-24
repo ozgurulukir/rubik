@@ -77,7 +77,10 @@ module Rubik
       private
 
       def extract_via_prism(symbols)
-        source = @content.valid_encoding? ? @content : @content.encode("UTF-8", invalid: :replace, undef: :replace)
+        # valid_encoding? is true for any byte string tagged ASCII-8BIT, so a
+        # binary-tagged source with invalid bytes would be misreported as a
+        # syntax error. Reuse the shared scrubber (it re-tags BINARY first).
+        source = Symbol.scrub_if_invalid(@content)
         result = Prism.parse(source)
         return unless result.value
 
