@@ -5,6 +5,7 @@ require "fileutils"
 require "open3"
 require "tempfile"
 require "tmpdir"
+require_relative "../log"
 require_relative "../platform"
 
 module Rubik
@@ -68,10 +69,11 @@ module Rubik
           return value unless reference?(value)
 
           fetch(value.delete_prefix(REFERENCE_PREFIX))
-        rescue Error
+        rescue Error => e
           # A hand-edited pointer (empty name, hostile characters) must not
           # crash provider builds or REPL boot — an unresolvable reference
           # resolves to nil, and Registry warns loudly instead.
+          Rubik::Log.debug(:security, "secret reference unresolved (#{e.class}: #{e.message})")
           nil
         end
 
@@ -402,7 +404,8 @@ module Rubik
 
           parsed = YAML.safe_load_file(@path, permitted_classes: [], aliases: false)
           parsed.is_a?(Hash) ? parsed : {}
-        rescue Psych::Exception
+        rescue Psych::Exception => e
+          Rubik::Log.debug(:security, "secret file store unreadable, treating as empty (#{e.class}: #{e.message})")
           {}
         end
 
@@ -437,7 +440,8 @@ module Rubik
         def ensure_owner_only!
           FileUtils.touch(@path) unless File.exist?(@path)
           File.chmod(0o600, @path)
-        rescue SystemCallError
+        rescue SystemCallError => e
+          Rubik::Log.debug(:security, "could not enforce owner-only permissions on secret store (#{e.class}: #{e.message})")
           nil
         end
 
