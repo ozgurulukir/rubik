@@ -143,10 +143,7 @@ module Rubik
       # Terminal writes happen outside the monitor (issue #635): a blocked
       # stdout must not stall every thread waiting on guard state.
       def write_notices(items, reading:)
-        # Re-check under the guard monitor: with_reading does not hold it across
-        # the user's read, so the flag captured by the caller can be stale by
-        # the time we write. A stale "reading" would clear/redisplay over an
-        # idle prompt; a stale "idle" would paint over the live one.
+        # Re-check under the guard monitor: with_reading does not hold it across the user's read, so the caller's flag can be stale (#635).
         effective_reading = reading && synchronize { @reading }
         @write_monitor.synchronize do
           @output.print "\r\e[2K" if effective_reading
