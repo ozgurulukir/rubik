@@ -2,6 +2,7 @@
 
 require_relative "../log"
 require_relative "../security/secret_store"
+require_relative "../security/redactor"
 
 module Rubik
   class Config
