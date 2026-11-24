@@ -86,7 +86,10 @@ module Rubik
         return nil unless providers.is_a?(Hash) && fetched_at.is_a?(Numeric)
 
         { providers: providers, fetched_at: fetched_at.to_i }
-      rescue StandardError
+      rescue StandardError => e
+        # A permanently broken cache would otherwise degrade every catalog
+        # fetch with zero diagnostics — the miss must stay observable.
+        Rubik::Log.debug(:connect, "[Connect] catalog cache read failed for #{path}: #{e.class}: #{e.message.to_s.chars.first(120).join}")
         nil
       end
 
@@ -100,7 +103,8 @@ module Rubik
         tmp = "#{path}.#{Process.pid}.tmp"
         File.write(tmp, JSON.generate({ "fetched_at" => fetched_at, "providers" => providers }))
         File.rename(tmp, path)
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.debug(:connect, "[Connect] catalog cache write failed for #{path}: #{e.class}: #{e.message.to_s.chars.first(120).join}")
         nil
       end
 

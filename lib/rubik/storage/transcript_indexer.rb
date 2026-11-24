@@ -99,7 +99,7 @@ module Rubik
         return nil unless File.exist?(file)
 
         File.foreach(file, encoding: "UTF-8") do |line|
-          row = parse_row(line)
+          row = parse_row(line, file: file)
           next unless row.is_a?(Hash) && row["role"] == "user"
 
           content = row["content"].to_s
@@ -111,9 +111,15 @@ module Rubik
         nil
       end
 
-      def parse_row(line)
+      # Malformed JSONL rows are skipped (parse → nil), not fatal: a torn or
+      # hand-edited transcript must not break task extraction. The failure
+      # still surfaces at debug level with file context, so a recurring
+      # corruption pattern is diagnosable without pinning tests to private
+      # internals.
+      def parse_row(line, file: nil)
         JSON.parse(line)
-      rescue StandardError
+      rescue StandardError => e
+        Rubik::Log.debug(:storage, "[Storage] transcript row parse failed in #{file || 'unknown file'}: #{e.class}: #{e.message.to_s.chars.first(120).join}")
         nil
       end
 
