@@ -144,12 +144,7 @@ module Rubik
         parent_ctx = ctx || @context
         target_ctx = parent_ctx.is_a?(Rubik::Runtime::Context) ? parent_ctx.extend : parent_ctx
 
-        task_id = nil
-        @monitor.synchronize do
-          @task_counter += 1
-          task_id = "task-#{@task_counter}"
-        end
-
+        task_id = next_task_id
         ring_buf = RingBuffer.new(@max_buffer_lines)
         # Deliberately not single-homed on Platform.popen_capture (issue
         # #444): that core is the synchronous drain-to-string capture shape
@@ -157,44 +152,8 @@ module Rubik
         # This spawn is the async/interactive shape — stdin stays open for
         # send_input, readers stream chomped lines into the per-task
         # RingBuffer, completion is watched by a dedicated thread.
-        begin
-          stdin, stdout, stderr, wait_thr = Open3.popen3(Rubik::Platform.credential_free_env, cmd_str, chdir: chdir)
-        rescue StandardError => e
-          rollback_failed_start(target_ctx, nil, e)
-          raise e
-        end
-        # The spawn succeeded but the task is NOT yet registered, so nothing
-        # (kill, kill_all, at_exit) can reach the child yet. Any failure in
-        # this window must kill the spawned process directly before rolling
-        # back the context, or the child leaks as an unmanaged orphan.
-        begin
-          stdin.binmode if stdin.respond_to?(:binmode)
-          stdin.sync = true if stdin.respond_to?(:sync=)
-
-          task = Task.new(
-            id: task_id,
-            command: cmd_str,
-            pid: wait_thr.pid,
-            started_at: Time.now,
-            ended_at: nil,
-            status: :running,
-            exit_code: nil,
-            ring_buffer: ring_buf,
-            stdin_io: stdin,
-            wait_thread: wait_thr,
-            collector_threads: []
-          )
-        rescue StandardError => e
-          begin
-            Process.kill("KILL", wait_thr.pid)
-          rescue StandardError
-            nil
-          end
-          rollback_failed_start(target_ctx, nil, e)
-          raise e
-        end
-
-        task.collector_threads = []
+        stdin, stdout, stderr, wait_thr = open_task_pipes(cmd_str, chdir, target_ctx)
+        task = build_running_task(task_id, cmd_str, stdin, wait_thr, ring_buf, target_ctx)
 
         # Register before the wiring below can fail: once tracked, the task
         # stays reachable by kill/kill_all/at_exit and by the rollback
@@ -205,45 +164,10 @@ module Rubik
         @monitor.synchronize { @tasks[task.id] = task }
 
         begin
-          t_out = Thread.new do
-            stdout.each_line do |line|
-              ring_buf.push(line.chomp)
-            end
-          rescue IOError
-            nil
-          ensure
-            begin; stdout.close unless stdout.closed?; rescue IOError; nil; end
-          end
-
-          t_err = Thread.new do
-            stderr.each_line do |line|
-              ring_buf.push(line.chomp)
-            end
-          rescue IOError
-            nil
-          ensure
-            begin; stderr.close unless stderr.closed?; rescue IOError; nil; end
-          end
-
-          task.collector_threads = [t_out, t_err]
-
-          Thread.new do
-            status = wait_thr.value
-            @monitor.synchronize do
-              if task.status == :running
-                task.exit_code = status.exitstatus
-                task.status = status.success? ? :completed : :failed
-                task.ended_at = Time.now
-              end
-            end
-            effective_init = @init || (target_ctx.respond_to?(:get) && Rubik::Coeffects.get(target_ctx, Rubik::Coeffects::INIT))
-            effective_init&.get(task.id)&.sync_state!
-            begin; stdin.close unless stdin.closed?; rescue IOError; nil; end
-          end
-
+          task.collector_threads = spawn_collector_threads(stdout, stderr, ring_buf)
+          spawn_completion_watcher(task, stdin, wait_thr, target_ctx)
           target_ctx.on_dispose { kill(task.id) } if target_ctx.respond_to?(:on_dispose)
-
-          effective_init = @init || (target_ctx.respond_to?(:get) && Rubik::Coeffects.get(target_ctx, Rubik::Coeffects::INIT))
+          effective_init = resolve_init(target_ctx)
           effective_init&.register(Rubik::Kernel::ProcessUnit.new(task, task_manager: self, context: target_ctx))
         rescue StandardError => e
           rollback_failed_start(target_ctx, task.id, e)
@@ -325,6 +249,81 @@ module Rubik
       alias dispose kill_all
 
       private
+
+      def next_task_id
+        id = nil
+        @monitor.synchronize do
+          @task_counter += 1
+          id = "task-#{@task_counter}"
+        end
+        id
+      end
+
+      # Open the child's stdio pipes; a spawn failure rolls back the fresh
+      # per-task context (nothing was spawned, so there is no process to
+      # kill) and re-raises the original error.
+      def open_task_pipes(cmd_str, chdir, target_ctx)
+        stdin, stdout, stderr, wait_thr = Open3.popen3(Rubik::Platform.credential_free_env, cmd_str, chdir: chdir)
+        [stdin, stdout, stderr, wait_thr]
+      rescue StandardError => e
+        rollback_failed_start(target_ctx, nil, e)
+        raise e
+      end
+
+      # The spawn succeeded but the task is NOT yet registered, so nothing
+      # (kill, kill_all, at_exit) can reach the child yet. Any failure in
+      # this window must kill the spawned process directly before rolling
+      # back the context, or the child leaks as an unmanaged orphan.
+      def build_running_task(task_id, cmd_str, stdin, wait_thr, ring_buf, target_ctx)
+        stdin.binmode if stdin.respond_to?(:binmode)
+        stdin.sync = true if stdin.respond_to?(:sync=)
+        Task.new(
+          id: task_id, command: cmd_str, pid: wait_thr.pid, started_at: Time.now,
+          ended_at: nil, status: :running, exit_code: nil, ring_buffer: ring_buf,
+          stdin_io: stdin, wait_thread: wait_thr, collector_threads: []
+        )
+      rescue StandardError => e
+        begin; Process.kill("KILL", wait_thr.pid); rescue StandardError; nil; end
+        rollback_failed_start(target_ctx, nil, e)
+        raise e
+      end
+
+      def spawn_collector_threads(stdout, stderr, ring_buf)
+        [collector_thread(stdout, ring_buf), collector_thread(stderr, ring_buf)]
+      end
+
+      def collector_thread(io, ring_buf)
+        Thread.new do
+          io.each_line do |line|
+            ring_buf.push(line.chomp)
+          end
+        rescue IOError
+          nil
+        ensure
+          begin; io.close unless io.closed?; rescue IOError; nil; end
+        end
+      end
+
+      # Watch the child to completion, finalize its status under the
+      # monitor, sync the kernel unit state, and close our stdin handle.
+      def spawn_completion_watcher(task, stdin, wait_thr, target_ctx)
+        Thread.new do
+          status = wait_thr.value
+          @monitor.synchronize do
+            if task.status == :running
+              task.exit_code = status.exitstatus
+              task.status = status.success? ? :completed : :failed
+              task.ended_at = Time.now
+            end
+          end
+          resolve_init(target_ctx)&.get(task.id)&.sync_state!
+          begin; stdin.close unless stdin.closed?; rescue IOError; nil; end
+        end
+      end
+
+      def resolve_init(target_ctx)
+        @init || (target_ctx.respond_to?(:get) && Rubik::Coeffects.get(target_ctx, Rubik::Coeffects::INIT))
+      end
 
       # Atomic rollback of a failed start (AGENTS.md §6): stop any process
       # already spawned, dispose the per-task scope, and re-raise the
