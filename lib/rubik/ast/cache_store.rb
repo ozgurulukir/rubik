@@ -80,7 +80,7 @@ module Rubik
           lang = LANGUAGE_MAP[ext] || "unknown"
 
           digest = begin
-            Digest::SHA1.file(full_path).hexdigest
+            Digest::SHA256.file(full_path).hexdigest
           rescue Errno::ENOENT, Errno::EACCES
             nil
           end
@@ -246,7 +246,7 @@ module Rubik
         return false unless cached_digest
 
         current_digest = begin
-          Digest::SHA1.file(full_path).hexdigest
+          Digest::SHA256.file(full_path).hexdigest
         rescue Errno::ENOENT, Errno::EACCES
           nil
         end

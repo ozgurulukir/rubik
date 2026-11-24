@@ -51,17 +51,32 @@ module Rubik
       end
 
       def parse_go(text)
-        entries = []
-        text.each_line do |line|
-          # Greedy filename: backtrack to the LAST :line:col: so filenames
-          # containing colons (Windows drives, "a:b.go") parse correctly.
-          next unless (m = line.match(/^(.+):(\d+):(\d+):(.*)$/))
+        text.each_line.filter_map do |line|
+          parts = go_diagnostic_parts(line.chomp)
+          next unless parts
 
-          msg = m[4].strip
-          cat = msg.start_with?("undefined:") ? :undefined_ref : :syntax
-          entries << Entry.new(file: m[1], line: m[2], col: m[3], message: msg, category: cat, raw_text: line)
+          file, line_no, col, msg = parts
+          category = msg.start_with?("undefined:") ? :undefined_ref : :syntax
+          Entry.new(file: file, line: line_no, col: col, message: msg,
+                    category: category, raw_text: line)
         end
-        entries
+      end
+
+      # Locate the LAST ":line:col:" from the right. A greedy /^(.+):(\d+):/
+      # is linear-time unsafe on input like "a:9:9:a:9:9:..." (CodeQL ReDoS);
+      # scanning colons backwards and matching a small anchored tail keeps
+      # this O(n) while still accepting filenames that contain colons.
+      def go_diagnostic_parts(text)
+        pos = text.length
+        while pos.positive? && (idx = text.rindex(":", pos - 1))
+          tail = text[(idx + 1)..] || ""
+          if (m = tail.match(/\A(\d+):(\d+):(.*)\z/m)) && idx.positive?
+            return [text[0...idx], m[1], m[2], m[3].strip]
+          end
+
+          pos = idx
+        end
+        nil
       end
 
       def parse_rust(text)

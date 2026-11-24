@@ -94,7 +94,7 @@ class TestASTHardening < Minitest::Test
     File.write(test_file, "def test_fn; end\n")
 
     stat = File.stat(test_file)
-    valid_digest = Digest::SHA1.file(test_file).hexdigest
+    valid_digest = Digest::SHA256.file(test_file).hexdigest
 
     # Missing digest -> invalid
     cached_without_digest = {
@@ -107,7 +107,7 @@ class TestASTHardening < Minitest::Test
     cached_with_wrong_digest = {
       "size" => stat.size,
       "mtime" => stat.mtime.to_i,
-      "digest" => "0000000000000000000000000000000000000000"
+      "digest" => "0000000000000000000000000000000000000000000000000000000000000000"
     }
     refute cache_store.valid_entry?(test_file, cached_with_wrong_digest)
 
