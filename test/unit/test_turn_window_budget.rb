@@ -88,14 +88,95 @@ class TestTurnWindowBudget < Minitest::Test
       shell.execute_input("görev üç #{'w' * 2000}")
 
       window = shell.conversation_history
-      assert_equal 4, window.size, "window must clamp at the min-entries floor (2 pairs)"
-      assert_equal "görev iki #{'y' * 2000}", window.first[:content], "oldest pair is dropped first"
+      assert_equal 5, window.size, "summary marker plus the 4-entry min-entries floor (2 pairs)"
+      assert_includes window.first[:content], "<compacted_summary", "trimmed facts survive as a summary marker"
+      assert_equal "görev iki #{'y' * 2000}", window[1][:content], "oldest pair is dropped first"
       assert_equal "answer", window.last[:content], "newest assistant answer survives"
     ensure
       shell&.stop
       FileUtils.remove_entry(temp_dir) if temp_dir && File.exist?(temp_dir)
       FileUtils.remove_entry(temp_home) if temp_home && File.exist?(temp_home)
     end
+  end
+
+  # Issue #635: the trim path must carry a provenance summary forward so
+  # facts learned early in a long session do not vanish silently.
+  class TrimHarness
+    include Rubik::REPL::TurnRecorder
+
+    attr_accessor :conversation_history
+
+    Registry = Struct.new(:limit) do
+      def effective_input_limit_for(_provider, _name) = limit
+    end
+
+    def initialize(window, ceiling)
+      @conversation_history = window
+      @llm_registry = Registry.new(ceiling)
+    end
+
+    def current_model_spec = { "provider" => "fake", "name" => "model" }
+  end
+
+  class RacingTrimHarness < TrimHarness
+    attr_accessor :notice_router
+  end
+
+  # Issue #557: a notice appended by the bus thread just before the trim's
+  # critical section must survive the array replacement, not be written to a
+  # snapshot taken before the lock.
+  def test_trim_keeps_notice_injected_before_the_critical_section
+    harness = RacingTrimHarness.new(build_pairs(25), nil)
+    notice = { role: "user", content: "<subagent_notifications>late notice</subagent_notifications>" }
+    mutex = Object.new
+    mutex.define_singleton_method(:synchronize) do |&block|
+      harness.conversation_history << notice
+      block.call
+    end
+    router = Object.new
+    router.define_singleton_method(:subagent_notices_mutex) { mutex }
+    harness.notice_router = router
+
+    harness.trim_conversation_window!
+
+    assert_includes harness.conversation_history, notice
+  end
+
+  def test_trim_merges_markers_from_other_compaction_paths
+    window = build_pairs(25)
+    window.insert(2, { role: "user", content: '<compacted_summary count="7" />' })
+    harness = TrimHarness.new(window, nil)
+
+    harness.trim_conversation_window!
+
+    summaries = harness.conversation_history.select { |row| row[:content].to_s.include?("<compacted_summary") }
+    assert_equal 1, summaries.size, "markers from all compaction paths merge into one"
+    assert_includes summaries.first[:content], 'count="17"'
+  end
+
+  def test_trim_summary_survives_repeated_trims_in_a_long_session
+    harness = TrimHarness.new(build_pairs(25), nil)
+    harness.trim_conversation_window!
+
+    window = harness.conversation_history
+    assert_equal Rubik::Prompt::ContextCompactor::DEFAULT_MAX_CONVERSATION_ENTRIES + 1, window.size
+    assert_equal "user", window.first[:role]
+    assert_includes window.first[:content], '<compacted_summary count="10"'
+    assert_equal "q5", window[1][:content], "retained window starts after the dropped turns"
+    assert_equal "a24", window.last[:content], "newest turn survives"
+
+    2.times do |i|
+      harness.conversation_history << { role: "user", content: "extra q#{i}" }
+      harness.conversation_history << { role: "assistant", content: "extra a#{i}" }
+      harness.trim_conversation_window!
+    end
+
+    window = harness.conversation_history
+    summaries = window.select { |row| row[:content].to_s.include?("<compacted_summary") }
+    assert_equal 1, summaries.size, "one growing summary replaces the previous marker"
+    assert_includes summaries.first[:content], '<compacted_summary count="14"'
+    assert_equal Rubik::Prompt::ContextCompactor::DEFAULT_MAX_CONVERSATION_ENTRIES + 1, window.size
+    assert_equal "extra a1", window.last[:content]
   end
 
   private

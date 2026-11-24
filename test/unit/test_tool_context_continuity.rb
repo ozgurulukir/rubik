@@ -83,8 +83,8 @@ class TestToolContextContinuity < Minitest::Test
 
     summary = log.chronological_summary(max_entries: 2)
 
-    assert_includes summary, "... (1 more)"
-    assert_equal 3, summary.lines.count # 2 satır + "... (1 more)"
+    assert_includes summary, "... (1 earlier calls omitted)"
+    assert_equal 3, summary.lines.count # 2 satır + dropped-count marker
     refute_includes summary, "3. write_file"
   end
 

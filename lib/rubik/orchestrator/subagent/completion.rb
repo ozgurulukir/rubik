@@ -14,17 +14,27 @@ module Rubik
       # (zararsız sıralama).
       module CompletionSupervisor
         def handle_subagent_completion(inst)
-          merge_branch_buffer(inst) if inst.workspace == "branch" && inst.completed?
-          auto_apply_subagent_buffer(inst) if inst.completed?
-          retain_result(inst)
-          Rubik::Storage::TranscriptIndexer.index(storage_store, inst)
-          reap_orphans
-          release_ready!
-          emit_completion_notice(inst)
-          notify_wait!
+          guard_completion_step("branch buffer merge", inst) { merge_branch_buffer(inst) if inst.workspace == "branch" && inst.completed? }
+          guard_completion_step("auto-apply", inst) { auto_apply_subagent_buffer(inst) if inst.completed? }
+          guard_completion_step("result retention", inst) { retain_result(inst) }
+          guard_completion_step("transcript indexing", inst) { Rubik::Storage::TranscriptIndexer.index(storage_store, inst) }
+          guard_completion_step("orphan reaping", inst) { reap_orphans }
+          guard_completion_step("ready release", inst) { release_ready! }
+        ensure
+          # The terminal contract (issue #619): never strand a waiter.
+          guard_completion_step("completion notice", inst) { emit_completion_notice(inst) }
+          guard_completion_step("waiter wake-up", inst) { notify_wait! }
         end
 
         private
+
+        # One failing step degrades to a warning; the rest of the choreography still runs.
+        def guard_completion_step(label, inst)
+          yield
+        rescue StandardError => e
+          Rubik::Log.warn(:orchestrator, "completion #{label} failed for #{inst.id}: #{e.class}: #{e.message}")
+          nil
+        end
 
         # One terminal outcome per execution (issue #125): an operator kill
         # already announced the cancellation from the kill path — the settle
