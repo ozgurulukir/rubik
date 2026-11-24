@@ -156,4 +156,27 @@ class TestSSEParserAndStreamResilience < Minitest::Test
     @parser.feed(": ping\r\n: pong\r\n\r\n")
     assert_empty @parser.flush
   end
+
+  # Issue #634: comment-only blocks never surface an event, so the fallback
+  # buffer used to grow for the lifetime of the stream.
+  def test_sustained_keepalives_keep_raw_body_bounded
+    keepalive = ": keepalive #{'x' * 100}\n\n"
+    1000.times { @parser.feed(keepalive) }
+
+    raw_size = @parser.instance_variable_get(:@raw_body).bytesize
+    assert_operator raw_size, :<=, Rubik::LLM::SSEParser::MAX_RAW_BODY_BYTES,
+                    "keepalive-only streams must not grow the fallback buffer without bound"
+    assert_operator raw_size, :>=, Rubik::LLM::SSEParser::MAX_RAW_BODY_BYTES - keepalive.bytesize,
+                    "the tail must be retained, not discarded"
+  end
+
+  def test_large_sse_event_after_keepalives_still_parses
+    1000.times { @parser.feed(": keepalive #{'x' * 100}\n\n") }
+    payload = "y" * (Rubik::LLM::SSEParser::MAX_RAW_BODY_BYTES + 1024)
+
+    events = @parser.feed("data: #{payload}\n\n")
+
+    assert_equal 1, events.size
+    assert_equal payload, events[0][:data], "capping the fallback buffer must not affect real events"
+  end
 end

@@ -44,6 +44,16 @@ module Rubik
       # bytes. 16 MiB is far above any legitimate LSP payload.
       MAX_FRAME_SIZE = 16 * 1024 * 1024
 
+      # Deadline for reading a frame BODY after a valid Content-Length header.
+      # Issue #631: a server that sent the header then stalled mid-body used to
+      # park the reader forever on @stdout.read while alive? still reported a
+      # healthy server.
+      BODY_READ_TIMEOUT = 5.0
+
+      # Max bytes pulled from the pipe per readpartial call while draining a
+      # frame body. Bounds allocations without penalizing large frames.
+      BODY_READ_CHUNK = 64 * 1024
+
       attr_reader :mutex, :cv, :running
 
       def initialize(root_dir:, on_message:)
@@ -348,7 +358,7 @@ module Rubik
                 break
               end
 
-              body = @stdout.read(content_length)
+              body = read_body_with_deadline(content_length)
               break unless body
 
               begin
@@ -376,6 +386,56 @@ module Rubik
       end
 
       private
+
+      # Deadline-bounded exact read of a frame body. IO.select bounds the wait
+      # for readability; readpartial is non-blocking once data is ready. On
+      # timeout or EOF after a partial read we record @reader_failure and
+      # return nil, so the caller breaks the loop and the ensure block marks
+      # the reader dead — the circuit breaker can then trip (issue #631).
+      def read_body_with_deadline(length)
+        body = String.new(encoding: Encoding::ASCII_8BIT)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + body_read_timeout
+
+        while body.bytesize < length
+          remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          # IO.select is deliberate: the reader runs on its own Thread, not a
+          # Fiber scheduler, so the scheduler-compatibility cop does not apply.
+          if remaining <= 0 || IO.select([@stdout], nil, nil, remaining).nil? # rubocop:disable Lint/IncompatibleIoSelectWithFiberScheduler
+            record_reader_failure("LSP response body read timed out after #{body_read_timeout}s " \
+                                  "(#{body.bytesize}/#{length} bytes)")
+            return nil
+          end
+
+          begin
+            chunk = @stdout.readpartial([length - body.bytesize, BODY_READ_CHUNK].min)
+          rescue EOFError
+            record_reader_failure("LSP server closed connection mid-body (#{body.bytesize}/#{length} bytes)")
+            return nil
+          end
+          if chunk.nil? || chunk.empty?
+            record_reader_failure("LSP server closed connection mid-body (#{body.bytesize}/#{length} bytes)")
+            return nil
+          end
+
+          body << chunk
+        end
+
+        body.bytesize == length ? body : nil
+      end
+
+      def record_reader_failure(message)
+        @mutex.synchronize do
+          next if @reader_failure
+
+          @reader_failure = message
+        end
+      end
+
+      # Single source for the body deadline; overridable in tests so a stalled
+      # pipe can be exercised without waiting the full 5s.
+      def body_read_timeout
+        BODY_READ_TIMEOUT
+      end
 
       # Responses are correlated inside the transport; every other message
       # (server requests, notifications such as publishDiagnostics) is
