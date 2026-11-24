@@ -154,6 +154,71 @@ class TestSnapshot < Minitest::Test
     assert restarted.undo(Rubik::Buffer::Manager.new(root_dir: @temp_dir))
   end
 
+  def test_binary_tagged_valid_utf8_roundtrips
+    binary = "café".b
+    snapshot = Rubik::Buffer::Snapshot.new(files: { "a.txt" => binary })
+
+    restored = Rubik::Buffer::Snapshot.decompress(snapshot.compress)
+
+    assert_equal Encoding::BINARY, restored.files["a.txt"].encoding
+    assert_equal binary, restored.files["a.txt"]
+  end
+
+  def test_decompress_rejects_oversized_payload
+    huge = "x" * (Rubik::Buffer::Snapshot::MAX_SNAPSHOT_BYTES + 1)
+    bomb = Zlib::Deflate.deflate(huge)
+
+    assert_raises(Zlib::DataError) { Rubik::Buffer::Snapshot.decompress(bomb) }
+  end
+
+  def test_load_snapshots_skips_bad_created_at_type
+    payload = { "id" => "a" * 12, "timestamp" => 1, "created_at" => {}, "files" => {} }
+    File.binwrite(File.join(@snap_dir, "bad.zdeflate"), Zlib::Deflate.deflate(JSON.dump(payload)))
+    store = Rubik::Buffer::SnapshotStore.new(storage_dir: @snap_dir)
+
+    capture_io { assert_equal 0, store.load_snapshots }
+  end
+
+  def test_load_snapshots_rejects_traversal_id
+    payload = { "id" => "../victim", "timestamp" => 1, "created_at" => 1.0, "files" => { "a.rb" => "x" } }
+    File.binwrite(File.join(@snap_dir, "evil.zdeflate"), Zlib::Deflate.deflate(JSON.dump(payload)))
+    victim = File.join(File.dirname(@snap_dir), "victim.zdeflate")
+    File.write(victim, "keep")
+    store = Rubik::Buffer::SnapshotStore.new(storage_dir: @snap_dir)
+
+    capture_io { assert_equal 0, store.load_snapshots }
+    assert_equal "keep", File.read(victim)
+  ensure
+    File.delete(victim) if victim && File.exist?(victim)
+  end
+
+  def test_rotation_ignores_unsafe_snapshot_ids
+    victim = File.join(File.dirname(@snap_dir), "victim.zdeflate")
+    File.write(victim, "keep")
+    store = Rubik::Buffer::SnapshotStore.new(storage_dir: @snap_dir, max_snapshots: 1)
+    store.snapshots << Rubik::Buffer::Snapshot.new(id: "../victim", files: {})
+    store.snapshots << Rubik::Buffer::Snapshot.new(id: "a" * 12, files: {})
+    store.instance_variable_set(:@current_index, 1)
+
+    store.send(:rotate_expired_snapshots)
+
+    assert_equal "keep", File.read(victim)
+  ensure
+    File.delete(victim) if victim && File.exist?(victim)
+  end
+
+  def test_load_snapshots_deletes_files_beyond_cap
+    5.times do |i|
+      snapshot = Rubik::Buffer::Snapshot.new(id: format("%012x", i + 1), timestamp: i, created_at: i.to_f,
+                                             files: { "a.rb" => "v#{i}" })
+      File.binwrite(File.join(@snap_dir, "#{snapshot.id}.zdeflate"), snapshot.compress)
+    end
+    store = Rubik::Buffer::SnapshotStore.new(storage_dir: @snap_dir, max_snapshots: 3)
+
+    assert_equal 3, store.load_snapshots
+    assert_equal 3, Dir.glob(File.join(@snap_dir, "*.zdeflate")).size
+  end
+
   def test_default_storage_dir_uses_platform_home_dir
     fake_home = Dir.mktmpdir
     Rubik::Platform.stub(:home_dir, fake_home) do
