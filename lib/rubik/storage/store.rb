@@ -35,6 +35,9 @@ module Rubik
       ID_PATTERN = /\A([a-z]+)\.(\d+)\.([0-9a-f]{16})\z/
       HASH_PREFIX_MIN = 8
       REF_PATTERN = /\A[a-zA-Z0-9._-]+\z/
+      # File::NOFOLLOW is POSIX-only; on Windows the advisory-flock guard
+      # remains and only the symlink refusal is unavailable.
+      LOCK_NOFOLLOW = defined?(File::NOFOLLOW) ? File::NOFOLLOW : 0
 
       Summary = Struct.new(:id, :row, :title, :status, :updated_at, :tags, keyword_init: true)
 
@@ -478,7 +481,7 @@ module Rubik
         FileUtils.mkdir_p(File.dirname(lock_path))
         # NOFOLLOW+0600: a pre-placed symlink at the derived lock path must not
         # redirect the flock to an arbitrary file in a shared storage root.
-        File.open(lock_path, File::RDWR | File::CREAT | File::NOFOLLOW, 0o600) do |lock|
+        File.open(lock_path, File::RDWR | File::CREAT | LOCK_NOFOLLOW, 0o600) do |lock|
           lock.flock(File::LOCK_EX)
           begin
             snapshot = self.class.index_snapshot(@root)

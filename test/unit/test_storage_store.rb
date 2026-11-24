@@ -364,6 +364,8 @@ class TestStorageStore < Minitest::Test
   # The index lock path is derived from the index path. A pre-placed symlink
   # must not redirect the flock to a file outside the storage root.
   def test_index_lock_refuses_symlinked_lock_path
+    skip "File::NOFOLLOW is POSIX-only" unless defined?(File::NOFOLLOW)
+
     lock_path = File.join(@root, "index.json.lock")
     target = File.join(@root, "victim.lock")
     File.write(target, "original")
