@@ -34,18 +34,18 @@ class TestConfigUniversalEnv < Minitest::Test
   def test_legacy_env_variables_bridge_with_deprecation_warnings
     simulated_env = {
       "RUBIK_NATIVE" => "off",
-      "RUBIK_LOG_LEVEL" => "debug"
+      "RUBIK_LOG_LEVEL" => "warn"
     }
 
     warnings = []
     loaded = Rubik::Config::EnvLoader.load_env(simulated_env, Rubik::Config::DEFAULT_CONFIG, warnings)
 
     assert_equal "off", loaded.dig("tools", "native")
-    assert_equal "debug", loaded.dig("ui", "verbosity")
+    assert_nil loaded.dig("ui", "verbosity"), "the logger gate is not an alias for ui.verbosity"
 
-    assert_equal 2, warnings.size
+    assert_equal 1, warnings.size
     assert(warnings.any? { |w| w.include?("RUBIK_NATIVE") && w.include?("deprecated") })
-    assert(warnings.any? { |w| w.include?("RUBIK_LOG_LEVEL") && w.include?("deprecated") })
+    refute(warnings.any? { |w| w.include?("RUBIK_LOG_LEVEL") })
   end
 
   def test_canonical_env_takes_precedence_over_legacy_variable

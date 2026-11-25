@@ -53,4 +53,15 @@ class TestConfigListenerIsolation < Minitest::Test
     assert_equal({ "a" => 1 }, @config.send(:parse_scalar_value, "{a: 1}"))
     assert_equal "[a, b", @config.send(:parse_scalar_value, "[a, b"), "unterminated bracket stays a string"
   end
+
+  def test_cyclic_yaml_alias_falls_back_to_raw_string
+    # A self-referential collection would recurse forever in redact_secret_value
+    # once set() published it to listeners.
+    assert_equal "[&a [*a]]", @config.send(:parse_scalar_value, "[&a [*a]]")
+
+    result = @config.set("security.command_allowlist", "[&a [*a]]")
+    assert result[:ok]
+    # The scalar is coerced to a one-item list; crucially it is not cyclic.
+    assert_equal ["[&a [*a]]"], @config.fetch("security.command_allowlist")
+  end
 end
