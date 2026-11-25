@@ -15,8 +15,7 @@ module Rubik
     module EnvLoader
       LEGACY_MAP = {
         "RUBIK_NATIVE" => "tools.native",
-        "RUBIK_TOOLS_CALL_TIMEOUT" => "tools.call_timeout",
-        "RUBIK_LOG_LEVEL" => "ui.verbosity"
+        "RUBIK_TOOLS_CALL_TIMEOUT" => "tools.call_timeout"
       }.freeze
 
       module_function
