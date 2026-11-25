@@ -91,11 +91,14 @@ module Rubik
 
         # Satır links'indeki askı damgası meta'sını çözer (bozuk JSON →
         # nil: load dürüst devam eder, yalnız sayaç geri yüklenemez).
+        # Ayrıştırma arızası debug'da görünür: tekrarlayan bozulma deseni
+        # sessizce yok olmaz.
         def parse_suspend_meta(row)
           raw = row.dig("links", "suspended")
           parsed = JSON.parse(raw.to_s)
           parsed.is_a?(Hash) ? parsed : nil
-        rescue StandardError
+        rescue StandardError => e
+          Rubik::Log.debug(:goal_ledger, "goal ledger suspend metadata parse failed: #{e.class}: #{e.message.to_s.chars.first(120).join}")
           nil
         end
       end

@@ -123,7 +123,11 @@ module Rubik
             nil
           end
         end
-      rescue StandardError
+      rescue StandardError => e
+        # Best-effort by design — but the blanket method-level rescue must
+        # not hide real bugs in the restore logic itself; the granular
+        # rescues above stay silent on purpose.
+        Rubik::Log.debug(:repl, "[Repl] console restore after interrupt failed: #{e.class}: #{e.message}")
         nil
       end
     end

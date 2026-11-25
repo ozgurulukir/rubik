@@ -86,7 +86,11 @@ module Rubik
         return unless @session_file && File.exist?(@session_file)
 
         File.open(@session_file, "a", &:fsync)
-      rescue StandardError
+      rescue StandardError => e
+        # The fsync barrier is flush's entire durability promise (a save copy
+        # taken afterwards must never observe a torn tail); a failed barrier
+        # silently voids it, so the failure can never be invisible.
+        Rubik::Log.warn(:session, "[Session] fsync barrier failed for #{@session_file}: #{e.class}: #{e.message}")
         nil
       end
 

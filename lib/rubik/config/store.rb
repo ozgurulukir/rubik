@@ -126,7 +126,10 @@ module Rubik
           if File.exist?(target_path)
             begin
               File.chmod(0o600, target_path)
-            rescue StandardError
+            rescue StandardError => e
+              # The config file may hold secret references; a chmod failure
+              # leaves it possibly world-readable with no other trace.
+              Rubik::Log.warn(:config, "[Config] 0600 chmod failed on #{target_path}: #{e.class}: #{e.message}")
               nil
             end
           end

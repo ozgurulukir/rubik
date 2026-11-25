@@ -321,10 +321,6 @@ module Rubik
         @document_store.all_diagnostics
       end
 
-      def diagnostics
-        @document_store.all_diagnostics
-      end
-
       def diagnostics_snapshot_for(file_path)
         abs_path = normalized_document_path(file_path)
         snapshot = @document_store.diagnostic_snapshot(abs_path)
