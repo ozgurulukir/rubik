@@ -29,7 +29,7 @@ module Rubik
         begin
           FileUtils.mkdir_p(@sessions_dir)
         rescue SystemCallError => e
-          Rubik::Log.warn(:session, "[WARN] Failed to create sessions directory #{@sessions_dir}: #{e.message}") if ENV["RUBIK_DEBUG"]
+          Rubik::Log.warn(:session, "Failed to create sessions directory #{@sessions_dir}: #{e.message}") if ENV["RUBIK_DEBUG"]
         end
 
         filename = session_name || "session_#{Time.now.strftime('%Y%m%d_%H%M%S')}_#{Process.pid}_#{(Time.now.to_f * 1000).to_i % 1000}.jsonl"
@@ -120,8 +120,9 @@ module Rubik
 
             begin
               push_event(JSON.parse(line))
-            rescue JSON::ParserError
-              # ignore malformed line
+            rescue JSON::ParserError => e
+              # The message would quote session content; log the class only.
+              Rubik::Log.debug(:session, "skipped malformed session line (#{e.class})")
             end
           end
         end

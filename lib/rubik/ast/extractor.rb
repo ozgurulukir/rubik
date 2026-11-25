@@ -64,7 +64,7 @@ module Rubik
         # language extractor claims (:unavailable, legacy Ruby parse).
         fallback_result(file_path, content, ext)
       rescue StandardError, ScriptError => e
-        Rubik::Log.warn(:ast, "[WARN] Extraction failed for #{file_path}: #{e.class}: #{e.message}") if ENV["RUBIK_DEBUG"]
+        Rubik::Log.warn(:ast, "Extraction failed for #{file_path}: #{e.class}: #{e.message}") if ENV["RUBIK_DEBUG"]
         ExtractionResult.new(symbols: [], status: :failed, source: :none, detail: "#{e.class}: #{e.message}")
       end
 

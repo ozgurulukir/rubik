@@ -39,7 +39,7 @@ module Rubik
           begin
             FileUtils.mkdir_p(File.dirname(path))
           rescue SystemCallError => e
-            Rubik::Log.warn(:config, "[WARN] Failed to create config directory #{File.dirname(path)}: #{e.message}") if ENV["RUBIK_DEBUG"]
+            Rubik::Log.warn(:config, "Failed to create config directory #{File.dirname(path)}: #{e.message}") if ENV["RUBIK_DEBUG"]
           end
           YAML::Store.new(path, true)
         end

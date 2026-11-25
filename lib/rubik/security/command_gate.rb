@@ -268,11 +268,11 @@ module Rubik
       # (DANGEROUS_SYNTHESIS_PATTERNS + RubyVM walk) after this gate.
       def handle_classifier_failure!(cmd_str, error, allow_unknown:)
         if allow_unknown
-          Rubik::Log.warn(:security, "[WARN] AST classification error on non-shell input, continuing to synthesis deny layers: #{display_command(error.message)}")
+          Rubik::Log.warn(:security, "AST classification error on non-shell input, continuing to synthesis deny layers: #{display_command(error.message)}")
           @audit.log_audit("classifier_error", command: cmd_str, reason: "#{error.class}: #{error.message}",
                                                decision: "synthesis_layers")
         else
-          Rubik::Log.warn(:security, "[WARN] AST classification error, failing closed: #{error.class}: #{display_command(error.message)}")
+          Rubik::Log.warn(:security, "AST classification error, failing closed: #{error.class}: #{display_command(error.message)}")
           block_on_classifier_failure!(cmd_str, error)
         end
       end

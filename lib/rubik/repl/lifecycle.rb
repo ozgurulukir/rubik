@@ -215,7 +215,7 @@ module Rubik
               begin
                 cleanup.call
               rescue StandardError => e
-                Rubik::Log.warn(:repl, "[WARN] Config cleanup failed: #{e.message}")
+                Rubik::Log.warn(:repl, "Config cleanup failed: #{e.message}")
               end
             end
           end

@@ -218,7 +218,7 @@ module Rubik
       def warn_secret_store_fallback(error, scope)
         msg = "OS secret store unavailable (#{error.message}); plaintext kept in #{scope} config"
         @warnings << msg
-        Rubik::Log.warn(:config, "[WARN] #{msg}")
+        Rubik::Log.warn(:config, msg)
       end
 
       def plaintext_fallback_info

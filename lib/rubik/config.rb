@@ -250,7 +250,7 @@ module Rubik
         rescue StandardError => e
           # A listener error may quote a nested secret even on a non-secret key (#622).
           error_text = secret_key?(key_str) ? SecretPolicy::REDACTED_VALUE : Rubik::Security::Redactor.redact(e.message.to_s)
-          Rubik::Log.warn(:config, "[WARN] Config listener failed for '#{key_str}': #{error_text}")
+          Rubik::Log.warn(:config, "Config listener failed for '#{key_str}': #{error_text}")
           @event_bus&.emit(:config_listener_error, key: key_str, error: error_text)
         end
       end

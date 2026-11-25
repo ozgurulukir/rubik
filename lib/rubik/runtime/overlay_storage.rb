@@ -79,7 +79,7 @@ module Rubik
         [project_commands_dir, global_commands_dir, project_tools_dir, global_tools_dir].each do |dir|
           FileUtils.mkdir_p(dir)
         rescue SystemCallError => e
-          Rubik::Log.warn(:overlay, "[WARN] Failed to create overlay directory #{dir}: #{e.message}") if ENV["RUBIK_DEBUG"]
+          Rubik::Log.warn(:overlay, "Failed to create overlay directory #{dir}: #{e.message}") if ENV["RUBIK_DEBUG"]
         end
       end
 
@@ -423,7 +423,7 @@ module Rubik
         { ok: true, path: file_path, name: clean_name, scope: scope }
       rescue StandardError => e
         # Audit 1: surfaced to the caller as ok:false; tool kind logs under RUBIK_DEBUG.
-        Rubik::Log.warn(:overlay, "[WARN] [OVERLAY] Failed to save #{kind.label} '#{name}' to #{file_path}: #{e.class}: #{e.message}") if kind.debug_warn && ENV["RUBIK_DEBUG"]
+        Rubik::Log.warn(:overlay, "[OVERLAY] Failed to save #{kind.label} '#{name}' to #{file_path}: #{e.class}: #{e.message}") if kind.debug_warn && ENV["RUBIK_DEBUG"]
         { ok: false, error: e.message }
       end
 
@@ -554,7 +554,7 @@ module Rubik
         File.file?(path) && sentinel_content?(File.binread(path))
       rescue StandardError => e
         # Audit 1: unreadable => fail-closed (not a sentinel), but traceable.
-        Rubik::Log.warn(:overlay, "[WARN] [OVERLAY] sentinel check failed for #{path}: #{e.class}: #{e.message}") if ENV["RUBIK_DEBUG"]
+        Rubik::Log.warn(:overlay, "[OVERLAY] sentinel check failed for #{path}: #{e.class}: #{e.message}") if ENV["RUBIK_DEBUG"]
         false
       end
 

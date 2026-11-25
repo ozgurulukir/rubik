@@ -283,7 +283,7 @@ module Rubik
         # resolve it lazily per build so keyring updates apply on refresh.
         api_key = Rubik::Security::SecretStore.resolve(p_spec["api_key"])
         if api_key.nil? && Rubik::Security::SecretStore.reference?(p_spec["api_key"].to_s)
-          Rubik::Log.warn(:llm, "[WARN] stored secret '#{p_spec['api_key'].delete_prefix(Rubik::Security::SecretStore::REFERENCE_PREFIX)}' " \
+          Rubik::Log.warn(:llm, "stored secret '#{p_spec['api_key'].delete_prefix(Rubik::Security::SecretStore::REFERENCE_PREFIX)}' " \
                                 "could not be retrieved via #{Rubik::Security::SecretStore.backend_name}")
         end
 
