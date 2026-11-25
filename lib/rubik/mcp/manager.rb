@@ -389,7 +389,9 @@ module Rubik
         BootRun.new(self, servers_cfg, mcp_enabled).run
       end
 
-      # BootRun friend seam (boot_run.rb): the D5 race gate, one monitor
+      public
+
+      # Boot seam for BootRun (boot_run.rb): the D5 race gate, one monitor
       # hold deciding :skipped vs :applied. Moved verbatim — the hold
       # boundary, the @stopped/@statuses/@boot_marks epoch gate and the
       # guarded writes inside are exactly the former inline block; BootRun
@@ -410,14 +412,12 @@ module Rubik
         end
       end
 
-      # BootRun friend seam: the advisory @tools count read for the
+      # Boot seam for BootRun: the advisory @tools count read for the
       # :mcp_server_loaded event — the same unguarded read the inline phase
       # performed (observability only, never a state decision).
       def tool_count(name_str)
         (@tools[name_str] || []).size
       end
-
-      public
 
       # Teardown (mcp-async-boot slice 3): arms the boot gate, drains an
       # in-flight boot thread, then disables every server. The join happens
@@ -465,8 +465,6 @@ module Rubik
         @monitor.synchronize { @tools.values.flatten }
       end
 
-      private
-
       # Boot observability door (mcp-async-boot D7): publish through the
       # session event bus so the dispatcher's dmesg door records boot
       # outcomes under the "mcp" subsystem. post (enqueue) — never emit
@@ -482,6 +480,8 @@ module Rubik
       rescue StandardError => e
         Rubik::Log.warn(:mcp, "failed to emit MCP event '#{event_name}' (#{e.class}: #{e.message})")
       end
+
+      private
 
       # Bounded drain of the boot thread. Mechanics live in
       # Concurrency::Join (monotonic-deadline poll, never raises); the
