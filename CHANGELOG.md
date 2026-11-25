@@ -8,6 +8,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Error taxonomy (PR #657, issue #652):** every `lib/` exception class now
+  hangs off `Rubik::Error`, so a single `rescue Rubik::Error` covers the tree;
+  the cancellation-refusal signal (`TaskCancelledError`) stays outside the
+  taxonomy on purpose, and profile validation keeps its load-bearing
+  `ArgumentError` parentage — both pinned by the new hygiene meta-test.
+
 ## [0.15.3] - 2026-11-24
 
 The hardening wave: eight fix branches landed back-to-back, closing

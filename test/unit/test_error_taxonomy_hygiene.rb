@@ -4,20 +4,23 @@ require_relative "../test_helper"
 
 # Unified error taxonomy hygiene (issues #448/#652): every Rubik error
 # class hangs off Rubik::Error so a single `rescue Rubik::Error` covers
-# the whole codebase. Pinned two ways:
+# the whole codebase. Pinned three ways:
 #
-# 1. Statically: no lib/ source defines an exception class subclassing
-#    StandardError directly, except the exact lines allowlisted below
-#    (each with its control-flow reason).
+# 1. Statically: no lib/ source defines an exception class directly
+#    subclassing a builtin exception, except the exact lines allowlisted
+#    below (each with its control-flow reason).
 # 2. Dynamically: every class retagged by #652 resolves under
 #    Rubik::Error, and the documented exception stays outside it.
+# 3. Structurally: every lib/ file that defines a class directly under
+#    Rubik::Error loads rubik/errors itself, so standalone requires
+#    never depend on require-order luck.
 class TestErrorTaxonomyHygiene < Minitest::Test
-  # Direct StandardError subclasses that are intentionally outside the
-  # taxonomy, keyed by their lib/rubik-relative file. A new subclass
+  # Direct builtin-exception subclasses that are intentionally outside
+  # the taxonomy, keyed by their lib/rubik-relative file. A new subclass
   # must either retag to Rubik::Error or join this map — and a map
   # entry that no longer matches a real source line fails the scan, so
   # the allowlist cannot rot silently.
-  ALLOWED_DIRECT_STANDARD_ERROR = {
+  ALLOWED_DIRECT_BUILTIN_ERROR = {
     # The taxonomy root itself (issue #448) — subclasses StandardError
     # by definition.
     "errors.rb" => "class Error < StandardError; end",
@@ -25,10 +28,31 @@ class TestErrorTaxonomyHygiene < Minitest::Test
     # into a cancelled owner must propagate as a refusal, so a future
     # generic `rescue Rubik::Error` catcher must not intercept it
     # (issue #652).
-    "orchestrator/subagent/supervisor.rb" => "class TaskCancelledError < StandardError; end"
+    "orchestrator/subagent/supervisor.rb" => "class TaskCancelledError < StandardError; end",
+    # Profile validation failure (issue #652 audit): deliberately keeps
+    # its ArgumentError parentage — it is load-bearing. Both dispatch
+    # seams convert it into a tool result by rescuing the builtin
+    # (`tools/builtins/define_subagent.rb`, `repl/commands/subagents.rb`),
+    # so retagging would strand those converters while widening nothing
+    # the taxonomy needs.
+    "orchestrator/subagent/profile_contract.rb" => "class ProfileValidationError < ArgumentError"
   }.freeze
 
-  DIRECT_STANDARD_ERROR_RE = /class\s+\w+\s*<\s*StandardError/
+  # Single-line `class X < <builtin exception>` definitions. Multi-line
+  # superclass lists and Class.new(...) shapes stay out of scope; the
+  # codebase has none and rubocop style keeps class definitions on one
+  # line here.
+  DIRECT_BUILTIN_ERROR_RE = /
+    class\s+\w+\s*<\s*(::)?(
+      StandardError | Exception | ScriptError | SyntaxError |
+      NotImplementedError | SecurityError | SignalException |
+      SystemExit | SystemStackError | NoMemoryError | RangeError |
+      FiberError | IOError | EOFError | IndexError | KeyError |
+      LocalJumpError | NameError | NoMethodError | RuntimeError |
+      FrozenError | ArgumentError | TypeError | ZeroDivisionError |
+      EncodingError | StopIteration | UncaughtThrowError
+    )\b
+  /x
 
   # Every class retagged by #652; representative domain subclasses (which
   # inherit the tag) stand in for their families.
@@ -59,16 +83,16 @@ class TestErrorTaxonomyHygiene < Minitest::Test
     Rubik::Concurrency::Error
   ].freeze
 
-  def test_no_undocumented_direct_standard_error_subclasses_in_lib
+  def test_no_undocumented_direct_builtin_error_subclasses_in_lib
     violations = []
     allowed_seen = []
     Dir.glob(File.join(lib_root, "**", "*.rb")).each do |path|
       rel = path.delete_prefix("#{lib_root}/")
       File.readlines(path).each_with_index do |line, i|
         next if line.lstrip.start_with?("#")
-        next unless DIRECT_STANDARD_ERROR_RE.match?(line)
+        next unless DIRECT_BUILTIN_ERROR_RE.match?(line)
 
-        if ALLOWED_DIRECT_STANDARD_ERROR[rel] == line.strip
+        if ALLOWED_DIRECT_BUILTIN_ERROR[rel] == line.strip
           allowed_seen << rel
         else
           violations << "#{rel}:#{i + 1} #{line.strip}"
@@ -77,14 +101,14 @@ class TestErrorTaxonomyHygiene < Minitest::Test
     end
 
     assert violations.empty?, <<~MSG
-      Direct StandardError subclasses outside the Rubik::Error taxonomy (issue #652):
+      Direct builtin-exception subclasses outside the Rubik::Error taxonomy (issue #652):
       #{violations.join("\n")}
       Retag to < Rubik::Error (and require_relative "../errors" for standalone
-      loading), or add an ALLOWED_DIRECT_STANDARD_ERROR entry with a
+      loading), or add an ALLOWED_DIRECT_BUILTIN_ERROR entry with a
       control-flow reason.
     MSG
-    assert_equal ALLOWED_DIRECT_STANDARD_ERROR.keys.sort, allowed_seen.uniq.sort,
-                 "allowlisted StandardError subclasses changed; update ALLOWED_DIRECT_STANDARD_ERROR"
+    assert_equal ALLOWED_DIRECT_BUILTIN_ERROR.keys.sort, allowed_seen.uniq.sort,
+                 "allowlisted builtin-error subclasses changed; update ALLOWED_DIRECT_BUILTIN_ERROR"
   end
 
   def test_retagged_classes_hang_off_rubik_error
@@ -104,7 +128,29 @@ class TestErrorTaxonomyHygiene < Minitest::Test
     cancelled = Rubik::Orchestrator::Subagent::TaskCancelledError
     assert_operator cancelled, :<, StandardError, "cancellation signal stays rescatable as StandardError"
     refute cancelled < Rubik::Error,
-           "TaskCancelledError must stay outside Rubik::Error (see ALLOWED_DIRECT_STANDARD_ERROR)"
+           "TaskCancelledError must stay outside Rubik::Error (see ALLOWED_DIRECT_BUILTIN_ERROR)"
+  end
+
+  def test_files_defining_rubik_error_subclasses_require_errors
+    # A lib/ file whose own class definitions hang directly off
+    # Rubik::Error must load rubik/errors itself: standalone requires
+    # (the stated contract of rubik/errors) must not depend on
+    # require-order luck transitively through a sibling (the exact
+    # near-miss supervisor.rb had during the #652 review).
+    missing = []
+    Dir.glob(File.join(lib_root, "**", "*.rb")).each do |path|
+      source = File.read(path)
+      next unless source.match?(/^\s*class\s+\w+.*<\s*(::)?Rubik::Error\b/)
+      next if source.match?(/^require_relative ["'].*errors["']/)
+
+      missing << path.delete_prefix("#{lib_root}/")
+    end
+
+    assert missing.empty?, <<~MSG
+      Files defining classes directly under Rubik::Error must require
+      rubik/errors for standalone loading (issue #652):
+      #{missing.join("\n")}
+    MSG
   end
 
   private

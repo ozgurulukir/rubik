@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "monitor"
+require_relative "../../errors"
 require_relative "../../platform"
 require_relative "../task_cancellation"
 require_relative "type_registry"
