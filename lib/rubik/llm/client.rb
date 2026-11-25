@@ -4,6 +4,7 @@ require "net/http"
 require "json"
 require "time"
 require "uri"
+require_relative "../errors"
 require_relative "../platform"
 require_relative "../security/redactor"
 require_relative "sse_parser"
@@ -19,7 +20,7 @@ module Rubik
     # POINT — precedent: RateLimitError's retry_after: kwarg. Default is
     # permanent (false); only the raise sites that provably saw a
     # transport-class failure opt into transient.
-    class ClientError < StandardError
+    class ClientError < Rubik::Error
       attr_reader :transient
 
       def initialize(message, transient: false)

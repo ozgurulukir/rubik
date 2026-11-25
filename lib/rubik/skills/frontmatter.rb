@@ -2,6 +2,8 @@
 
 require "yaml"
 
+require_relative "../errors"
+
 module Rubik
   module Skills
     # Splits a SKILL.md into its YAML frontmatter mapping and markdown body.
@@ -11,7 +13,7 @@ module Rubik
     # object deserialization, keeping the open-trust model honest (a skill
     # can never instantiate Ruby objects).
     class Frontmatter
-      class Error < StandardError; end
+      class Error < Rubik::Error; end
 
       # Opening fence must be the first line (spec); the non-greedy body
       # match stops at the FIRST closing fence, so "---" rules inside the

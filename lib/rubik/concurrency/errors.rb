@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "../errors"
+
 module Rubik
   module Concurrency
-    class Error < StandardError; end
+    class Error < Rubik::Error; end
 
     # Raised into a fiber interrupted through the Ruby 4.0 fiber_interrupt
     # hook (a safety net — a healthy boundary drains every fiber before

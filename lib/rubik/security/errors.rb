@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../errors"
+
 module Rubik
   module Security
     CONTROL_ESCAPES = { "\n" => "\\n", "\r" => "\\r", "\t" => "\\t", "\0" => "\\0", "\e" => "\\e" }.freeze
@@ -20,7 +22,7 @@ module Rubik
     # instead of regex-munging #message. Kept in its own file: consumers that
     # only rescue/raise the error (sandbox runner, buffer manager) must not
     # load the whole guard/classifier stack for the constant.
-    class BlockedWriteError < StandardError
+    class BlockedWriteError < Rubik::Error
       attr_accessor :blocked_command, :rule_name, :probe_like, :kind, :path,
                     :segment_report, :classification_reason
 

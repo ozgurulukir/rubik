@@ -1,10 +1,11 @@
 # frozen_string_literal: true
 
 module Rubik
-  # Root of the unified error taxonomy (issue #448): every module-level
-  # error class hangs off Rubik::Error so callers can rescue one class.
-  # Standalone-requireable — submodule files that define errors require
-  # this file instead of the full lib/rubik.rb entry point.
+  # Root of the unified error taxonomy (issue #448, completed by #652):
+  # every Rubik error class hangs off Rubik::Error so callers can rescue
+  # one class. Standalone-requireable — submodule files that define
+  # errors require this file instead of the full lib/rubik.rb entry
+  # point.
   class Error < StandardError; end
 
   # Shared state-machine violation vocabulary (issue #448): the per-module

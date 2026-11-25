@@ -1,9 +1,11 @@
 # frozen_string_literal: true
 
+require_relative "../../errors"
+
 module Rubik
   module Orchestrator
     module Subagent
-      class UnsatisfiedCoeffectsError < StandardError
+      class UnsatisfiedCoeffectsError < Rubik::Error
         attr_reader :profile_name, :missing
 
         def initialize(profile_name, missing)
@@ -13,7 +15,7 @@ module Rubik
         end
       end
 
-      class ReservedProfileError < StandardError; end
+      class ReservedProfileError < Rubik::Error; end
 
       # Per-spawn copy of the profile fields that affect activation and tool
       # visibility. Registry updates replace future snapshots; they never

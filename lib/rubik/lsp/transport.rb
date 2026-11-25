@@ -2,6 +2,7 @@
 
 require "open3"
 require "json"
+require_relative "../errors"
 require_relative "../platform"
 require_relative "../log"
 
@@ -23,7 +24,7 @@ module Rubik
     # start (spawn): every resource the transport opens is retracted in LIFO
     # order, and a failing inverse never aborts the unwind.
     class Transport
-      class RequestError < StandardError
+      class RequestError < Rubik::Error
         attr_reader :reason
 
         def initialize(reason, message)

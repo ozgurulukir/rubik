@@ -8,13 +8,14 @@ require "monitor"
 require_relative "apply_transaction"
 require_relative "../storage/layout"
 require_relative "diff"
+require_relative "../errors"
 require_relative "../log"
 require_relative "../platform"
 require_relative "../security/guard"
 
 module Rubik
   module Buffer
-    class InvalidPathError < StandardError; end
+    class InvalidPathError < Rubik::Error; end
 
     # Mid-run apply failure with the partial-progress report (issue #146):
     # the buffer is NOT a multi-file transaction — entries already written
@@ -22,7 +23,7 @@ module Rubik
     # failure class (:write_failed or :containment_blocked); `cause` carries
     # the underlying error. `pending` lists this run's entries that are
     # still dirty (a retry writes only those).
-    class ApplyFailedError < StandardError
+    class ApplyFailedError < Rubik::Error
       attr_reader :kind, :applied, :failed, :pending, :conflicts, :skipped
 
       def initialize(message, kind:, applied: [], failed: nil, pending: [], conflicts: [], skipped: [])
