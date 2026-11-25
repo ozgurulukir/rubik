@@ -66,7 +66,7 @@ module Rubik
           begin
             cleanup.call
           rescue StandardError => e
-            Rubik::Log.warn(:sandbox, "[WARN] Sandbox::Runner cleanup failed: #{e.message}")
+            Rubik::Log.warn(:sandbox, "Sandbox::Runner cleanup failed: #{e.message}")
           end
         end
       end

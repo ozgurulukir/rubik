@@ -2,6 +2,7 @@
 
 require "json"
 require "shellwords"
+require_relative "../log"
 require_relative "base"
 
 module Rubik
@@ -49,8 +50,8 @@ module Rubik
             if target_script
               return target_script == "test" ? "#{runner} test" : "#{runner} run #{target_script}"
             end
-          rescue JSON::ParserError, SystemCallError
-            # fallback to default
+          rescue JSON::ParserError, SystemCallError => e
+            Rubik::Log.debug(:adapter, "package.json unavailable (#{e.class}); using default test command")
           end
         end
 

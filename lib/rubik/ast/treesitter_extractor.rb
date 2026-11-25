@@ -102,7 +102,7 @@ module Rubik
 
           ExtractionResult.new(symbols: symbols, status: :ok, source: :tree_sitter)
         rescue StandardError, SystemStackError, ScriptError => e
-          Rubik::Log.warn(:ast, "[WARN] TreeSitter extraction failed for #{file_path}: #{e.message}") if ENV["RUBIK_DEBUG"]
+          Rubik::Log.warn(:ast, "TreeSitter extraction failed for #{file_path}: #{e.message}") if ENV["RUBIK_DEBUG"]
           failed_result("#{e.class}: #{e.message}")
         end
 
