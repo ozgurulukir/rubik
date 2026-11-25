@@ -6,7 +6,29 @@ commits, 2026-08-23 → 2026-10-09, see `git log`).
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.15.4] - 2026-11-25
+
+The taxonomy-and-tidiness patch: the unified `Rubik::Error` taxonomy finished
+its sweep across `lib/`, config value handling was repaired and normalized
+behind a single home, silent failure paths learned to surface, and a broad
+quiet pass removed dead code, redundant log prefixes and unused requires.
+
+### Fixed
+
+- **Config parsing (PR #663):** `RUBIK_LOG_LEVEL` no longer aliases
+  `ui.verbosity` behind the user's back, cyclic YAML aliases in typed scalar
+  values are rejected, tool-worker death is classified under `Rubik::Error`
+  so the orchestrator handles it like any other failure, and adapter/session
+  fallback causes are logged at debug level instead of vanishing.
+- **UI load order (PR #648):** the coupling between capability detection and
+  the REPL `TeeIO` is resolved, so prompt echo no longer depends on
+  initialization order.
+- **Observability (PR #655):** silent failure paths across session, config,
+  storage, connect and repl now surface instead of swallowing.
+- **Security (PR #659):** catalog cache writes are hardened and secrets are
+  preserved when an atomic-rename fails mid-write.
+- **Docs + listeners (PR #650):** model role doc keys are corrected and a
+  supervisor listener leak is cleaned up.
 
 ### Changed
 
@@ -15,6 +37,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the cancellation-refusal signal (`TaskCancelledError`) stays outside the
   taxonomy on purpose, and profile validation keeps its load-bearing
   `ArgumentError` parentage — both pinned by the new hygiene meta-test.
+- **Refactors (PR #649/#654/#660/#661/#665):** `popen_capture` and task-manager
+  start decompose into phases, command-gate verification splits into named
+  phases returning argv analysis, MCP gains a public boot seam instead of
+  private sends, and config typed-value normalization gets a single home.
+- **Hygiene (PR #651/#664/#662):** dead code removed, secret/buffer/ui
+  diagnostics logging centralized, redundant WARN prefixes dropped, the
+  translation banner aligned and unused logger requires removed.
+- **Test pins (PR #656/#658):** the agent execution command-spine registration
+  and goal arg grammar, plus the MCP async boot slot/epoch seam mechanics,
+  are pinned with dedicated tests.
 
 ## [0.15.3] - 2026-11-24
 
@@ -1993,8 +2025,6 @@ installation section.
 
 - Agent loop: token budget autonomy with auto-continuation, wait hints,
   reactive wakeups, and structured failure notices (Plan 90, 109).
-[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.15.3...HEAD
-[0.15.3]: https://github.com/ozgurulukir/rubik/compare/v0.15.2...v0.15.3
   buffer with `!dmesg` (Plans 102–104).
 - Tools: `ask_question` interactive dialog (Plan 92), async background task
   manager with `manage_task` (Plan 93), native search with rg fallback,
@@ -2032,6 +2062,10 @@ installation section.
 - Context: serialized index mutations, snapshot-outside-lock reconcile,
   streaming-first truncation.
 
+[Unreleased]: https://github.com/ozgurulukir/rubik/compare/v0.15.4...HEAD
+[0.15.4]: https://github.com/ozgurulukir/rubik/compare/v0.15.3...v0.15.4
+[0.15.3]: https://github.com/ozgurulukir/rubik/compare/v0.15.2...v0.15.3
+[0.15.2]: https://github.com/ozgurulukir/rubik/compare/v0.15.1...v0.15.2
 [0.15.1]: https://github.com/ozgurulukir/rubik/compare/v0.15.0...v0.15.1
 [0.15.0]: https://github.com/ozgurulukir/rubik/compare/v0.14.0...v0.15.0
 [0.14.0]: https://github.com/ozgurulukir/rubik/compare/v0.13.0...v0.14.0
