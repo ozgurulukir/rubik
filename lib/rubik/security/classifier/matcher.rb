@@ -72,9 +72,14 @@ module Rubik
           end
 
           # Step 4: Options
-          _, u_opts, overrides, r_overrides, o_dirs, o_dels, rem_pos, present_flags = Options.classify_options(
-            remaining, matched_def
-          )
+          analysis = Options.classify_options(remaining, matched_def)
+          u_opts = analysis.unknown
+          overrides = analysis.overrides
+          r_overrides = analysis.risk_overrides
+          o_dirs = analysis.directories
+          o_dels = analysis.delegations
+          rem_pos = analysis.positional
+          present_flags = analysis.present_flags
 
           all_overrides = g_overrides + overrides
           all_risk_overrides = g_risk_overrides + r_overrides

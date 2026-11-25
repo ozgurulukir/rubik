@@ -18,6 +18,13 @@ class TestCommandClassifierMatcher < Minitest::Test
     Matcher.match_command(invs[0], @db, warns)
   end
 
+  def test_exposes_present_flags_and_positionals
+    res = match("grep -i needle file.txt")
+
+    assert_equal ["-i"], res.options
+    assert_equal ["needle", "file.txt"], res.positionals
+  end
+
   def test_matches_git_status_as_readonly
     res = match("git status")
     assert_equal :readonly, res.classification

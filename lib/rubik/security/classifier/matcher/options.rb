@@ -172,7 +172,11 @@ module Rubik
               i += 1
             end
 
-            [known, unknown, overrides, risk_overrides, directories, delegations, positional, present_flags]
+            ArgvAnalysis.new(
+              known: known, unknown: unknown, overrides: overrides, risk_overrides: risk_overrides,
+              directories: directories, delegations: delegations, positional: positional,
+              present_flags: present_flags
+            )
           end
 
           def self.parse_combined(token, options, argv, idx, directories)
@@ -238,6 +242,8 @@ module Rubik
             end
             argv.size
           end
+
+          private_class_method :parse_combined, :terminator?, :extract_delegation_tokens, :skip_delegation_tokens
         end
       end
     end
