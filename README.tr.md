@@ -1,5 +1,7 @@
 # Rubik
 
+> Bu belge, [`README.md`](README.md) dosyasının Türkçe çevirisidir ve güncelliğini yitirmiş olabilir; çelişki halinde İngilizce sürüm esastır.
+
 [English](README.md) | Türkçe
 
 [![Build](https://github.com/ozgurulukir/rubik/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/ozgurulukir/rubik/actions/workflows/ci.yml)

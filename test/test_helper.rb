@@ -22,6 +22,7 @@ end
 
 require "tmpdir"
 require "fileutils"
+require "logger"
 require "stringio"
 
 real_cache_dir = ENV["XDG_CACHE_HOME"] || File.expand_path("~/.cache")
