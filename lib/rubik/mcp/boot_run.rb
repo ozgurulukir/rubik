@@ -9,13 +9,14 @@ module Rubik
     # outcomes ledger is an explicit atom map (index -> :applied | :failed;
     # absence = skipped or never ran — exactly what owes_stop? reads).
     #
-    # Friend-class seam: Manager keeps its guarded internals private, so
-    # BootRun reaches them through send (the public seams — add_server,
-    # connect_server, apply_connected_server, transition_server!, the
-    # BootLifecycle claim, and the client() reader — are called directly).
-    # Every monitor-hold boundary and epoch gate below is the former inline
-    # code relocated, not restructured: the atomic-rollback doctrine lives
-    # in run's ensure choreography plus BootLifecycle's epoch machinery.
+    # Boot seam: Manager exposes boot_apply_gate, tool_count and
+    # emit_mcp_event as public methods for this object; the remaining
+    # collaborators (add_server, connect_server, apply_connected_server,
+    # transition_server!, the BootLifecycle claim, and the client() reader)
+    # were already public. Every monitor-hold boundary and epoch gate below
+    # is the former inline code relocated, not restructured: the
+    # atomic-rollback doctrine lives in run's ensure choreography plus
+    # BootLifecycle's epoch machinery.
     class BootRun
       attr_reader :entries, :connected, :outcomes, :boot_epoch
 
@@ -70,7 +71,7 @@ module Rubik
             # vanish behind an ENV["RUBIK_DEBUG"] gate; a misconfigured
             # server must surface without debug mode.
             Rubik::Log.warn(:mcp, "failed to load MCP server '#{sname}' (#{e.class}: #{e.message})")
-            @manager.send(:emit_mcp_event, :mcp_server_failed, :err, sname.to_s, error: e.message)
+            @manager.emit_mcp_event(:mcp_server_failed, :err, sname.to_s, error: e.message)
             next
           end
           next unless auto_start
@@ -109,12 +110,12 @@ module Rubik
 
           if slot[:ok]
             begin
-              outcome = @manager.send(:boot_apply_gate, name_str, parsed_defn, @boot_epoch,
-                                      client: slot[:client], tools: slot[:tools])
+              outcome = @manager.boot_apply_gate(name_str, parsed_defn, @boot_epoch,
+                                                 client: slot[:client], tools: slot[:tools])
               @outcomes[index] = :applied if outcome == :applied
               if outcome == :applied
-                @manager.send(:emit_mcp_event, :mcp_server_loaded, :info, name_str,
-                              tools: @manager.send(:tool_count, name_str))
+                @manager.emit_mcp_event(:mcp_server_loaded, :info, name_str,
+                                        tools: @manager.tool_count(name_str))
               end
             rescue StandardError => e
               # ENSURE-LOG (G3 round-1): one broken server config used to
@@ -125,7 +126,7 @@ module Rubik
               # never double-stops it.
               @outcomes[index] = :failed
               Rubik::Log.warn(:mcp, "failed to load MCP server '#{name_str}' (#{e.class}: #{e.message})")
-              @manager.send(:emit_mcp_event, :mcp_server_failed, :err, name_str, error: e.message)
+              @manager.emit_mcp_event(:mcp_server_failed, :err, name_str, error: e.message)
             end
           else
             # Only our own epoch's mark may flip to :failed — a user
@@ -136,7 +137,7 @@ module Rubik
             @manager.transition_server!(name_str, :failed, epoch: @boot_epoch)
             error = slot[:error]
             Rubik::Log.warn(:mcp, "failed to load MCP server '#{name_str}' (#{error.class}: #{error.message})")
-            @manager.send(:emit_mcp_event, :mcp_server_failed, :err, name_str, error: error.message)
+            @manager.emit_mcp_event(:mcp_server_failed, :err, name_str, error: error.message)
           end
         end
       end
