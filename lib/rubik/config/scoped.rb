@@ -23,17 +23,10 @@ module Rubik
         return unless overrides.is_a?(Hash)
 
         overrides.each do |k, v|
-          typed = v.is_a?(Hash) ? deep_stringify_keys(deep_dup(v)) : Schema.coerce(k.to_s, parse_scalar_value(deep_dup(v)))
-          Schema.validate_value!(k, typed, strict: true)
-          # Hash overrides get the same leaf coercion + validation that
-          # dotted-key writes go through, so extend(ui: {verbosity: 'x'})
-          # is as strict as set('ui.verbosity', 'x').
-          if typed.is_a?(Hash)
-            Schema.coerce_nested!(typed, k.to_s)
-            section = DEFAULT_CONFIG[k.to_s]
-            validate_schema(typed, section, k.to_s) if section.is_a?(Hash) && !section.empty?
-          end
-          deep_set_key(@overrides, k.to_s, typed)
+          # Hash overrides stringify keys before the shared pipeline so
+          # extend(ui: {verbosity: 'x'}) is as strict as set('ui.verbosity', 'x').
+          input = v.is_a?(Hash) ? deep_stringify_keys(v) : deep_dup(v)
+          deep_set_key(@overrides, k.to_s, normalize_value(k, input))
         end
       end
 
@@ -70,15 +63,7 @@ module Rubik
         old_val = nil
         res = @monitor.synchronize do
           old_val = fetch(key)
-          typed_val = parse_scalar_value(value)
-          typed_val = Schema.coerce(key, typed_val)
-          Schema.validate_value!(key, typed_val, strict: true)
-          if typed_val.is_a?(Hash)
-            typed_val = deep_dup(typed_val)
-            Schema.coerce_nested!(typed_val, key.to_s)
-            section = DEFAULT_CONFIG[key.to_s]
-            validate_schema(typed_val, section, key.to_s) if section.is_a?(Hash) && !section.empty?
-          end
+          typed_val = normalize_value(key, value)
           deep_set_key(@overrides, key, typed_val)
           should_notify = old_val != typed_val
           new_val = typed_val

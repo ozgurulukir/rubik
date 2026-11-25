@@ -127,4 +127,16 @@ class TestConfigSchemaValidation < Minitest::Test
     FileUtils.remove_entry(temp_dir)
     FileUtils.remove_entry(temp_home)
   end
+
+  def test_scoped_symbol_keyed_hash_overrides_are_stringified
+    temp_dir = Dir.mktmpdir
+    temp_home = Dir.mktmpdir
+    parent = Rubik::Config.new(root_dir: temp_dir, home_dir: temp_home)
+
+    scoped = parent.extend(tools: { max_output_chars: "500" })
+    assert_equal 500, scoped.fetch("tools.max_output_chars")
+  ensure
+    FileUtils.remove_entry(temp_dir)
+    FileUtils.remove_entry(temp_home)
+  end
 end
