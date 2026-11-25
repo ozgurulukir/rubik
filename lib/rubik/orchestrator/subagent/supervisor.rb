@@ -24,11 +24,14 @@ require_relative "conversation_id"
 module Rubik
   module Orchestrator
     module Subagent
-      class DepthExceededError < StandardError; end
-      class ConcurrencyExceededError < StandardError; end
+      class DepthExceededError < Rubik::Error; end
+      class ConcurrencyExceededError < Rubik::Error; end
       # New owned work after task cancellation (issue #125): the owner's token
       # is already cancelled — spawning into it would violate "no pending owned
       # descendant starts after cancellation".
+      # Deliberately NOT under Rubik::Error (issue #652): this is the
+      # cancellation-refusal control-flow signal, so a future generic
+      # `rescue Rubik::Error` catcher must not intercept the spawn refusal.
       class TaskCancelledError < StandardError; end
 
       # Root Supervisor Agent governing the entire subagent process hierarchy:

@@ -155,10 +155,11 @@ class TestModuleHygiene < Minitest::Test
     # alias bridge got one home in Context: the three-spelling contract doc
     # + the protected resolve_coeffect walker absorbing resolve_with_alias,
     # with LEGACY_ALIASES aliased beside CANONICAL_OF as the SSOT pointer.
+    # 351 (was 350): the error-taxonomy require_relative joined (issue #652).
     # 350 (was 340): CoeffectBlockedError joined the error family beside
     # CoeffectMissingError — the sealed-context denial keeps its honest
     # class without breaking existing rescue clauses.
-    assert line_count("runtime/context.rb") < 350, "runtime/context.rb must stay under 350 lines"
+    assert line_count("runtime/context.rb") < 351, "runtime/context.rb must stay under 351 lines"
     assert line_count("runtime/sealed_coeffects.rb") < 100,
            "runtime/sealed_coeffects.rb must stay the shared sealed deny-list under 100 lines"
   end

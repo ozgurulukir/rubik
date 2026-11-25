@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "../errors"
 require_relative "../log"
 require_relative "subagent/notices"
 require_relative "../storage/layout"
@@ -76,7 +77,7 @@ module Rubik
       # Raised when the disk apply succeeded but the context/AST index sync
       # failed — the message says the changes ARE on disk so nobody
       # "recovers" by re-applying a clean buffer.
-      class SyncFailedError < StandardError; end
+      class SyncFailedError < Rubik::Error; end
 
       # Canonical effect: apply the dirty buffer, then sync context/AST
       # unless nothing was applied. Errors PROPAGATE (the main path

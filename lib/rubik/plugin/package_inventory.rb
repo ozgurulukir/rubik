@@ -2,6 +2,8 @@
 
 require "digest"
 
+require_relative "../errors"
+
 module Rubik
   module Plugin
     # Containment + inventory policy for directory plugin packages
@@ -12,7 +14,7 @@ module Rubik
     # escape the package and special files are not content, so both are
     # violations — add and verify fail closed on them.
     module PackageInventory
-      class Violation < StandardError; end
+      class Violation < Rubik::Error; end
 
       module_function
 

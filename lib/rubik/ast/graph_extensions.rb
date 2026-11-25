@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../errors"
+
 module Rubik
   module AST
     class SymbolMap < Hash
@@ -109,7 +111,7 @@ module Rubik
     end
 
     class Graph
-      class AmbiguousSymbolError < StandardError
+      class AmbiguousSymbolError < Rubik::Error
         attr_reader :query, :candidates
 
         def initialize(query, candidates)

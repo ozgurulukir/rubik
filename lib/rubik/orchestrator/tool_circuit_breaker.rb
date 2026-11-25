@@ -2,6 +2,8 @@
 
 require "monitor"
 
+require_relative "../errors"
+
 # Opt-in failure isolation for tool execution (G19): after `threshold`
 # consecutive failures of the same tool, short-circuit further calls for a
 # cooldown instead of burning agent steps on a wedged backend. Disabled by
@@ -13,7 +15,7 @@ module Rubik
       # Raised by the StepExecutor when a call is refused; the executor's
       # normal rescue converts it into a failed tool result so the loop
       # plumbing (events, history) is reused untouched.
-      class CircuitOpenError < StandardError; end
+      class CircuitOpenError < Rubik::Error; end
 
       STATES = [:closed, :open, :half_open].freeze
 

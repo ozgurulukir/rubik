@@ -2,10 +2,11 @@
 
 require "monitor"
 require_relative "../coeffects"
+require_relative "../errors"
 
 module Rubik
   module Runtime
-    class CoeffectMissingError < StandardError; end
+    class CoeffectMissingError < Rubik::Error; end
 
     # Raised when a sealed context denies a coeffect lookup by policy.
     # Subclasses CoeffectMissingError so existing rescue clauses keep
@@ -15,7 +16,7 @@ module Rubik
     # Raised when a disposed context is asked to create new scope. Unlike a
     # late inverse (which can run now), there is no meaningful fallback for
     # extend, so it fails fast (AGENTS.md Fail Fast template).
-    class ContextDisposedError < StandardError; end
+    class ContextDisposedError < Rubik::Error; end
 
     class Context
       attr_reader :parent

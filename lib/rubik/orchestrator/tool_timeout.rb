@@ -3,6 +3,7 @@
 require "monitor"
 
 require_relative "../coeffects"
+require_relative "../errors"
 require_relative "../tools/result"
 
 module Rubik
@@ -22,7 +23,7 @@ module Rubik
       # Raised in the CALLER thread when the join budget expires. The
       # dispatch seam's rescue converts it into an honest error Result so
       # the turn continues.
-      class BudgetExceeded < StandardError
+      class BudgetExceeded < Rubik::Error
         attr_reader :tool_name, :budget_seconds, :elapsed_seconds
 
         def initialize(tool_name:, budget_seconds:, elapsed_seconds:)

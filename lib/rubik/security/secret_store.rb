@@ -5,6 +5,7 @@ require "fileutils"
 require "open3"
 require "tempfile"
 require "tmpdir"
+require_relative "../errors"
 require_relative "../log"
 require_relative "../platform"
 
@@ -43,7 +44,7 @@ module Rubik
       SERVICE = "rubik"
       NAME_PATTERN = /\A\w[\w.-]*\z/
 
-      class Error < StandardError; end
+      class Error < Rubik::Error; end
 
       @monitor = Monitor.new
       @backend = nil
