@@ -155,6 +155,14 @@ module Rubik
         end
       end
 
+      # Named result of argv classification. Replaces a positional 8-tuple so
+      # the field order is defined once, at the seam, instead of being
+      # memorized by every caller.
+      ArgvAnalysis = Data.define(
+        :known, :unknown, :overrides, :risk_overrides,
+        :directories, :delegations, :positional, :present_flags
+      )
+
       ExpressionResult = Data.define(
         :expression, :classification, :risk, :directories,
         :write_paths, :read_paths, :commands, :redirects, :parse_warnings,
