@@ -118,7 +118,7 @@ module Rubik
           raise BudgetExceeded.new(tool_name: name, budget_seconds: budget, elapsed_seconds: elapsed)
         end
         raise error if error
-        raise StandardError, "tool worker for '#{name}' died without completing or raising" unless done
+        raise Rubik::Error, "tool worker for '#{name}' died without completing or raising" unless done
 
         result
       end
