@@ -186,7 +186,9 @@ module Rubik
       else
         if (trimmed.start_with?("[") && trimmed.end_with?("]")) || (trimmed.start_with?("{") && trimmed.end_with?("}"))
           begin
-            parsed = YAML.safe_load(trimmed, permitted_classes: [Symbol], aliases: true)
+            # Aliases are disabled: a self-referential collection would survive
+            # the load and recurse forever in redact_secret_value on notify.
+            parsed = YAML.safe_load(trimmed, permitted_classes: [Symbol], aliases: false)
             return parsed if parsed.is_a?(Array) || parsed.is_a?(Hash)
           rescue Psych::Exception
             # The whole safe_load failure family: SyntaxError for malformed
