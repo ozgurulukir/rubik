@@ -59,6 +59,26 @@ class TestSecretStore < Minitest::Test
     assert_equal "sk-test-second-value", backend.read("providers.anthropic.api_key")
   end
 
+  def test_failed_rename_keeps_the_existing_store_intact
+    skip "Windows does not model POSIX file modes" if Rubik::Platform.windows?
+
+    path = File.join(@temp_dir, "secrets.yml")
+    backend = Rubik::Security::SecretStore::FileBackend.new(path)
+    backend.write("providers.openai.api_key", FAKE)
+    original = File.binread(path)
+
+    File.stub(:rename, ->(*, **) { raise Errno::EACCES, "simulated rename failure" }) do
+      assert_raises(Rubik::Security::SecretStore::Error) do
+        backend.write("providers.anthropic.api_key", "sk-test-second-value")
+      end
+    end
+
+    assert File.exist?(path), "the store must not be deleted when the rename fails"
+    assert_equal original, File.binread(path)
+    assert_nil backend.read("providers.anthropic.api_key")
+    assert Dir.glob(File.join(@temp_dir, "rubik-secrets-*")).empty?, "temp file leaked"
+  end
+
   def test_file_backend_survives_corrupt_store
     path = File.join(@temp_dir, "secrets.yml")
     File.write(path, "not: [valid: yaml")
