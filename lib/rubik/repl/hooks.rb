@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "logger"
 require_relative "../log"
 
 module Rubik

@@ -3,6 +3,7 @@
 require "tmpdir"
 require "tempfile"
 require "rbconfig"
+require "logger"
 
 module Rubik
   module RuntimeValidation

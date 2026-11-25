@@ -107,8 +107,8 @@ module Rubik
               end
             ))
             File.delete(@session_file) if is_empty_or_only_start
-          rescue StandardError
-            # ignore file cleanup error
+          rescue StandardError => e
+            Rubik::Log.warn(:session, "session-file cleanup failed for #{@session_file}: #{e.class}: #{e.message}")
           end
         end
 
