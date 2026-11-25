@@ -423,12 +423,9 @@ module Rubik
             tmp.flush
             tmp.chmod(0o600)
             tmp.close
-            File.rename(tmp.path, @path)
-          rescue SystemCallError
-            # Windows rename can still refuse an existing destination:
-            # fall back to a short delete-then-rename window.
-            tmp.close
-            FileUtils.rm_f(@path)
+            # No delete-then-rename fallback: removing the destination first
+            # would open a window where the store reads as empty and, if the
+            # second rename failed, lose every secret with no backup.
             File.rename(tmp.path, @path)
           ensure
             tmp.close

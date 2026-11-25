@@ -2,6 +2,7 @@
 
 require "fileutils"
 require_relative "http"
+require_relative "../platform"
 
 module Rubik
   module Connect
@@ -93,16 +94,13 @@ module Rubik
         nil
       end
 
-      # Atomic replace (tmp + rename) so a crash mid-write can never leave a
-      # half-JSON cache behind for the stale path to trip on. The pid
-      # suffix keeps two concurrent rubik processes from interleaving one
-      # fixed tmp file.
+      # Use the shared atomic primitive so a crash mid-write can never leave
+      # a half-JSON cache behind for the stale path to trip on. It also uses
+      # an O_EXCL random temp, so a pre-placed symlink cannot redirect the
+      # write and a failed write leaves no temp file behind.
       def write_cache(path, providers, fetched_at)
-        dir = File.dirname(path)
-        FileUtils.mkdir_p(dir)
-        tmp = "#{path}.#{Process.pid}.tmp"
-        File.write(tmp, JSON.generate({ "fetched_at" => fetched_at, "providers" => providers }))
-        File.rename(tmp, path)
+        payload = JSON.generate({ "fetched_at" => fetched_at, "providers" => providers })
+        Rubik::Platform.atomic_write(path, payload)
       rescue StandardError => e
         Rubik::Log.debug(:connect, "[Connect] catalog cache write failed for #{path}: #{e.class}: #{e.message.to_s.chars.first(120).join}")
         nil

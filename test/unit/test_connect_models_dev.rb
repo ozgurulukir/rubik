@@ -41,8 +41,24 @@ class TestConnectModelsDev < Minitest::Test
     assert_equal :fresh, res[:source]
     assert_equal "Groq", res[:catalog]["groq"]["name"]
     assert File.exist?(ModelsDev.cache_path(@home))
-    # atomic write leaves no tmp residue (pid-suffixed)
+    # The shared atomic primitive leaves no temp file behind.
     refute Dir.glob("#{ModelsDev.cache_path(@home)}*.tmp").any?
+    refute Dir.glob("#{ModelsDev.cache_path(@home)}.tmp.*").any?
+    assert_equal 0o600, File.stat(ModelsDev.cache_path(@home)).mode & 0o777 unless Rubik::Platform.windows?
+  end
+
+  def test_write_cache_ignores_the_old_predictable_pid_temp_path
+    path = ModelsDev.cache_path(@home)
+    victim = File.join(@home, "victim.json")
+    FileUtils.mkdir_p(File.dirname(path))
+    File.write(victim, "untouched")
+    File.symlink(victim, "#{path}.#{Process.pid}.tmp") unless Rubik::Platform.windows?
+
+    res = ModelsDev.load(home_dir: @home, now: -> { @now }, fetcher: fetcher_returning(catalog_fixture))
+
+    assert_equal :fresh, res[:source]
+    assert_equal "untouched", File.read(victim)
+    assert_equal "Groq", ModelsDev.read_cache(path)[:providers]["groq"]["name"]
   end
 
   def test_load_cache_hit_within_ttl
