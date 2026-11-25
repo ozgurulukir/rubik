@@ -2,6 +2,7 @@
 
 require "monitor"
 require_relative "log"
+require_relative "config/coercion"
 require_relative "config/defaults"
 require_relative "config/deep_ops"
 require_relative "config/store"
@@ -15,6 +16,7 @@ require_relative "config/scoped"
 module Rubik
   class Config
     include Defaults
+    include Coercion
     include DeepOps
     include Store
     include ModelCatalog
@@ -79,17 +81,7 @@ module Rubik
     def set(key, value, persist: nil)
       res, old_val, new_val = @monitor.synchronize do
         old_val = fetch(key)
-        typed_val = parse_scalar_value(value)
-        typed_val = Schema.coerce(key, typed_val)
-        Schema.validate_value!(key, typed_val, strict: true)
-        if typed_val.is_a?(Hash)
-          typed_val = deep_dup(typed_val)
-          Schema.coerce_nested!(typed_val, key.to_s)
-          # Only spec'd sections validate their leaves — open sections
-          # (providers, adapter) accept arbitrary child keys silently.
-          section = DEFAULT_CONFIG[key.to_s]
-          validate_schema(typed_val, section, key.to_s) if section.is_a?(Hash) && !section.empty?
-        end
+        typed_val = normalize_value(key, value)
 
         policy = guard_secret_write(key, typed_val, persist)
         return { ok: false, error: policy[:block] } if policy&.key?(:block)
