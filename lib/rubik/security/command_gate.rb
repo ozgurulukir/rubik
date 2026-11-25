@@ -150,86 +150,21 @@ module Rubik
         begin
           ast = Rubik::Security::Classifier.classify(cmd_str, shell: shell)
           @path_policy.check_critical_path_writes!(ast, cmd_str)
-          if ast.classification == :dangerous
-            # Safe-probe exemption (highest-priority friction fix): run the
-            # catastrophic fallback regex first — it never loosens.
-            # Strictly single, isolated command without inner commands or chains.
-            if isolated_single_command?(ast) && safe_probe?(cmd_str)
-              verify_command_fallback_regex!(cmd_str)
-              @audit.log_audit("safe_probe", command: cmd_str, reason: "safe_probe_exemption")
-              return true
-            end
-            walk_reason = dangerous_reason(ast.commands)
-            # Expression-level elevation marks no single command dangerous —
-            # the per-command walk bottoms out at its sentinel while the
-            # composed evidence travels on the ExpressionResult itself.
-            expression_reason = walk_reason == "dangerous_ast" ? expression_level_reason(ast) : nil
-            return true if operator_allowlist_pass?(ast, cmd_str)
+          # Phase pipeline: each phase returns true when it has already
+          # produced an allow verdict (audit + fallback regex included),
+          # false to defer to the next phase, and raises BlockedWriteError
+          # for a block verdict — exactly the pre-split control flow.
+          return true if verify_dangerous_classification!(ast, cmd_str)
 
-            block_dangerous_command!(ast, cmd_str, reason: expression_reason || walk_reason, expression_reason: expression_reason)
-          end
+          return true if verify_unknown_classification!(ast, cmd_str, shell: shell, allow_unknown: allow_unknown)
 
-          # UNKNOWN is fail-closed, not pass-through: the matcher rates every
-          # database-less binary unknown/high, so letting it fall through to
-          # the catastrophic-only regex would run `socat`/`nmap`/any unlisted
-          # tool with zero approval while the tool copy advertises fail-closed.
-          # Allowlist rescue unchanged (every top-level segment must match).
-          # No safe-probe exemption: an unknown binary's --version still
-          # executes an unvetted binary — the allowlist is the valve.
-          if ast.classification == :unknown && !allow_unknown
-            return true if operator_allowlist_pass?(ast, cmd_str)
+          return true if verify_ambiguous_parse!(ast, cmd_str, allow_unknown: allow_unknown)
 
-            # Workspace Trust Discovery Recognition Gate:
-            if workspace_trust_candidate_allowed?(cmd_str, ast)
-              @audit.log_audit("allowed_command", command: cmd_str, reason: "workspace_trust_discovery")
-              verify_command_fallback_regex!(cmd_str)
-              return true
-            end
-
-            # Interactive operator approval gate (Antigravity-style single keypress)
-            return true if operator_interactive_approval?(cmd_str, shell)
-
-            block_unknown_command!(cmd_str)
-          end
-
-          # Ambiguous parse (tree-sitter syntax errors) is a classification
-          # failure, not a pass: the walk cannot vouch for the whole
-          # expression, so a safe-looking partial verdict must not fall
-          # through to the catastrophic-only regex gate. The allowlist stays
-          # the valve because a real AST exists — every segment is checked
-          # against the operator entries.
-          if !allow_unknown && ast.parse_warnings.to_a.any?
-            return true if operator_allowlist_pass?(ast, cmd_str)
-
-            block_ambiguous_parse!(ast, cmd_str)
-          end
-
-          # Classification-based allow verdicts must not skip the un-bypassable
-          # fallback regex: every other allow path runs it (directly or via
-          # operator_allowlist_pass?). An under-rated database entry must not
-          # become a silent full bypass of the final safety layer.
-          if [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
-            verify_command_fallback_regex!(cmd_str)
-            return true
-          end
+          return true if verify_allow_classification!(ast, cmd_str)
         rescue BlockedWriteError
           raise
         rescue StandardError => e
-          # Unconditional warn + audit trail: a classifier crash is a
-          # security-observable downgrade nobody should need RUBIK_DEBUG to
-          # notice. The shell gate fails closed — an exception must never
-          # mint execution permission; the operator allowlist is the one
-          # sanctioned valve. The allow_unknown seam (no production caller
-          # today) keeps flowing into its own deny layers
-          # (DANGEROUS_SYNTHESIS_PATTERNS + RubyVM walk) after this gate.
-          if allow_unknown
-            Rubik::Log.warn(:security, "[WARN] AST classification error on non-shell input, continuing to synthesis deny layers: #{display_command(e.message)}")
-            @audit.log_audit("classifier_error", command: cmd_str, reason: "#{e.class}: #{e.message}",
-                                                 decision: "synthesis_layers")
-          else
-            Rubik::Log.warn(:security, "[WARN] AST classification error, failing closed: #{e.class}: #{display_command(e.message)}")
-            block_on_classifier_failure!(cmd_str, e)
-          end
+          handle_classifier_failure!(cmd_str, e, allow_unknown: allow_unknown)
         end
 
         verify_command_fallback_regex!(cmd_str)
@@ -248,6 +183,99 @@ module Rubik
       end
 
       private
+
+      # Dangerous-classification phase of verify_command_safety!: the
+      # safe-probe exemption is the highest-priority friction fix — the
+      # catastrophic fallback regex runs first, it never loosens. True means
+      # an allow verdict already ran (audit + regex); a block verdict raises.
+      def verify_dangerous_classification!(ast, cmd_str)
+        return false unless ast.classification == :dangerous
+
+        # Strictly single, isolated command without inner commands or chains.
+        if isolated_single_command?(ast) && safe_probe?(cmd_str)
+          verify_command_fallback_regex!(cmd_str)
+          @audit.log_audit("safe_probe", command: cmd_str, reason: "safe_probe_exemption")
+          return true
+        end
+        walk_reason = dangerous_reason(ast.commands)
+        # Expression-level elevation marks no single command dangerous —
+        # the per-command walk bottoms out at its sentinel while the
+        # composed evidence travels on the ExpressionResult itself.
+        expression_reason = walk_reason == "dangerous_ast" ? expression_level_reason(ast) : nil
+        return true if operator_allowlist_pass?(ast, cmd_str)
+
+        block_dangerous_command!(ast, cmd_str, reason: expression_reason || walk_reason, expression_reason: expression_reason)
+      end
+
+      # Unknown-classification phase of verify_command_safety!: UNKNOWN is
+      # fail-closed, not pass-through — the matcher rates every database-less
+      # binary unknown/high, so letting it fall through to the catastrophic-only
+      # regex would run `socat`/`nmap`/any unlisted tool with zero approval
+      # while the tool copy advertises fail-closed. Allowlist rescue unchanged
+      # (every top-level segment must match). No safe-probe exemption: an
+      # unknown binary's --version still executes an unvetted binary — the
+      # allowlist is the valve.
+      def verify_unknown_classification!(ast, cmd_str, shell:, allow_unknown:)
+        return false if ast.classification != :unknown || allow_unknown
+
+        return true if operator_allowlist_pass?(ast, cmd_str)
+
+        # Workspace Trust Discovery Recognition Gate:
+        if workspace_trust_candidate_allowed?(cmd_str, ast)
+          @audit.log_audit("allowed_command", command: cmd_str, reason: "workspace_trust_discovery")
+          verify_command_fallback_regex!(cmd_str)
+          return true
+        end
+
+        # Interactive operator approval gate (Antigravity-style single keypress)
+        return true if operator_interactive_approval?(cmd_str, shell)
+
+        block_unknown_command!(cmd_str)
+      end
+
+      # Ambiguous-parse phase of verify_command_safety!: a tree-sitter syntax
+      # error is a classification failure, not a pass — the walk cannot vouch
+      # for the whole expression, so a safe-looking partial verdict must not
+      # fall through to the catastrophic-only regex gate. The allowlist stays
+      # the valve because a real AST exists — every segment is checked
+      # against the operator entries.
+      def verify_ambiguous_parse!(ast, cmd_str, allow_unknown:)
+        return false if allow_unknown || ast.parse_warnings.to_a.empty?
+
+        return true if operator_allowlist_pass?(ast, cmd_str)
+
+        block_ambiguous_parse!(ast, cmd_str)
+      end
+
+      # Allow-classification phase of verify_command_safety!: these verdicts
+      # must not skip the un-bypassable fallback regex — every other allow
+      # path runs it (directly or via operator_allowlist_pass?). An
+      # under-rated database entry must not become a silent full bypass of
+      # the final safety layer.
+      def verify_allow_classification!(ast, cmd_str)
+        return false unless [:readonly, :local_effects, :external_effects].include?(ast.classification) && ast.parse_warnings.empty?
+
+        verify_command_fallback_regex!(cmd_str)
+        true
+      end
+
+      # Classifier-crash phase of verify_command_safety!: unconditional warn +
+      # audit trail — a classifier crash is a security-observable downgrade
+      # nobody should need RUBIK_DEBUG to notice. The shell gate fails closed
+      # — an exception must never mint execution permission; the operator
+      # allowlist is the one sanctioned valve. The allow_unknown seam (no
+      # production caller today) keeps flowing into its own deny layers
+      # (DANGEROUS_SYNTHESIS_PATTERNS + RubyVM walk) after this gate.
+      def handle_classifier_failure!(cmd_str, error, allow_unknown:)
+        if allow_unknown
+          Rubik::Log.warn(:security, "[WARN] AST classification error on non-shell input, continuing to synthesis deny layers: #{display_command(error.message)}")
+          @audit.log_audit("classifier_error", command: cmd_str, reason: "#{error.class}: #{error.message}",
+                                               decision: "synthesis_layers")
+        else
+          Rubik::Log.warn(:security, "[WARN] AST classification error, failing closed: #{error.class}: #{display_command(error.message)}")
+          block_on_classifier_failure!(cmd_str, error)
+        end
+      end
 
       # Human-facing rendering only; the shared helper keeps every block-error
       # raise site consistent. Raw bytes still drive execution and the audit.

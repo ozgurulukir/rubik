@@ -29,27 +29,51 @@ module Rubik
           return probe_failure(proposed_cmd, 127, "Availability check failed: executable not found in PATH")
         end
 
-        if @guard
-          cmd_to_check = proposed_cmd.is_a?(Hash) ? [proposed_cmd[:executable], *Array(proposed_cmd[:args])].join(" ") : proposed_cmd.to_s
-          begin
-            @guard.verify_command_safety!(cmd_to_check)
-          rescue Rubik::Security::BlockedWriteError => e
-            return probe_failure(proposed_cmd, 1, "Proposed command blocked by security guard: #{e.message}")
-          end
-        end
+        guard_failure = guard_rejection(proposed_cmd)
+        return guard_failure if guard_failure
 
-        if target == "lsp"
-          client = Rubik::LSP::Client.new(lang, root_dir: @root_dir, server_cmd: proposed_cmd)
-          sub_ctx.on_dispose { client.stop }
-          begin
-            result = Timeout.timeout(PROBE_TIMEOUT) { client.start }
-            return probe_failure(proposed_cmd, 1, "Functional probe failed: LSP initialize handshake rejected") unless result && client.alive?
-          rescue Timeout::Error
-            return probe_failure(proposed_cmd, 124, "LSP initialize handshake timed out")
-          end
-          return [true, nil]
-        end
+        return probe_lsp(lang, proposed_cmd, sub_ctx) if target == "lsp"
 
+        probe_executable(proposed_cmd, sub_ctx, probe_args: probe_args)
+      end
+
+      private
+
+      # Security-gate phase: run the operator's command guard (when wired)
+      # before any probe can spawn. Returns the probe_failure pair on a
+      # BlockedWriteError, or nil when the command passed (or no guard is
+      # configured).
+      def guard_rejection(proposed_cmd)
+        return nil unless @guard
+
+        cmd_to_check = proposed_cmd.is_a?(Hash) ? [proposed_cmd[:executable], *Array(proposed_cmd[:args])].join(" ") : proposed_cmd.to_s
+        begin
+          @guard.verify_command_safety!(cmd_to_check)
+        rescue Rubik::Security::BlockedWriteError => e
+          probe_failure(proposed_cmd, 1, "Proposed command blocked by security guard: #{e.message}")
+        end
+      end
+
+      # LSP probe phase: a full initialize handshake against the proposed
+      # server, hard-capped at PROBE_TIMEOUT. The client's lifetime is bound
+      # to the caller's probe context via a dispose inverse, so a rejected or
+      # timed-out handshake never leaks a server process.
+      def probe_lsp(lang, proposed_cmd, sub_ctx)
+        client = Rubik::LSP::Client.new(lang, root_dir: @root_dir, server_cmd: proposed_cmd)
+        sub_ctx.on_dispose { client.stop }
+        begin
+          result = Timeout.timeout(PROBE_TIMEOUT) { client.start }
+          return probe_failure(proposed_cmd, 1, "Functional probe failed: LSP initialize handshake rejected") unless result && client.alive?
+        rescue Timeout::Error
+          return probe_failure(proposed_cmd, 124, "LSP initialize handshake timed out")
+        end
+        [true, nil]
+      end
+
+      # Executable probe phase for test_runner/linter/command targets: select
+      # safe diagnostic probe_args (defaulting known help-capable binaries to
+      # --help), then hand the validated argv to the spawn phase.
+      def probe_executable(proposed_cmd, sub_ctx, probe_args:)
         argv = Shellwords.split(proposed_cmd)
         if probe_args.nil?
           unless HELP_PROBE_BINARIES.include?(File.basename(argv.first.to_s))
@@ -66,9 +90,16 @@ module Rubik
           end
         end
 
+        run_probe_process(argv, probe_args, proposed_cmd, sub_ctx)
+      end
+
+      # Spawn + reap phase: the probe runs array-form so no shell operators
+      # are ever interpreted; output goes to a file so no pipe-reader thread
+      # survives a timeout or a forked descendant. The kill/reap dispose
+      # inverse and the polling loop share the reaped flag, so the process is
+      # killed and reaped exactly once whichever side wins the race.
+      def run_probe_process(argv, probe_args, proposed_cmd, sub_ctx)
         argv.concat(probe_args)
-        # Array-form spawn never interprets shell operators. File-backed output
-        # avoids pipe-reader threads surviving a timeout or a forked descendant.
         output = Tempfile.new("rubik-repair-probe")
         sub_ctx.on_dispose { output.close! }
         options = { chdir: @root_dir, in: File::NULL, out: output, err: output }
@@ -105,8 +136,6 @@ module Rubik
           sleep 0.01
         end
       end
-
-      private
 
       def probe_failure(command, code, message)
         [false, Rubik::Runtime::DiagnosticEngine.diagnose(cmd: command, exit_code: code, stderr: message)]
