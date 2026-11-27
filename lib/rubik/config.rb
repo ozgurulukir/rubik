@@ -6,6 +6,7 @@ require_relative "config/coercion"
 require_relative "config/defaults"
 require_relative "config/deep_ops"
 require_relative "config/store"
+require_relative "config/yaml_scalar"
 require_relative "config/model_catalog"
 require_relative "config/pruner"
 require_relative "config/schema"
@@ -177,16 +178,8 @@ module Rubik
       when "nil", "null" then nil
       else
         if (trimmed.start_with?("[") && trimmed.end_with?("]")) || (trimmed.start_with?("{") && trimmed.end_with?("}"))
-          begin
-            # Aliases are disabled: a self-referential collection would survive
-            # the load and recurse forever in redact_secret_value on notify.
-            parsed = YAML.safe_load(trimmed, permitted_classes: [Symbol], aliases: false)
-            return parsed if parsed.is_a?(Array) || parsed.is_a?(Hash)
-          rescue Psych::Exception
-            # The whole safe_load failure family: SyntaxError for malformed
-            # input, DisallowedClass for e.g. "[2026-01-01]" (Date unpermitted),
-            # Alias errors — all mean "not a typed collection" → raw string.
-          end
+          parsed = YamlScalar.parse_collection(trimmed)
+          return parsed if parsed
         end
 
         if trimmed =~ /^-?\d+$/

@@ -83,6 +83,16 @@ class TestConfigSchemaValidation < Minitest::Test
     assert_includes err.message, "must be a string"
   end
 
+  def test_every_boolean_default_has_a_boolean_schema_spec
+    missing = []
+    walk_boolean_defaults(Rubik::Config::DEFAULT_CONFIG) do |key|
+      missing << key unless Rubik::Config::Schema::DEFINITIONS[key]&.dig(:type) == :boolean
+    end
+
+    assert_empty missing,
+                 "boolean defaults without a schema spec keep env values as strings: #{missing.join(', ')}"
+  end
+
   def test_whole_section_write_is_coerced_and_validated
     temp_dir = Dir.mktmpdir
     temp_home = Dir.mktmpdir
@@ -138,5 +148,18 @@ class TestConfigSchemaValidation < Minitest::Test
   ensure
     FileUtils.remove_entry(temp_dir)
     FileUtils.remove_entry(temp_home)
+  end
+
+  private
+
+  def walk_boolean_defaults(node, prefix = "", &block)
+    node.each do |key, value|
+      full = prefix.empty? ? key.to_s : "#{prefix}.#{key}"
+      if value.is_a?(Hash)
+        walk_boolean_defaults(value, full, &block)
+      elsif [true, false].include?(value)
+        block.call(full)
+      end
+    end
   end
 end
