@@ -96,6 +96,31 @@ class TestTaskManagerInputFailures < Minitest::Test
     refute_equal :failed, task.status, "collector failures must not fail the task"
   end
 
+  class SyncBoomUnit
+    def sync_state! = raise(ArgumentError, "state sync boom")
+  end
+
+  class SyncBoomInit
+    def register(*) = nil
+
+    def get(_id) = SyncBoomUnit.new
+  end
+
+  def test_completion_watcher_closes_stdin_when_state_sync_raises
+    task = nil
+    logged = []
+    Rubik::Log.stub(:warn, ->(_subsystem, message) { logged << message }) do
+      @task_manager.stub(:resolve_init, SyncBoomInit.new) do
+        task = @task_manager.start('ruby -e "exit 0"')
+        assert wait_until(5.0, step: 0.01) { !task.running? && task.stdin_io.closed? }
+      end
+    end
+
+    assert task.stdin_io.closed?, "stdin must close even when state sync raises"
+    assert(logged.any? { |message| message.include?("completion watcher") },
+           "a failed state sync must be reported, not swallowed")
+  end
+
   class CloseBoomIO
     def closed? = false
 

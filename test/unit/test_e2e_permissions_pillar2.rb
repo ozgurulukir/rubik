@@ -283,7 +283,8 @@ class TestE2EPermissionsPillar2 < Minitest::Test
     blocked = ["llm_client", "llm", "mcp_manager", "mcp", "router",
                "plugin_manager", "plugin_storage", "lsp_manager", "lsp",
                "skill_manager", "adapter_registry", "adapters",
-               "buffer", "tasks", "subagents", "subagent_pool"].freeze
+               "buffer", "tasks", "subagents", "subagent_pool",
+               "dmesg", "events"].freeze
     tool_backing = blocked.to_h { |k| [k, :leak] }.merge("storage" => :app_domain, "database" => :db)
     tool_ctx = Rubik::Runtime::SynthesizedToolContext.new(tool_backing)
     blocked.each { |k| assert_nil tool_ctx.get(k), "#{k} must be blocked in SynthesizedToolContext" }
