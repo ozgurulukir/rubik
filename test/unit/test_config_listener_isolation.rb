@@ -69,4 +69,15 @@ class TestConfigListenerIsolation < Minitest::Test
     assert_equal [1, 1], @config.send(:parse_scalar_value, "[&a 1, *a]")
     assert_equal({ "a" => 1, "b" => 1 }, @config.send(:parse_scalar_value, "{a: &a 1, b: *a}"))
   end
+
+  def test_deep_shared_acyclic_yaml_dag_does_not_hang_cycle_check
+    pairs = ["a0: &a0 [1, 1]"]
+    (1..25).each { |i| pairs << "a#{i}: &a#{i} [*a#{i - 1}, *a#{i - 1}]" }
+    yaml = "{#{pairs.join(', ')}}"
+
+    parsed = Rubik::Config::YamlScalar.parse_collection(yaml)
+
+    assert_kind_of Hash, parsed
+    assert_equal 26, parsed.size
+  end
 end

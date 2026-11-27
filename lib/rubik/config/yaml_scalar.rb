@@ -21,16 +21,23 @@ module Rubik
         nil
       end
 
-      # Active-path cycle detection: a key is removed from +path+ after its
-      # subtree is visited, so a value shared twice without a cycle survives.
-      def cyclic?(object, path = {}.compare_by_identity)
+      # Active-path cycle detection with a closed set: a key is removed from
+      # +path+ after its subtree is verified acyclic and recorded in +visited+,
+      # so shared acyclic DAGs survive in linear time instead of exploding
+      # exponentially across alias fan-outs.
+      def cyclic?(object, path = {}.compare_by_identity, visited = {}.compare_by_identity)
         return false unless object.is_a?(Array) || object.is_a?(Hash)
         return true if path.key?(object)
+        return false if visited.key?(object)
 
         path[object] = true
-        values = object.is_a?(Hash) ? object.keys + object.values : object
-        found = values.any? { |value| cyclic?(value, path) }
+        found = if object.is_a?(Hash)
+                  object.any? { |key, value| cyclic?(key, path, visited) || cyclic?(value, path, visited) }
+                else
+                  object.any? { |value| cyclic?(value, path, visited) }
+                end
         path.delete(object)
+        visited[object] = true unless found
         found
       end
     end
