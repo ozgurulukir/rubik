@@ -112,7 +112,7 @@ class TestTaskManagerInputFailures < Minitest::Test
     Rubik::Log.stub(:warn, ->(_subsystem, message) { logged << message }) do
       @task_manager.stub(:resolve_init, SyncBoomInit.new) do
         task = @task_manager.start('ruby -e "exit 0"')
-        assert wait_until(5.0, step: 0.01) { !task.running? }
+        assert wait_until(5.0, step: 0.01) { !task.running? && task.stdin_io.closed? }
       end
     end
 
