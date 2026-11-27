@@ -75,7 +75,42 @@ module Rubik
         "subagents.max_concurrency" => { type: :integer, min: 1 },
         "subagents.max_depth" => { type: :integer, min: 1 },
         "subagents.default_max_steps" => { type: :integer, min: 1 },
-        "subagents.max_total_steps" => { type: :integer, min: 1 }
+        "subagents.max_total_steps" => { type: :integer, min: 1 },
+        # Feature toggles read through config.fetch. Without a spec the
+        # universal env loader leaves "false" as a truthy String, so disabling
+        # a subsystem via RUBIK_<NAME>_ENABLED silently fails to take effect.
+        "storage.enabled" => { type: :boolean },
+        "storage.absorb_artifacts" => { type: :boolean },
+        "tools.circuit_breaker.enabled" => { type: :boolean },
+        "sandbox.prompt_on_startup" => { type: :boolean },
+        "sandbox.isolation_note" => { type: :boolean },
+        "lsp.enabled" => { type: :boolean },
+        "lsp.auto_start" => { type: :boolean },
+        "lsp.auto_diagnostics" => { type: :boolean },
+        "mcp.enabled" => { type: :boolean },
+        "context.auto_recover_on_overflow" => { type: :boolean },
+        "context.log_failed_turns" => { type: :boolean },
+        "context.tool_chronicle_in_history" => { type: :boolean },
+        "context.merge_turn_tool_history" => { type: :boolean },
+        "context.huge_root_notice" => { type: :boolean },
+        "context.boot_scan_on_huge_root" => { type: :boolean },
+        "ui.input_box" => { type: :boolean },
+        "ui.quiet_notices" => { type: :boolean },
+        "plugins.autoload_dropin" => { type: :boolean },
+        "skills.enabled" => { type: :boolean },
+        "subagents.auto_apply_buffer" => { type: :boolean },
+        "subagents.maestro_gate" => { type: :boolean },
+        "subagents.auto_pause_on_network_error" => { type: :boolean },
+        "subagents.reactive_wakeup" => { type: :boolean },
+        "subagents.vakanuvis.enabled" => { type: :boolean },
+        "subagents.vakanuvis.distiller" => { type: :boolean },
+        "subagents.vakanuvis.auto_digest" => { type: :boolean },
+        "subagents.vakanuvis.root_turns" => { type: :boolean },
+        "subagents.vakanuvis.orientation" => { type: :boolean },
+        "subagents.pruner.enabled" => { type: :boolean },
+        "goal.ledger.enabled" => { type: :boolean },
+        "goal.ledger.verify" => { type: :boolean },
+        "goal.ledger.observe_projection" => { type: :boolean }
       }.freeze
 
       module_function

@@ -31,6 +31,35 @@ class TestConfigUniversalEnv < Minitest::Test
     assert_empty warnings
   end
 
+  def test_universal_boolean_env_flags_coerce_to_typed_values
+    simulated_env = {
+      "RUBIK_MCP_ENABLED" => "false",
+      "RUBIK_LSP_ENABLED" => "true",
+      "RUBIK_SKILLS_ENABLED" => "off",
+      "RUBIK_STORAGE_ENABLED" => "no"
+    }
+
+    loaded = Rubik::Config::EnvLoader.load_env(simulated_env, Rubik::Config::DEFAULT_CONFIG, [])
+
+    assert_equal false, loaded.dig("mcp", "enabled")
+    assert_equal true, loaded.dig("lsp", "enabled")
+    assert_equal false, loaded.dig("skills", "enabled")
+    assert_equal false, loaded.dig("storage", "enabled")
+  end
+
+  def test_boolean_env_flags_reach_config_fetch_as_typed_values
+    snapshot = snapshot_env("RUBIK_MCP_ENABLED", "RUBIK_LSP_ENABLED")
+    ENV["RUBIK_MCP_ENABLED"] = "false"
+    ENV["RUBIK_LSP_ENABLED"] = "true"
+
+    config = Rubik::Config.new(root_dir: @temp_root, home_dir: @temp_home)
+
+    assert_equal false, config.fetch("mcp.enabled"), "a disabled MCP must not stay on as a truthy string"
+    assert_equal true, config.fetch("lsp.enabled")
+  ensure
+    restore_env(snapshot)
+  end
+
   def test_legacy_env_variables_bridge_with_deprecation_warnings
     simulated_env = {
       "RUBIK_NATIVE" => "off",
