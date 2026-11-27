@@ -27,6 +27,10 @@ module Rubik
         "subagent_supervisor",
         "init",
         "dispatcher",
+        # Operator and event infrastructure: unfiltered access lets synthesized
+        # code erase/forge the operator record or inject/shut down the bus.
+        "dmesg",
+        "events",
         "commands",
         "tool_registry",
         "adapter_registry",

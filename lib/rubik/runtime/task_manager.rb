@@ -96,8 +96,7 @@ module Rubik
 
         @at_exit_installed = true
         at_exit do
-          # Error-isolated sweep: one manager's kill_all raising must not
-          # leave the remaining managers uncleaned at shutdown.
+          # Error-isolated sweep keeps one failure from skipping the rest.
           @instances.each_key do |mgr|
             mgr.kill_all
           rescue StandardError => e
@@ -304,8 +303,7 @@ module Rubik
         end
       end
 
-      # Watch the child to completion, finalize its status under the
-      # monitor, sync the kernel unit state, and close our stdin handle.
+      # Watch to completion, finalize status, sync state, and close stdin.
       def spawn_completion_watcher(task, stdin, wait_thr, target_ctx)
         Thread.new do
           status = wait_thr.value
@@ -317,6 +315,9 @@ module Rubik
             end
           end
           resolve_init(target_ctx)&.get(task.id)&.sync_state!
+        rescue StandardError => e
+          Rubik::Log.warn(:runtime, "Task #{task.id} completion watcher failed: #{e.class}: #{e.message}")
+        ensure
           begin; stdin.close unless stdin.closed?; rescue IOError; nil; end
         end
       end
