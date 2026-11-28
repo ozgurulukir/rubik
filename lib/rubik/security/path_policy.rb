@@ -187,7 +187,8 @@ module Rubik
           cmd_name = command_parts.first.to_s
           if WRITE_COMMANDS.include?(cmd_name) || WRITE_TARGET_OPTIONS.key?(cmd_name)
             subcommand = command_parts[1].to_s
-            positional_targets = cmd_name != "git" || GIT_WRITE_SUBCOMMANDS.include?(subcommand)
+            positional_targets = WRITE_COMMANDS.include?(cmd_name) &&
+                                 (cmd_name != "git" || GIT_WRITE_SUBCOMMANDS.include?(subcommand))
             targets.concat(c.positionals.to_a) if positional_targets && c.respond_to?(:positionals)
             targets.concat(Array(c.directories)) if c.respond_to?(:directories)
             argv = c.respond_to?(:argv) ? c.argv.to_a : []

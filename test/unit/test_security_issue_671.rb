@@ -92,4 +92,11 @@ class TestSecurityIssue671 < Minitest::Test
       "git show HEAD:.env"
     ].each { |command| assert @guard.verify_command_safety!(command), command }
   end
+
+  def test_option_only_commands_do_not_treat_urls_as_write_targets
+    # curl/wget have write-target OPTIONS, not positional write targets; their
+    # URL arguments must not go through path resolution (Windows expands the
+    # `https:` scheme into a drive-shaped path that cannot be resolved).
+    assert @guard.verify_command_safety!("curl https://example.com")
+  end
 end
