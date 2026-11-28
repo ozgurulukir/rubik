@@ -5,6 +5,7 @@ require_relative "../output"
 require_relative "../../coeffects"
 require_relative "../../uris"
 require_relative "../../storage"
+require_relative "../../security/redactor"
 
 module Rubik
   module Tools
@@ -109,9 +110,12 @@ module Rubik
       end
 
       def handle_put(store, args, json)
+        # Work artifacts are persisted and searchable: apply the same
+        # redaction the session recorder and transcript indexer use so a
+        # credential pasted into a title/body cannot land in the DB (#673).
         record = store.put(
-          type: arg(args, "type"), title: arg(args, "title").to_s,
-          body: arg(args, "body", ""), tags: normalize_tags(args),
+          type: arg(args, "type"), title: Rubik::Security::Redactor.redact(arg(args, "title").to_s),
+          body: Rubik::Security::Redactor.redact(arg(args, "body", "")), tags: normalize_tags(args),
           links: arg(args, "links", {}) || {}, status: arg(args, "status", "active"),
           id: arg(args, "id"), ref: arg(args, "ref")
         )

@@ -109,18 +109,16 @@ class TestSandboxDockerHardening < Minitest::Test
   def test_docker_driver_rm_prevents_command_injection
     driver = Rubik::Sandbox::Driver::DockerDriver.new
     docker_rm_args = nil
+    timed_out = { ok: false, exit_code: 124, stdout: "", stderr: "timed out", timed_out: true }
 
-    mock_thr = Struct.new(:value, :pid).new(Struct.new(:exitstatus, :signaled?).new(0, false), 101)
-
-    # Simulate container name generation with potential shell metacharacters
+    # Force-remove only runs when the container may still be alive; a
+    # completed --rm run must not trigger it. Simulate a timeout here.
     SecureRandom.stub :hex, "123456; echo injected" do
       driver.stub :system, lambda { |*args, **_kwargs|
         docker_rm_args = args if args.first == "docker" && args[1] == "rm"
         true
       } do
-        Open3.stub :popen3, lambda { |*_args, &block|
-          block.call(StringIO.new, StringIO.new, StringIO.new, mock_thr)
-        } do
+        Rubik::Platform.stub :popen_capture, timed_out do
           driver.run("echo test", chdir: @temp_dir)
         end
       end

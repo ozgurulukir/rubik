@@ -13,8 +13,8 @@ require_relative "classifier/classifier"
 module Rubik
   module Security
     module Classifier
-      def self.classify(expression, shell: nil, database: nil)
-        Engine.classify_expression(expression, database: database, shell: shell)
+      def self.classify(expression, shell: nil, database: nil, root: nil)
+        Engine.classify_expression(expression, database: database, shell: shell, root: root)
       end
 
       def self.database

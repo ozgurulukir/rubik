@@ -182,7 +182,7 @@ module Rubik
             cmd = Shellwords.shelljoin(args)
             ctx.guard.verify_command_safety!(cmd)
             runner = ctx.sandbox_runner || Rubik::Sandbox::Runner.new(root_dir: Dir.pwd, config: ctx.config, guard: ctx.guard)
-            res = runner.run(cmd)
+            res = runner.run(cmd, verified: true)
             ctx.out.puts res[:output]
           end
         end

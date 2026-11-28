@@ -27,21 +27,21 @@ module Rubik
           true
         end
 
-        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0") # rubocop:disable Lint/UnusedMethodArgument -- sürücü arayüzü kwarg'leri korunuyor
+        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0", verified: false) # rubocop:disable Lint/UnusedMethodArgument -- sürücü arayüzü kwarg'leri korunuyor
           resolved = ShellResolver.resolve(cmd, preference: @options[:shell] || "auto")
           # Defense in depth: the POSIX argv path used to reach spawn with no
           # gate at all (only the cmd.exe branch re-verified). Gate it here.
-          # cmd is already gated inside verify_cmd_safe with cmd semantics.
+          # cmd is already gated inside spawn_args_for with cmd semantics.
           # PowerShell cmdlets use a different vocabulary the POSIX classifier
           # cannot classify. pwsh routing therefore relies on the upstream
           # RunCommandTool gate; direct Sandbox::Runner callers must gate first.
           # A PowerShell-aware classifier is tracked as a follow-up.
-          verify_command_safety!(cmd) unless ["cmd", "pwsh"].include?(resolved[:shell])
+          verify_command_safety!(cmd) unless verified || ["cmd", "pwsh"].include?(resolved[:shell])
           env = child_env
 
           res = Rubik::Platform.popen_capture(
             env,
-            *spawn_args_for(resolved, cmd),
+            *spawn_args_for(resolved, cmd, verified: verified),
             timeout: timeout,
             chdir: chdir
           )
@@ -88,8 +88,22 @@ module Rubik
         # builtins and drive-letter destructive constructs that the POSIX
         # classifier can misread as safe. A POSIX-safe command that is
         # dangerous under cmd.exe is therefore rejected and never spawned.
-        def spawn_args_for(resolved, cmd)
-          resolved[:shell] == "cmd" ? verify_cmd_safe(cmd) : resolved[:argv]
+        def spawn_args_for(resolved, cmd, verified: false)
+          return resolved[:argv] unless resolved[:shell] == "cmd"
+
+          # `verified` skips the DUPLICATE full gate (approval + audit), but
+          # the cmd.exe-specific static check is a different layer: the
+          # upstream gate classifies with POSIX semantics, so `start calc`
+          # can be approved there and still be destructive under cmd.exe.
+          # Keep that check even for verified commands (#672). Non-verified
+          # callers go through verify_cmd_safe, which keeps the global gate
+          # ahead of the cmd-specific refinement.
+          if verified
+            verify_cmd_specific_safe!(cmd)
+          else
+            verify_cmd_safe(cmd)
+          end
+          [cmd]
         end
 
         # Guard the cmd.exe branch. Re-classifies with shell: "cmd" so the guard

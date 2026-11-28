@@ -28,14 +28,24 @@ module Rubik
     #     mask secret values in display output.
     module SecretPolicy
       # Dot-paths that end in an api_key leaf, e.g.
-      # "providers.openai.api_key" or a bare "api_key".
-      SECRET_LEAF_PATTERN = /\A(?:[\w-]+\.)*api_key\z/
+      # "providers.openai.api_key" or a bare "api_key". Segments are any
+      # non-dot text: a provider name with "/", "@" or a space must still be
+      # recognized as a secret leaf so it can be routed (and refused when the
+      # resulting store name is invalid) instead of silently persisting
+      # plaintext (issue #673).
+      SECRET_LEAF_PATTERN = /\A(?>[^.]+\.)*api_key\z/
+      # MCP server env values whose variable name is credential-shaped.
+      MCP_ENV_SECRET_PATTERN = /\Amcp\.servers\.[^.]+\.env\.([^.]+)\z/i
       REDACTED_VALUE = "[REDACTED]"
 
       module_function
 
       def secret_key?(key)
-        key.to_s.match?(SECRET_LEAF_PATTERN)
+        str = key.to_s
+        return true if str.match?(SECRET_LEAF_PATTERN)
+
+        env_var = str.match(MCP_ENV_SECRET_PATTERN)
+        env_var ? Rubik::Security::Redactor.secret_key?(env_var[1]) : false
       end
 
       # Mask secret-bearing values before they leave Config in an event.
@@ -83,6 +93,13 @@ module Rubik
         return nil if raw.empty?
 
         scope = persist.to_s.downcase.to_sym == :project ? :project : :global
+        # A store name that fails validation must REFUSE the write: the
+        # generic store-error fallback below would otherwise persist the
+        # plaintext credential (issue #673).
+        invalid_names = raw.map { |path, _| secret_name(path, scope) }.uniq
+                           .reject { |name| Rubik::Security::SecretStore.valid_name?(name) }
+        return { block: invalid_secret_name_error(invalid_names) } unless invalid_names.empty?
+
         # security.allow_project_secrets=true restores the legacy behavior:
         # project writes act like global ones — the store is still
         # preferred, but a store failure degrades to plaintext + warning
@@ -204,6 +221,12 @@ module Rubik
         return false if val.nil? || Rubik::Security::SecretStore.reference?(val)
 
         (val.is_a?(String) && !val.empty?) || val.is_a?(Numeric)
+      end
+
+      def invalid_secret_name_error(names)
+        "refusing to persist plaintext secret(s): invalid secret store name(s) #{names.join(', ')}. " \
+          "Use a dot-path of word characters, digits, hyphens and dots (for example " \
+          "providers.openai.api_key); no plaintext fallback is attempted."
       end
 
       def project_secret_error(leaves)

@@ -70,7 +70,7 @@ module Rubik
           "memory_limit_mb" => 512,
           "cpus" => "1.0",
           "allow_network" => false,
-          "shell" => "auto", # sandbox shell resolution: auto | bash | powershell (sandbox/runner.rb)
+          "shell" => "auto", # sandbox shell resolution: auto | bash | pwsh | cmd | sh (sandbox/shell_resolver.rb)
           "prompt_on_startup" => true, "isolation_note" => true # append the 🔍 isolation line to run_command output (sandbox/runner.rb)
         },
         "security" => {

@@ -1,7 +1,8 @@
 # $schema: ../../../schemas/command.schema.json
 command: awk
 description: "Pattern scanning and text processing language"
-classification: READONLY
+classification: DANGEROUS
+risk: HIGH
 strict: false
 global_options:
   --help: {overrides: READONLY}

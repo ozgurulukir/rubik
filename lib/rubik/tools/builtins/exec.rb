@@ -159,7 +159,7 @@ module Rubik
         timeout = effective_timeout(args)
         @guard.verify_command_safety!(cmd)
         started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        res = @runner.run(cmd, timeout: timeout, chdir: @root_dir)
+        res = @runner.run(cmd, timeout: timeout, chdir: @root_dir, verified: true)
         duration_ms = ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round(1)
         command_result(cmd, res, duration_ms: duration_ms)
       rescue Rubik::Security::BlockedWriteError => e

@@ -58,6 +58,10 @@ module Rubik
           true
         end
 
+        def valid_name?(name)
+          name.to_s.match?(NAME_PATTERN)
+        end
+
         def reference?(value)
           value.is_a?(String) && value.start_with?(REFERENCE_PREFIX)
         end
@@ -121,7 +125,7 @@ module Rubik
 
         def validate_name!(name)
           name_str = name.to_s
-          return name_str if name_str.match?(NAME_PATTERN)
+          return name_str if valid_name?(name_str)
 
           raise Error, "invalid secret name: #{name_str.inspect} (expected a dot-path like providers.openai.api_key)"
         end
@@ -408,6 +412,10 @@ module Rubik
         rescue Psych::Exception => e
           Rubik::Log.debug(:security, "secret file store unreadable, treating as empty (#{e.class}: #{e.message})")
           {}
+        rescue SystemCallError => e
+          # Callers rescue SecretStore::Error only; leaking a raw Errno would
+          # crash provider builds and REPL boot on an unreadable store (#673).
+          raise Error, "secret file store read failed: #{e.message}"
         end
 
         def atomic_replace(data)

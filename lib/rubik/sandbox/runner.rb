@@ -124,6 +124,16 @@ module Rubik
                     driver_to_use = @preferred_driver || Rubik::Storage::Layout.config_get(@config, "sandbox.driver", nil) || "auto"
                     Driver.best_available(driver_to_use, driver_opts)
                   end
+
+        # Fail closed: a configured sandbox that cannot be satisfied must
+        # never silently degrade to host execution (issue #672). The warning
+        # is unconditional and the refusal is enforced in #run.
+        @sandbox_requested_driver = @preferred_driver || Rubik::Storage::Layout.config_get(@config, "sandbox.driver", nil) || "auto"
+        @sandbox_unavailable = @sandbox_enabled && @driver.nil?
+        return unless @sandbox_unavailable
+
+        Rubik::Log.warn(:security, "[SANDBOX] sandbox requested but unavailable (driver=#{@sandbox_requested_driver}); " \
+                                   "refusing unsandboxed host execution")
       end
 
       def allowed_paths
@@ -183,7 +193,20 @@ module Rubik
         allow_network?
       end
 
-      def run(cmd, timeout: nil, chdir: @root_dir)
+      # `verified:` means the caller already ran the shared command gate on
+      # this exact string (RunCommandTool / `!sh`); drivers then skip their
+      # defense-in-depth re-gate so one execution cannot prompt or audit
+      # twice. Direct callers leave it false and keep the re-gate.
+      def run(cmd, timeout: nil, chdir: @root_dir, verified: false)
+        if @sandbox_unavailable
+          raise Rubik::Security::BlockedWriteError.new(
+            "Sandbox requested but unavailable (driver=#{@sandbox_requested_driver}); refusing to execute " \
+            "unsandboxed on the host. Install a sandbox driver (bwrap/docker/podman) or explicitly opt out " \
+            "with sandbox.enabled=false / sandbox.driver=process.",
+            kind: :sandbox_unavailable
+          )
+        end
+
         chdir_path = File.expand_path(chdir.to_s, @root_dir)
         verify_chdir_safety!(chdir_path)
 
@@ -207,7 +230,8 @@ module Rubik
           chdir: chdir_path,
           allow_network: allow_network?,
           memory_limit_mb: mem_limit,
-          cpus: cpus
+          cpus: cpus,
+          verified: verified
         )
 
         if res.is_a?(Hash)
@@ -225,6 +249,11 @@ module Rubik
       end
 
       def isolation_disclosure
+        if @sandbox_unavailable
+          return "🔍 Execution: sandbox requested but unavailable (driver=#{@sandbox_requested_driver}) — " \
+                 "direct host execution refused"
+        end
+
         if sandbox_enabled? && @driver
           net_status = allow_network? ? "allowed" : "none"
           "🔍 Isolation: sandbox (#{@driver.name}, network=#{net_status}) — #{INTEGRITY_ONLY_NOTE}"
@@ -234,6 +263,7 @@ module Rubik
       end
 
       def isolation_level
+        return "sandbox requested but unavailable" if @sandbox_unavailable
         return "sandbox (#{@driver.name})" if sandbox_enabled? && @driver
 
         "direct (safe host)"

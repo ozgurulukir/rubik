@@ -125,7 +125,7 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
   def test_sh_command_uses_shell_sandbox_runner
     mock_runner = Object.new
     executed_command = nil
-    mock_runner.define_singleton_method(:run) do |cmd|
+    mock_runner.define_singleton_method(:run) do |cmd, **_opts|
       executed_command = cmd
       { output: "mocked output from sandbox runner", exit_code: 0 }
     end
@@ -140,7 +140,7 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
   def test_sh_preserves_shell_quoting_from_the_original_input
     mock_runner = Object.new
     executed_command = nil
-    mock_runner.define_singleton_method(:run) do |cmd|
+    mock_runner.define_singleton_method(:run) do |cmd, **_opts|
       executed_command = cmd
       { output: "ok", exit_code: 0 }
     end
@@ -154,7 +154,7 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
 
   def test_sh_warns_on_unapplied_buffer_in_manual_mode
     mock_runner = Object.new
-    mock_runner.define_singleton_method(:run) { |_cmd| { output: "ran", exit_code: 0 } }
+    mock_runner.define_singleton_method(:run) { |_cmd, **_opts| { output: "ran", exit_code: 0 } }
     @shell.instance_variable_set(:@sandbox_runner, mock_runner)
 
     @buffer_manager.write("staged.rb", "# staged")
@@ -167,7 +167,7 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
 
   def test_sh_auto_applies_with_unified_copy_in_on_test_mode
     mock_runner = Object.new
-    mock_runner.define_singleton_method(:run) { |_cmd| { output: "ran", exit_code: 0 } }
+    mock_runner.define_singleton_method(:run) { |_cmd, **_opts| { output: "ran", exit_code: 0 } }
     @shell.instance_variable_set(:@sandbox_runner, mock_runner)
     @config.set("buffer.auto_apply", "on_test")
 

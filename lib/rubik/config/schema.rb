@@ -50,7 +50,7 @@ module Rubik
         "sandbox.timeout_seconds" => { type: :integer, min: 1 },
         "sandbox.memory_limit_mb" => { type: :integer, min: 16 },
         "sandbox.allow_network" => { type: :boolean },
-        "sandbox.shell" => { type: :enum, allowed: ["auto", "bash", "powershell"] },
+        "sandbox.shell" => { type: :enum, allowed: ["auto", "bash", "pwsh", "cmd", "sh"] },
         "security.allow_safe_probes" => { type: :boolean },
         "security.command_allowlist" => { type: :array },
         # Escape hatch for SecretPolicy: plaintext provider secrets in the
