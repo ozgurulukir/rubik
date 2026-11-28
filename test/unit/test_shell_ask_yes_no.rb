@@ -14,12 +14,13 @@ class TestShellAskYesNo < Minitest::Test
   def QuietOutput.puts(*); end
   def QuietOutput.print(*); end
 
-  def build_shell(reline:, input: FakeTTYInput, output: QuietOutput)
+  def build_shell(reline:, input: FakeTTYInput, output: QuietOutput, terminal_guard: nil)
     cfg_dir = Dir.mktmpdir("rubik_yn")
     home = Dir.mktmpdir("rubik_yn_home")
     shell = Rubik::REPL::Shell.new(
       config: Rubik::Config.new(root_dir: cfg_dir, home_dir: home),
-      output: output, input: input, reline: reline, root_dir: cfg_dir
+      output: output, input: input, reline: reline, root_dir: cfg_dir,
+      terminal_guard: terminal_guard
     )
     [shell, cfg_dir, home]
   end
@@ -94,6 +95,26 @@ class TestShellAskYesNo < Minitest::Test
       assert_equal "y", @shell.ask_yes_no("Plan?", default: "y")
       assert_equal "n", @shell.ask_yes_no("Devam?", default: "n")
     end
+  end
+
+  def test_plain_terminal_fallback_reads_under_the_guard
+    # #684: NO_COLOR (or any non-color theme) takes the classic Reline line
+    # prompt. It must still enter with_reading so async notices clear and
+    # redisplay the line instead of landing before the cursor.
+    reads = []
+    guard = Object.new
+    guard.define_singleton_method(:with_reading) do |&block|
+      reads << :with_reading
+      block.call
+    end
+    fake_reline = Object.new
+    fake_reline.define_singleton_method(:readline) { |_p, _h| "y" }
+    @shell, @d1, @d2 = build_shell(reline: fake_reline, output: QuietOutput, terminal_guard: guard)
+    @shell.instance_variable_set(:@ui_theme, Object.new.tap { |t| t.define_singleton_method(:color?) { false } })
+    with_env("RUBIK_TEST", nil) do
+      assert_equal "y", @shell.ask_yes_no("Apply?", default: "n")
+    end
+    assert_equal [:with_reading], reads, "fallback readline must run inside the terminal guard"
   end
 
   def test_tee_io_wrapping_real_output_is_still_interactive

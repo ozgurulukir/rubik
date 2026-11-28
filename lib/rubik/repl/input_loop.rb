@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "prompt_grace"
+require_relative "../log"
 require_relative "../storage/layout"
 
 module Rubik
@@ -11,11 +12,23 @@ module Rubik
     # Durum Shell'de yaşar (@running, @reline, @input, @output); bu modül
     # yalnızca döngü politikasını kodlar.
     module InputLoop
+      # Opener shape shared by heredoc detection and the paste-burst gate: a
+      # pasted `<< EOF` must enter heredoc mode, never join a burst (#684).
+      HEREDOC_OPENER = /\A[ \t]*(?:![a-zA-Z0-9_.-]+[ \t]+)?<<[-~]?[ \t]+['"]?([A-Za-z0-9_]+)['"]?[ \t]*\z/
+
       def run_stream(stream)
         stream.each_line do |line|
           break unless @running
 
           process_multiline_or_line(line.chomp)
+        end
+      ensure
+        # #686: quiet notices have no interactive prompt in stream mode; the
+        # bounded inbox must still be drained at the end of the run.
+        begin
+          @terminal_guard&.flush_notices!
+        rescue StandardError => e
+          Rubik::Log.warn(:repl, "[rubik] stream notice flush failed: #{e.class}: #{e.message}")
         end
       end
 
@@ -69,6 +82,17 @@ module Rubik
         @paste_requested = false
         return run_paste_mode if paste_mode && heredoc_delimiter.nil? && multiline_buffer.empty?
 
+        # #684: the line that ENDS a burst was already consumed by the
+        # collector at the "paste…" prompt. Re-feed it through the same path
+        # as a freshly read line instead of silently dropping the user's next
+        # command; carry its timestamp for the following burst check.
+        if @pending_line
+          line = @pending_line
+          now = @pending_line_at
+          @pending_line = @pending_line_at = nil
+          return process_accepted_line(line, multiline_buffer, heredoc_delimiter, now)
+        end
+
         flush_subagent_notices! if respond_to?(:flush_subagent_notices!)
         @terminal_guard&.flush_notices!
         current_prompt, boxed = prepare_prompt_line(!heredoc_delimiter.nil?)
@@ -89,12 +113,26 @@ module Rubik
         # "instantly", so an ungated collector would swallow consecutive test
         # lines like "x = a << 1" + "exit" into one turn (seen in test_repl).
         now = paste_clock
-        if !restored_submission && paste_burst_eligible? && !line.strip.empty? && !heredoc_delimiter &&
-           multiline_buffer.empty? &&
+        if !restored_submission && paste_burst_eligible? && !line.strip.empty? && !heredoc_opener_match(line) &&
+           !heredoc_delimiter && multiline_buffer.empty? &&
            (paste_line_fast?(last_line_at, now) || paste_pending?)
           return collect_paste_burst(line)
         end
 
+        process_accepted_line(line, multiline_buffer, heredoc_delimiter, now)
+      rescue Interrupt
+        @output.puts "^C"
+        Rubik::REPL::InterruptHandler.restore_console_after_interrupt
+        { stop: false, buffer: [], delimiter: nil }
+      rescue StandardError => e
+        @output.puts "[REPL Error] #{e.class}: #{e.message}"
+        { stop: false, buffer: [], delimiter: nil }
+      end
+
+      # Shared tail of read_and_process_line: history, reactive wake and
+      # heredoc/normal dispatch. A re-fed burst terminator goes through the
+      # exact same path as a freshly read line (#684).
+      def process_accepted_line(line, multiline_buffer, heredoc_delimiter, now)
         # Push non-empty command to history
         @reline::HISTORY.push(line) if !prompt_grace_interactive? && !line.strip.empty? && line != begin
           @reline::HISTORY.to_a.last
@@ -120,13 +158,13 @@ module Rubik
                  end
         result[:last_line_at] = now
         result
-      rescue Interrupt
-        @output.puts "^C"
-        Rubik::REPL::InterruptHandler.restore_console_after_interrupt
-        { stop: false, buffer: [], delimiter: nil }
-      rescue StandardError => e
-        @output.puts "[REPL Error] #{e.class}: #{e.message}"
-        { stop: false, buffer: [], delimiter: nil }
+      end
+
+      # Opener detection used by both the burst gate and normal dispatch.
+      def heredoc_opener_match(line)
+        return nil if line.to_s.strip.start_with?("#")
+
+        line.to_s.match(HEREDOC_OPENER)
       end
 
       # Plan 91 — burst collector: keeps reading lines while they arrive
@@ -148,7 +186,14 @@ module Rubik
 
             in_paste = paste_line_fast?(last_at, now) || paste_pending?
             last_at = now
-            break unless in_paste # burst ended -> user is typing again; flush
+            unless in_paste
+              # #684: this line was already read at the "paste…" prompt. It is
+              # the user's next command, not part of the block — hand it back
+              # to the normal loop instead of discarding it.
+              @pending_line = line
+              @pending_line_at = now
+              break
+            end
 
             lines << line
           end
@@ -200,8 +245,8 @@ module Rubik
         # Only trigger heredoc if line explicitly opens a multiline block
         # (e.g. `<< EOF`, `!plan << EOF`). Whitespace after `<<` is required:
         # `array <<item` is an inline append operator, not a heredoc (#557).
-        heredoc_match = line.match(/\A[ \t]*(?:![a-zA-Z0-9_.-]+[ \t]+)?<<[-~]?[ \t]+['"]?([A-Za-z0-9_]+)['"]?[ \t]*\z/)
-        if heredoc_match && !line.strip.start_with?("#")
+        heredoc_match = heredoc_opener_match(line)
+        if heredoc_match
           delimiter = heredoc_match[1]
           prefix = line.sub(/<<[-~]?[ \t]+['"]?#{Regexp.escape(delimiter)}['"]?\s*$/, "").strip
           buffer = prefix.empty? ? [] : [prefix]

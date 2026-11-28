@@ -90,7 +90,7 @@ module Rubik
         end
 
         def names_of(calls)
-          calls.filter_map do |c|
+          Array(calls).filter_map do |c|
             name = c.is_a?(Hash) ? (c["tool"] || c[:tool] || c["name"] || c[:name]) : nil
             name.to_s
           end.reject(&:empty?).join(",").slice(0, 200)

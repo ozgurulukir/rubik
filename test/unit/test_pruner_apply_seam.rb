@@ -138,6 +138,41 @@ class TestPrunerApplySeam < Minitest::Test
     @shell.instance_variable_set(:@replaying, false)
   end
 
+  def test_staged_window_swap_holds_the_notice_mutex
+    # #686: the bus thread injects notices under the router mutex (issue
+    # #557); replacing the window outside it strands a concurrent notice in
+    # the discarded array.
+    real_mutex = @shell.notice_router.subagent_notices_mutex
+    active = false
+    calls = 0
+    wrapper = Object.new
+    wrapper.define_singleton_method(:synchronize) do |&block|
+      calls += 1
+      active = true
+      result = real_mutex.synchronize(&block)
+      active = false
+      result
+    end
+    @shell.notice_router.define_singleton_method(:subagent_notices_mutex) { wrapper }
+
+    stub_router!(capturing_provider([]))
+    @shell.conversation_history = seeded_window
+    pruned = seeded_window.reject { |r| r[:content].to_s.include?("SENTINEL-DROP") }
+    harness = SeamHarness.new(pruned)
+    original_take = harness.method(:take_applicable_plan!)
+    took_under_mutex = false
+    harness.define_singleton_method(:take_applicable_plan!) do |window|
+      took_under_mutex = active
+      original_take.call(window)
+    end
+    provide_pruner!(harness)
+
+    @shell.execute_free_text("fresh turn")
+
+    assert took_under_mutex, "take + swap must run under the notice mutex"
+    assert_operator calls, :>=, 1
+  end
+
   def test_command_context_verb_delegates_to_the_shell
     calls = []
     shell = Object.new

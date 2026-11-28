@@ -120,6 +120,24 @@ class TestReplTerminalGuard < Minitest::Test
     assert_empty @guard.inbox
   end
 
+  def test_quiet_inbox_is_bounded_and_reports_dropped_count
+    # #686: a quiet stream session has no prompt to flush the inbox. The
+    # buffer must stay bounded and account for the notices it dropped.
+    @guard.quiet = true
+    (Rubik::REPL::TerminalGuard::QUIET_INBOX_LIMIT + 25).times do |i|
+      @guard.print_safe_notice("Notice #{i}")
+    end
+    assert_equal Rubik::REPL::TerminalGuard::QUIET_INBOX_LIMIT, @guard.inbox.size
+    assert_includes @guard.inbox.first, "Notice 25"
+
+    assert @guard.flush_notices!
+    lines = @output.string.lines.map(&:chomp)
+    assert_equal Rubik::REPL::TerminalGuard::QUIET_INBOX_LIMIT + 1, lines.size
+    assert_equal "…25 more notice(s) suppressed", lines.first
+    assert_empty @guard.inbox
+    refute @guard.flush_notices!, "a drained inbox (including its counter) is a no-op"
+  end
+
   def test_quiet_mode_force_bypasses_buffering
     @guard.quiet = true
     res = @guard.print_safe_notice("Urgent event!", force: true)

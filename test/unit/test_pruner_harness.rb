@@ -216,6 +216,31 @@ class TestPrunerHarness < Minitest::Test
     assert again, "a failed spawn must not wedge the gate busy forever"
   end
 
+  def test_brief_failure_reconciles_the_gate_instead_of_wedging
+    # #686: handle_event rescues StandardError itself, so the worker's
+    # dispatch-failed hook never runs. A crash while building the brief must
+    # not leave the :__pending__ placeholder behind forever.
+    h = harness
+    envelope, skip = stage!(h)
+    assert envelope
+    assert_nil skip
+    Rubik::REPL::Pruner::Brief.stub(:build, ->(**_kwargs) { raise "brief boom" }) do
+      run_job!(h, envelope)
+    end
+    refute h.gate.status_bits[:in_flight], "a Brief.build crash must not wedge the gate busy"
+    again, again_skip = stage!(h)
+    assert again, "the gate must accept the next job (skip=#{again_skip.inspect})"
+  end
+
+  def test_brief_tolerates_non_array_tool_calls
+    window = [{ role: "assistant", content: "ok", tool_calls: "oops" }]
+    units = Rubik::REPL::Pruner::Rules.build_units(window)
+    brief = Rubik::REPL::Pruner::Brief.build(units: units, ceiling: 1000,
+                                             target_tokens: 100, trigger_ratio: 0.6)
+    assert brief
+    assert_includes brief, "[assistant]"
+  end
+
   # ---- hasat ----------------------------------------------------------------
 
   def test_completed_valid_plan_stages_and_applies_at_the_boundary
