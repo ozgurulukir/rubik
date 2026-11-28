@@ -68,21 +68,25 @@ module Rubik
         files.last
       end
 
+      # Resolve an identifier ONLY against recorded session files. An
+      # arbitrary existing path must never be treated as a session: resuming
+      # one appends event lines to it and wedges later commands when the
+      # file is read-only (issue #687).
       def self.find_session(identifier, root_dir = Dir.pwd, home_dir = ENV.fetch("HOME", nil), config: nil)
-        return identifier if File.exist?(identifier.to_s)
-
         id_str = identifier.to_s.strip
+        return nil if id_str.empty?
+
         all = list_sessions(root_dir, home_dir, config: config)
 
-        # Match exact filename, basename without ext, or prefix
-        matched = all.find do |s|
-          s[:name] == id_str ||
-            s[:name].sub(/\.jsonl$/, "") == id_str ||
-            s[:id].start_with?(id_str) ||
-            File.basename(s[:path]).include?(id_str)
-        end
+        exact = all.find { |s| s[:id] == id_str || s[:name] == id_str }
+        return exact[:path] if exact
 
-        matched ? matched[:path] : nil
+        # Prefer a unique prefix; fall back to a unique substring so legacy
+        # short ids (e.g. a timestamp tail) still resolve. Ambiguity is
+        # refused rather than silently picking whichever session sorts first.
+        matches = all.select { |s| s[:id].start_with?(id_str) || s[:name].start_with?(id_str) }
+        matches = all.select { |s| s[:name].include?(id_str) } if matches.empty?
+        matches.first[:path] if matches.size == 1
       end
 
       # Delete recorded session files older than `days`, protecting the

@@ -21,7 +21,7 @@ module Rubik
             scope, clean_args = Base.parse_scope(args)
             sub = clean_args.first&.downcase || "status"
 
-            if ctx.agent_caller && !["status", "list", "ping", "tools"].include?(sub)
+            if ctx.agent_caller && !["status", "list", "ping"].include?(sub)
               ctx.out.puts "Security Error: MCP server management ('#{sub}') is operator-only and cannot be altered by autonomous agents."
               next
             end
@@ -126,14 +126,29 @@ module Rubik
               Base.report_persist_failure(ctx, res, scope)
             end
           rescue StandardError => e
-            ctx.out.puts "Failed to add/start MCP server '#{name}': #{e.message}"
+            # add_server persists the definition before spawning; a failed
+            # start must not leave a server that is retried at every boot.
+            rollback_server(manager, name, scope)
+            ctx.out.puts "Failed to add/start MCP server '#{name}' (definition rolled back): #{e.message}"
           end
+        end
+
+        # Best-effort teardown of a definition whose start failed. Never let
+        # cleanup mask the original error.
+        private_class_method def self.rollback_server(manager, name, scope)
+          manager.remove_server(name, persist: scope)
+        rescue StandardError => e
+          Rubik::Log.warn(:mcp, "rollback of MCP server '#{name}' failed (#{e.class}: #{e.message})")
         end
 
         private_class_method def self.handle_remove(ctx, manager, clean_args, scope)
           name = clean_args[1]
           if name.nil?
             ctx.out.puts "Usage: !mcp remove <name> [-p|-g]"
+            return
+          end
+          unless manager.servers.key?(name)
+            ctx.out.puts "MCP server '#{name}' not found."
             return
           end
           begin
@@ -185,6 +200,12 @@ module Rubik
             ctx.out.puts "Usage: !mcp connect <name> <command> [args...]"
             return
           end
+          if manager.servers.key?(name)
+            # connect() delegates to add_server, which would overwrite the
+            # configured definition for this session.
+            ctx.out.puts "MCP server '#{name}' is already configured; use !mcp enable <name> to start it."
+            return
+          end
           begin
             manager.connect(name, cmd, server_args)
             tool_count = (manager.tools[name] || []).size
@@ -198,6 +219,10 @@ module Rubik
           name = clean_args[1]
           if name.nil?
             ctx.out.puts "Usage: !mcp disconnect <name>"
+            return
+          end
+          unless manager.servers.key?(name)
+            ctx.out.puts "MCP server '#{name}' not found."
             return
           end
           begin

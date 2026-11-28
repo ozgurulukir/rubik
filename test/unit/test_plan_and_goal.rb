@@ -96,6 +96,9 @@ class TestPlanAndGoal < Minitest::Test
 
     mock_provider = MockScriptProvider.new([plan_output, execution_output, finish_output])
     @shell.instance_variable_get(:@llm_registry).register("ollama", mock_provider)
+    # The prompt now defaults to "n" so Ctrl+C/EOF cannot execute an
+    # unapproved plan; an explicit approval still runs it.
+    @shell.define_singleton_method(:ask_yes_no) { |*, **| "y" }
 
     @shell.execute_input("!plan Create helper method in lib/app.rb")
 

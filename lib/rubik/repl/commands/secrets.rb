@@ -20,16 +20,17 @@ module Rubik
         USAGE_SECRETS = "Usage: !secrets <backend | list | has <name> | delete <name> | migrate>"
 
         def self.dispatch(args, ctx)
-          sub = args.first&.downcase
+          scope, clean_args = Base.parse_scope(args)
+          sub = clean_args.first&.downcase
           case sub
           when nil, "", "backend"
             render_backend(ctx)
           when "list"
             render_inventory(ctx)
           when "has"
-            render_has(args[1], ctx)
+            render_has(clean_args[1], ctx, scope)
           when "delete"
-            handle_delete(args[1], ctx)
+            handle_delete(clean_args[1], ctx, scope)
           when "migrate"
             handle_migrate(ctx)
           else
@@ -72,32 +73,59 @@ module Rubik
           end
         end
 
-        private_class_method def self.render_has(name, ctx)
+        private_class_method def self.render_has(name, ctx, scope)
           if name.nil? || name.to_s.empty?
-            ctx.out.puts "Usage: !secrets has <name>  (a dot-path like providers.openai.api_key)"
+            ctx.out.puts "Usage: !secrets has <name> [--project]  (a dot-path like providers.openai.api_key)"
             return
           end
 
+          stored_name = Rubik::Config::SecretPolicy.secret_name(name, scope)
           stored = begin
-            !Rubik::Security::SecretStore.fetch(name.to_s).nil?
+            !Rubik::Security::SecretStore.fetch(stored_name).nil?
           rescue Rubik::Security::SecretStore::Error
             false
           end
           ctx.out.puts stored ? "#{name}: stored" : "#{name}: not stored"
         end
 
-        private_class_method def self.handle_delete(name, ctx)
+        private_class_method def self.handle_delete(name, ctx, scope)
           if name.nil? || name.to_s.empty?
-            ctx.out.puts "Usage: !secrets delete <name>  (a dot-path like providers.openai.api_key)"
+            ctx.out.puts "Usage: !secrets delete <name> [--project]  (a dot-path like providers.openai.api_key)"
+            return
+          end
+
+          stored_name = Rubik::Config::SecretPolicy.secret_name(name, scope)
+          present = begin
+            !Rubik::Security::SecretStore.fetch(stored_name).nil?
+          rescue Rubik::Security::SecretStore::Error
+            false
+          end
+          unless present
+            ctx.out.puts "Stored secret '#{name}' not found (nothing deleted)."
             return
           end
 
           begin
-            Rubik::Security::SecretStore.delete(name.to_s)
+            Rubik::Security::SecretStore.delete(stored_name)
             ctx.out.puts "Deleted stored secret '#{name}'."
+            if config_reference_to?(ctx, stored_name)
+              ctx.out.puts "Warning: config still references '#{stored_name}'; " \
+                           "remove that key or re-run !secrets migrate."
+            end
           rescue Rubik::Security::SecretStore::Error => e
             ctx.out.puts "Error: #{e.message}"
           end
+        end
+
+        # A deleted secret leaves a dangling `rubik-secret:` pointer in any
+        # provider spec still naming it — say so instead of claiming clean
+        # removal.
+        private_class_method def self.config_reference_to?(ctx, stored_name)
+          ref = "#{Rubik::Security::SecretStore::REFERENCE_PREFIX}#{stored_name}"
+          providers = ctx.config.fetch("providers")
+          return false unless providers.is_a?(Hash)
+
+          providers.any? { |_, spec| spec.is_a?(Hash) && spec.value?(ref) }
         end
 
         # Moves every plaintext provider api_key into the secret store and

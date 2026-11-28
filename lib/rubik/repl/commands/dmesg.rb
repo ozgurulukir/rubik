@@ -19,9 +19,16 @@ module Rubik
               return
             end
 
-            if args.include?("clear") || args.include?("-c") || args.include?("--clear")
-              dmesg.clear!
-              ctx.out.puts "Kernel dmesg buffer cleared."
+            # `clear` must be the first argument: a stray token elsewhere
+            # (e.g. a subsystem named "clear") must never wipe the ring.
+            first = args.first.to_s.downcase
+            if ["clear", "-c", "--clear"].include?(first)
+              if ctx.agent_caller
+                ctx.out.puts "Security Error: clearing the kernel dmesg ring is operator-only."
+              else
+                dmesg.clear!
+                ctx.out.puts "Kernel dmesg buffer cleared."
+              end
               return
             end
 

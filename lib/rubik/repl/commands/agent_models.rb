@@ -187,6 +187,10 @@ module Rubik
         private_class_method def self.handle_set_role_command(clean_args, ctx, scope)
           role = clean_args[1].to_s.downcase
           model_args = clean_args[2..]
+          unless ["default", "fast", "advanced"].include?(role)
+            ctx.out.puts "Usage: !model set <default|fast|advanced> [<provider>] <model_name> [--project|--global]"
+            return
+          end
           if model_args.nil? || model_args.empty?
             ctx.out.puts "Usage: !model set <default|fast|advanced> [<provider>] <model_name> [--project|--global]"
           else
@@ -217,6 +221,13 @@ module Rubik
             scope, clean_args = Base.parse_scope(args)
             subcmd = clean_args.first&.downcase
 
+            # Model/router selection is runtime policy — an agent must not
+            # redirect the runtime at another provider (issue #687).
+            if ctx.agent_caller && !subcmd.nil? && subcmd != "list"
+              ctx.out.puts "Security Error: model routing changes are operator-only and cannot be altered by autonomous agents."
+              next
+            end
+
             if clean_args.empty? || subcmd == "list"
               handle_list_models(ctx)
             elsif subcmd == "route"
@@ -227,6 +238,10 @@ module Rubik
               handle_context_command(clean_args, ctx, scope)
             elsif subcmd == "set"
               handle_set_role_command(clean_args, ctx, scope)
+            elsif clean_args.size == 2 && clean_args[1].match?(/\A\d+\z/)
+              # `!model contekt 100` is a typo of `!model context 100`, not a
+              # request to switch the default model to a numeric name.
+              ctx.out.puts "Usage: !model <list|route|add|context|set> ..."
             else
               handle_switch_default_model(clean_args, ctx, scope)
             end

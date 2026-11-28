@@ -4,16 +4,26 @@ module Rubik
   module REPL
     module Commands
       module Base
+        SCOPE_FLAGS = {
+          "--project" => :project, "-p" => :project,
+          "--global" => :global, "-g" => :global,
+          "--session" => :session, "-s" => :session
+        }.freeze
+
+        # Only leading/trailing flags are scope selectors. Stripping them
+        # from every position silently eats command arguments (e.g. the `-g`
+        # in `!allow-cmd add git commit -g --project`) — issue #689.
         def self.parse_scope(args)
-          scope = if args.include?("--project") || args.include?("-p")
-                    :project
-                  elsif args.include?("--global") || args.include?("-g")
-                    :global
-                  else
-                    :session
-                  end
-          clean_args = args.reject { |a| ["--project", "-p", "--global", "-g", "--session", "-s"].include?(a) }
-          [scope, clean_args]
+          args = Array(args).dup
+          scope = :session
+          while (flag = args.first) && SCOPE_FLAGS.key?(flag)
+            scope = SCOPE_FLAGS.fetch(args.shift)
+          end
+          # Exactly one trailing flag: a run of them would swallow real
+          # arguments such as the `-g` in `!allow-cmd add git commit -g -p`.
+          flag = args.last
+          scope = SCOPE_FLAGS.fetch(args.pop) if SCOPE_FLAGS.key?(flag)
+          [scope, args]
         end
 
         def self.scope_label(scope)
@@ -37,8 +47,14 @@ module Rubik
           return false if res.nil? || res[:ok]
 
           out = ctx.respond_to?(:out) ? ctx.out : ctx
-          out.puts "Error: could not save to #{scope_label(scope)}: #{res[:error]} " \
-                   "(change kept for this session only)."
+          if res[:reason] == :policy_blocked
+            # Nothing was mutated — the write was refused before it reached
+            # config. Claiming the change stands would be a lie.
+            out.puts "Error: #{res[:error]} (no change made)."
+          else
+            out.puts "Error: could not save to #{scope_label(scope)}: #{res[:error]} " \
+                     "(change kept for this session only)."
+          end
           true
         end
 

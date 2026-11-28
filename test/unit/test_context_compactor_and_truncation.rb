@@ -374,7 +374,7 @@ class TestContextCompactorAndTruncation < Minitest::Test
     # Test !context drop
     output.reopen
     shell.execute_input("!context drop non_existent_file.rb")
-    assert_includes output.string, "Removed non_existent_file.rb from context index."
+    assert_includes output.string, "not in the context index (nothing removed)."
   end
 
   def test_reserved_tokens_reduces_ceiling_and_triggers_compaction

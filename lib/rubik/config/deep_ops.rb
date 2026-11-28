@@ -12,6 +12,28 @@ module Rubik
         "storage"
       ].freeze
 
+      # Runtime-policy domains that an autonomous agent must never mutate.
+      # Single source of truth for both the REPL `!config set` gate and the
+      # untrusted-project-config filter, so the two cannot drift. Provider
+      # endpoints carry stored credentials; model/router and agent budget
+      # knobs steer the whole runtime (issue #687).
+      OPERATOR_ONLY_CONFIG_PREFIXES = [
+        "security.", "sandbox.", "subagents.", "plugins.", "lsp.", "network.", "mcp.",
+        "test.", "linter.", "project.test_command", "adapter.", "skills.paths",
+        "storage.root", "buffer.model_can_apply", "buffer.auto_apply",
+        "workspace.allow_external_writes", "workspace.allowed_external_dirs",
+        "workspace.additional_roots", "tools.circuit_breaker.",
+        "providers.", "models.", "model.", "router.", "agent.", "llm.headers"
+      ].freeze
+
+      def self.operator_only_config_key?(key)
+        k = key.to_s.strip
+        OPERATOR_ONLY_CONFIG_PREFIXES.any? do |prefix|
+          base = prefix.chomp(".")
+          k == base || k.start_with?("#{base}.")
+        end
+      end
+
       private
 
       def deep_dup(obj)
@@ -99,17 +121,30 @@ module Rubik
         target[last_key] = value
       end
 
+      # Drop every operator-only key from a repo-shipped config, at any
+      # depth. A workspace that has not been trusted must not be able to
+      # redirect providers, auto-apply edits, spawn subagents or open
+      # external write paths just by committing a .rubik/config.yml.
       def filter_untrusted_project_config(hash)
         return hash unless hash.is_a?(Hash)
 
         filtered = deep_dup(hash)
         SENSITIVE_PROJECT_CONFIG_KEYS.each { |key| filtered.delete(key) }
-        if filtered["workspace"].is_a?(Hash)
-          ["allow_external_writes", "allowed_external_dirs", "additional_roots"].each do |k|
-            filtered["workspace"].delete(k)
+        prune_operator_only_keys!(filtered, "")
+        filtered
+      end
+
+      def prune_operator_only_keys!(node, prefix)
+        return unless node.is_a?(Hash)
+
+        node.each_key do |key|
+          full = prefix.empty? ? key.to_s : "#{prefix}.#{key}"
+          if Rubik::Config.operator_only_config_key?(full)
+            node.delete(key)
+          else
+            prune_operator_only_keys!(node[key], full)
           end
         end
-        filtered
       end
     end
   end

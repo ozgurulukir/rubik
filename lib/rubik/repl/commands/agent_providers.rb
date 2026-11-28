@@ -17,6 +17,21 @@ module Rubik
                          "set-context <provider> <model> <limit> | remove-model <provider> <model> | " \
                          "set <provider> <field> <val> | remove <name>> [--project|--global]"
 
+        # Provider names become dot-path segments in `providers.<name>`; a
+        # dotted name forges a nested key and poisons the registry at boot.
+        PROVIDER_NAME = /\A[a-z0-9_-]+\z/
+        FREE_FORM_FIELDS = ["stream", "stream_timeout", "open_timeout", "tool_native", "num_ctx"].freeze
+        SETTABLE_FIELDS = (FREE_FORM_FIELDS + [
+          "key", "api_key", "key-env", "key_env", "api_key_env", "endpoint", "url", "host", "type"
+        ]).freeze
+
+        private_class_method def self.valid_provider_name?(name, ctx)
+          return true if name.to_s.match?(PROVIDER_NAME)
+
+          ctx.out.puts "Error: Invalid provider name '#{name}'. Use only [a-z0-9_-]."
+          false
+        end
+
         def self.register(shell)
           register_provider_command(shell)
           register_providers_command(shell)
@@ -73,6 +88,7 @@ module Rubik
                          "[--key=API_KEY | --key-env=ENV_VAR] [--model=NAME] [--context=LIMIT] [--project|--global]"
             return
           end
+          return unless valid_provider_name?(p_name, ctx)
 
           unless p_endpoint.start_with?("http://") || p_endpoint.start_with?("https://")
             ctx.out.puts "Error: Endpoint must be a valid HTTP/HTTPS URL (starting with http:// or https://). " \
@@ -90,6 +106,10 @@ module Rubik
           key_env = key_env_arg&.split("=", 2)&.last
           m_name = model_arg ? model_arg.split("=", 2).last : "default"
           c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
+          if c_limit <= 0
+            ctx.out.puts "Error: --context must be a positive integer."
+            return
+          end
 
           normalized_endpoint = if ["openai_compatible", "openai"].include?(p_type)
                                   Rubik::LLM::OpenAICompatibleProvider.normalize_endpoint(p_endpoint)
@@ -123,6 +143,7 @@ module Rubik
             ctx.out.puts "Usage: !provider add-model <provider_name> <model_name> [--context=LIMIT] [--project|--global]"
             return
           end
+          return unless valid_provider_name?(p_name, ctx)
 
           context_arg = clean_args.find { |a| a.start_with?("--context=") }
           c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
@@ -145,6 +166,7 @@ module Rubik
             ctx.out.puts "Usage: !provider remove-model <provider_name> <model_name> [--project|--global]"
             return
           end
+          return unless valid_provider_name?(p_name, ctx)
 
           res = ctx.config.remove_provider_model(p_name, m_name, persist: scope)
           ctx.refresh_llm_registry!
@@ -163,6 +185,12 @@ module Rubik
           val = clean_args[3]
           if p_name.nil? || p_name.empty? || field.nil? || val.nil?
             ctx.out.puts "Usage: !provider set <name> <endpoint|key|key-env|type|stream|stream_timeout|open_timeout|tool_native|num_ctx> <value> [--project|--global]"
+            return
+          end
+          return unless valid_provider_name?(p_name, ctx)
+
+          unless SETTABLE_FIELDS.include?(field)
+            ctx.out.puts "Error: Provider field '#{field}' is not settable. Valid fields: #{SETTABLE_FIELDS.join(', ')}."
             return
           end
 
@@ -225,19 +253,20 @@ module Rubik
             ctx.out.puts "Usage: !provider remove <name> [--project|--global]"
             return
           end
+          return unless valid_provider_name?(p_name, ctx)
 
           res = ctx.config.remove_provider(p_name, persist: scope)
           ctx.refresh_llm_registry!
           if res[:ok]
-            # Best-effort hygiene: drop the provider's stored secret in both
-            # scope slots (the write guard suffixes project-scope names).
-            begin
-              Rubik::Security::SecretStore.delete("providers.#{p_name}.api_key")
-              Rubik::Security::SecretStore.delete("providers.#{p_name}.api_key.project")
-            rescue Rubik::Security::SecretStore::Error
-              nil
+            # Config#delete already cleans the stored secret for the scope it
+            # actually removed. Deleting it here regardless leaves a dangling
+            # pointer when the provider is still defined in another layer.
+            if ctx.config.provider_spec(p_name)
+              ctx.out.puts "Provider '#{p_name}' is still defined in another configuration scope; " \
+                           "nothing was removed at #{Base.scope_label(scope)}."
+            else
+              ctx.out.puts "Removed provider '#{p_name}' [#{Base.scope_label(scope)}]."
             end
-            ctx.out.puts "Removed provider '#{p_name}' [#{Base.scope_label(scope)}]."
           elsif res[:reason] == :unknown_provider
             ctx.out.puts "Provider '#{p_name}' not found."
           else
@@ -253,6 +282,7 @@ module Rubik
             ctx.out.puts "Usage: !provider set-context <provider> <model> <limit_in_tokens> [--project|--global]"
             return
           end
+          return unless valid_provider_name?(p_name, ctx)
 
           res = ctx.config.upsert_provider_model(p_name, m_name, context_limit: limit_val, persist: scope)
           ctx.refresh_llm_registry!

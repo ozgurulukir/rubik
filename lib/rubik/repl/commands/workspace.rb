@@ -46,7 +46,10 @@ module Rubik
             when "help", "-h", "--help"
               ctx.out.puts USAGE_ALLOW_CMD
             else
-              handle_allow_cmd_add(ctx, clean_args, scope)
+              # Keep the fail-closed refusal for dangerous shorthand, but a
+              # typo like `ad` must never become an implicit `add` mutation.
+              approval = CommandPrefixApproval.new(config: ctx.config, out: ctx.out, guard: ctx.guard)
+              ctx.out.puts "Unknown !allow-cmd subcommand '#{sub}'. #{USAGE_ALLOW_CMD}" unless approval.blocked_shorthand?(clean_args)
             end
           end
         end
@@ -193,9 +196,12 @@ module Rubik
           allow_handler = lambda do |args, ctx, invoked_as: :allow_dir|
             scope, clean_args = Base.parse_scope(args)
             is_ro = clean_args.include?("--ro") || clean_args.include?("-r")
+            is_rw = clean_args.include?("--rw") || clean_args.include?("-w")
             clean_args = clean_args.reject { |a| ["--rw", "-w", "--ro", "-r"].include?(a) }
 
-            mode_rw = !is_ro
+            # Least privilege: a bare grant is read-only; write access must
+            # be asked for explicitly with --rw (issue #688).
+            mode_rw = is_rw && !is_ro
             sub = clean_args.first&.downcase || "list"
             effective_root = ctx.buffer_manager&.root_dir || Dir.pwd
 
@@ -272,35 +278,11 @@ module Rubik
           approval.allow_dir! if approval.trusted?
         end
 
-        OPERATOR_ONLY_CONFIG_PREFIXES = [
-          "security.",
-          "sandbox.",
-          "subagents.",
-          "plugins.",
-          "lsp.",
-          "network.",
-          "mcp.",
-          "test.",
-          "linter.",
-          "project.test_command",
-          "adapter.",
-          "skills.paths",
-          "storage.root",
-          "buffer.model_can_apply",
-          "buffer.auto_apply",
-          "workspace.allow_external_writes",
-          "workspace.allowed_external_dirs",
-          "workspace.additional_roots",
-          "tools.circuit_breaker."
-        ].freeze
+        # SSOT lives in Config so the REPL gate and the untrusted-project
+        # config filter cannot drift apart (issue #687).
+        OPERATOR_ONLY_CONFIG_PREFIXES = Rubik::Config::OPERATOR_ONLY_CONFIG_PREFIXES
 
-        def self.operator_only_config_key?(key)
-          k = key.to_s.strip
-          OPERATOR_ONLY_CONFIG_PREFIXES.any? do |p|
-            prefix = p.chomp(".")
-            k == prefix || k.start_with?("#{prefix}.")
-          end
-        end
+        def self.operator_only_config_key?(key) = Rubik::Config.operator_only_config_key?(key)
 
         # Secrets never render: plaintext shows as the redaction mask, while
         # a rubik-secret: pointer prints as-is (it names a location, not a
@@ -347,7 +329,14 @@ module Rubik
                 # plugins (arbitrary code execution), LSP binary commands, or external write policies.
                 ctx.out.puts "Security Error: configuration key '#{key}' is operator-only and cannot be altered by autonomous agents."
               else
-                res = ctx.config.set(key, val, persist: scope)
+                begin
+                  res = ctx.config.set(key, val, persist: scope)
+                rescue ArgumentError => e
+                  # Schema coercion raises before any mutation; keep the
+                  # error inside the command instead of escaping the REPL.
+                  ctx.out.puts "Error: #{e.message}"
+                  next
+                end
                 next if Base.report_persist_failure(ctx, res, scope)
 
                 ctx.out.puts "Config '#{key}' updated to '#{display_value(key, val)}' [#{Base.scope_label(scope)}]."
