@@ -351,10 +351,27 @@ class TestReplIssueFixes687688689 < Minitest::Test
     assert_includes @out.string, "Usage: !model set"
 
     original_default = @config.model_spec(:default)["name"]
-    reset_out
-    @shell.execute_input("!model contekt 100")
-    assert_includes @out.string, "Usage: !model"
-    assert_equal original_default, @config.model_spec(:default)["name"]
+    ["!model contekt 100", "!model contekt abc"].each do |input|
+      reset_out
+      @shell.execute_input(input)
+      assert_includes @out.string, "Unknown !model form 'contekt'"
+      assert_equal original_default, @config.model_spec(:default)["name"]
+    end
+  end
+
+  def test_model_switch_accepts_only_known_provider_as_first_token
+    registry = Object.new
+    registry.define_singleton_method(:list) { ["ollama", "openrouter"] }
+    ctx = Object.new
+    ctx.define_singleton_method(:llm_registry) { registry }
+    ctx.define_singleton_method(:config) { nil }
+    mod = Rubik::REPL::Commands::AgentModels
+
+    assert mod.valid_model_switch_args?(["llama3"], ctx), "a single token is a model name"
+    assert mod.valid_model_switch_args?(["ollama", "llama3"], ctx)
+    assert mod.valid_model_switch_args?(["openrouter", "anthropic/claude"], ctx)
+    refute mod.valid_model_switch_args?(["contekt", "100"], ctx)
+    refute mod.valid_model_switch_args?(["contekt", "abc"], ctx)
   end
 
   def test_mcp_unknown_servers_report_not_found
