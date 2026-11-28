@@ -361,6 +361,9 @@ subcommands:
     classification: LOCAL_EFFECTS
     risk: LOW
     strict: false
+    options:
+      -C: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --force-create: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
   restore:
     classification: LOCAL_EFFECTS
     strict: false

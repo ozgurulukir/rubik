@@ -26,6 +26,11 @@ module Rubik
         "cp", "mv", "tee", "touch", "ln", "install", "rm", "mkdir", "rsync", "dd", "chmod", "chown", "git"
       ].freeze
 
+      # git positionals are write targets only for subcommands that create or
+      # replace files. Read-only subcommands take pathspecs (`git status .git`,
+      # `git log --oneline .git/config`) that must stay allowed.
+      GIT_WRITE_SUBCOMMANDS = ["clone", "init", "worktree"].freeze
+
       # Options whose VALUES are write targets. Positionals cover the common
       # case; these cover `-o`, `-t`, `-C`, `--target-directory`, etc.
       WRITE_TARGET_OPTIONS = {
@@ -34,7 +39,7 @@ module Rubik
         "tar" => ["-C", "--directory", "-f", "--file"],
         "curl" => ["-o", "--output"],
         "wget" => ["-O", "--output-document"],
-        "git" => ["--separate-git-dir"]
+        "git" => ["--separate-git-dir", "--file"]
       }.freeze
 
       def initialize(audit:, custom_patterns: [])
@@ -104,7 +109,11 @@ module Rubik
       # prefix behaviour). A de-globbed candidate closes `.en?v`-style
       # metacharacter evasions without trying to predict shell expansion.
       def critical_path?(path)
-        norm = path.to_s.tr("\\", "/").gsub(%r{\A\./}, "").sub(%r{/+\z}, "").strip
+        # Linear strip (no regex on attacker-controlled input): CodeQL flagged
+        # `/+\z` as a polynomial-time match on strings with many slashes.
+        norm = path.to_s.tr("\\", "/").delete_prefix("./")
+        norm = norm[0...-1] while norm.end_with?("/")
+        norm = norm.strip
         return false if norm.empty?
 
         [norm, norm.gsub(/[*?\[\]\\]/, "")].uniq.any? do |candidate|
@@ -117,28 +126,41 @@ module Rubik
         pattern_segments = pattern.split("/").reject(&:empty?)
         return false if pattern_segments.empty? || segments.empty?
 
-        (0...segments.size).any? { |start| match_segments?(pattern_segments, segments[start..]) }
+        memo = {}
+        (0...segments.size).any? { |start| match_segments?(pattern_segments, segments[start..], memo) }
       end
 
-      def match_segments?(pattern_segments, path_segments)
+      # Memoized on (pattern, remaining path) so a `**` restart never
+      # re-evaluates the same suffix for every starting position.
+      def match_segments?(pattern_segments, path_segments, memo = {})
+        key = [pattern_segments, path_segments]
+        return memo[key] if memo.key?(key)
+
+        memo[key] = match_segments_once(pattern_segments, path_segments, memo)
+      end
+
+      def match_segments_once(pattern_segments, path_segments, memo)
         return path_segments.empty? if pattern_segments.empty?
 
         head = pattern_segments.first
         tail = pattern_segments[1..]
         if head == "**"
-          return match_segments?(tail, path_segments) ||
-                 (!path_segments.empty? && match_segments?(pattern_segments, path_segments[1..]))
+          return match_segments?(tail, path_segments, memo) ||
+                 (!path_segments.empty? && match_segments?(pattern_segments, path_segments[1..], memo))
         end
         return false if path_segments.empty?
         return false unless File.fnmatch?(head, path_segments.first, File::FNM_DOTMATCH)
 
-        match_segments?(tail, path_segments[1..])
+        match_segments?(tail, path_segments[1..], memo)
       end
 
       # Values of write-target options in either `--opt=value`, `--opt value`
       # or joined short `-ovalue` form.
       def option_write_targets(cmd_name, argv)
         names = WRITE_TARGET_OPTIONS[cmd_name] || []
+        # `-f` means "force" for most git subcommands but "--file" for config;
+        # add the short form only there to avoid blocking `git log -f .git`.
+        names += ["-f"] if cmd_name == "git" && argv[1].to_s == "config"
         return [] if names.empty?
 
         targets = []
@@ -161,9 +183,12 @@ module Rubik
         ast_commands = ast.respond_to?(:commands) ? ast.commands.to_a : []
         write_targets = ast_commands.flat_map do |c|
           targets = Array(c.respond_to?(:write_paths) ? c.write_paths : nil)
-          cmd_name = c.respond_to?(:command) ? c.command.to_a.first.to_s : ""
+          command_parts = c.respond_to?(:command) ? c.command.to_a : []
+          cmd_name = command_parts.first.to_s
           if WRITE_COMMANDS.include?(cmd_name) || WRITE_TARGET_OPTIONS.key?(cmd_name)
-            targets.concat(c.positionals.to_a) if WRITE_COMMANDS.include?(cmd_name) && c.respond_to?(:positionals)
+            subcommand = command_parts[1].to_s
+            positional_targets = cmd_name != "git" || GIT_WRITE_SUBCOMMANDS.include?(subcommand)
+            targets.concat(c.positionals.to_a) if positional_targets && c.respond_to?(:positionals)
             targets.concat(Array(c.directories)) if c.respond_to?(:directories)
             argv = c.respond_to?(:argv) ? c.argv.to_a : []
             targets.concat(option_write_targets(cmd_name, argv))

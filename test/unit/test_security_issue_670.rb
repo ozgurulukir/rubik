@@ -112,6 +112,13 @@ class TestSecurityIssue670 < Minitest::Test
     assert_blocked("git config --global core.editor 'sh -c id'")
   end
 
+  def test_git_config_with_attached_file_option_is_blocked
+    assert_blocked("git config --file=/tmp/sec670.cfg core.editor 'sh -c id'")
+    assert_blocked("git config --file=.git/config core.editor 'sh -c id'")
+    assert_blocked("git config -f.git/config core.editor 'sh -c id'")
+    assert_blocked("git config --file .git/config core.editor 'sh -c id'")
+  end
+
   # 4. cd wrappers and options.
   def test_cd_with_terminator_then_system_path_mutation_is_blocked
     assert_blocked("cd -- /etc; rm -rf passwd")
@@ -152,6 +159,13 @@ class TestSecurityIssue670 < Minitest::Test
 
   def test_ansi_c_escaped_system_path_is_blocked
     assert_blocked("touch $'\\x2fetc/passwd'")
+  end
+
+  def test_unicode_escaped_system_paths_are_blocked
+    assert_blocked("touch $'\\u002fetc/passwd'")
+    assert_blocked("touch $'\\U0000002fetc/passwd'")
+    assert_blocked("touch $'\\u002fetc\\u002fpasswd'")
+    assert_blocked("rm -rf $'\\u002fetc'")
   end
 
   def test_glob_system_paths_are_blocked
@@ -207,5 +221,14 @@ class TestSecurityIssue670 < Minitest::Test
   def test_git_checkout_force_branch_forms_are_blocked
     assert_blocked("git checkout -B main")
     assert_blocked("git checkout --orphan x")
+  end
+
+  def test_git_switch_force_create_forms_are_blocked
+    assert_blocked("git switch -C main")
+    assert_blocked("git switch --force-create main")
+  end
+
+  def test_cd_glob_target_with_mutating_pipeline_is_blocked
+    assert_blocked("cd /et? && rm -rf passwd")
   end
 end

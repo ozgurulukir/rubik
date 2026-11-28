@@ -267,8 +267,19 @@ module Rubik
           # key here changes how git executes later commands (issue #670).
           if result.command[1] == "config"
             rest = (argv[2..] || []).dup
-            rest.shift if ["--global", "--system", "--local", "--worktree"].include?(rest.first)
-            rest.shift(2) if ["--file", "-f"].include?(rest.first)
+            while (opt = rest.first)
+              if ["--global", "--system", "--local", "--worktree"].include?(opt) ||
+                 (opt.start_with?("--file=", "-f") && opt.length > 2)
+                # Scope flags and attached `--file=`/`-f` forms each consume
+                # one token. Missing the attached forms let the option itself
+                # be read as the key, hiding the real dangerous key (#703).
+                rest.shift
+              elsif ["--file", "-f"].include?(opt)
+                rest.shift(2)
+              else
+                break
+              end
+            end
             key = rest.first
             value = rest[1]
             assignments << [key, value] if key && value && dangerous_git_config_key?(key)
@@ -490,7 +501,7 @@ module Rubik
 
           expression_reason = nil
           if overall != Classification::DANGEROUS &&
-             directories.any? { |d| d == UNRESOLVED_CD_TARGET || system_path?(d) } &&
+             directories.any? { |d| d == UNRESOLVED_CD_TARGET || system_path?(d) || dangerous_path_token?(d) } &&
              mutating_pipeline?(command_results)
             overall = Classification::DANGEROUS
             overall_risk = Risk::HIGH
@@ -514,7 +525,9 @@ module Rubik
           named = mutators.first(EXPRESSION_MUTATOR_CAP)
           named << "..." if mutators.size > EXPRESSION_MUTATOR_CAP
           named = "a mutating command" if named.empty?
-          "mutating pipeline (#{named.join(', ')}) touches system directory #{directories.find { |d| d == UNRESOLVED_CD_TARGET || system_path?(d) }}"
+          dir = directories.find { |d| d == UNRESOLVED_CD_TARGET || system_path?(d) || dangerous_path_token?(d) }
+          target = dir == UNRESOLVED_CD_TARGET ? "a dynamically resolved directory" : "system directory #{dir}"
+          "mutating pipeline (#{named.join(', ')}) touches #{target}"
         end
 
         def mutator?(result)
@@ -601,7 +614,7 @@ module Rubik
           s = decode_ansi_c(s[2..-2]) if s.start_with?("$'") && s.end_with?("'")
           # tree-sitter already strips the `$'...'` wrapper but leaves the
           # \xNN / \nnn escapes in the token. Decode them before matching.
-          s = decode_ansi_c(s) if s.match?(/\\[xX0-7]/)
+          s = decode_ansi_c(s) if s.match?(/\\[xXuU0-7]/)
           # Windows drive paths keep their backslashes: stripping them would
           # turn `C:\Windows\System32` into a non-system token.
           return s if s.match?(%r{\A[a-zA-Z]:[\\/]})
@@ -612,6 +625,8 @@ module Rubik
 
         def decode_ansi_c(inner)
           inner.gsub(/\\x([0-9a-fA-F]{1,2})/) { [Regexp.last_match(1).to_i(16)].pack("C") }
+               .gsub(/\\u([0-9a-fA-F]{4})/) { ansi_unicode_char(Regexp.last_match(1)) }
+               .gsub(/\\U([0-9a-fA-F]{8})/) { ansi_unicode_char(Regexp.last_match(1)) }
                .gsub(/\\([0-7]{1,3})/) { [Regexp.last_match(1).to_i(8)].pack("C") }
                .gsub(/\\([\\'"abfnrtv])/) do
                  case Regexp.last_match(1)
@@ -625,6 +640,16 @@ module Rubik
                  else Regexp.last_match(1)
                  end
                end
+        end
+
+        # Bash expands \uHHHH / \UHHHHHHHH to a Unicode codepoint (UTF-8).
+        # Invalid codepoints collapse to U+FFFD so they never decode to a
+        # path character the kernel would accept.
+        def ansi_unicode_char(hex)
+          codepoint = hex.to_i(16)
+          return "\uFFFD" if codepoint > 0x10FFFF || (0xD800..0xDFFF).cover?(codepoint)
+
+          [codepoint].pack("U")
         end
 
         # A glob metacharacter in a path-shaped argument can expand to a

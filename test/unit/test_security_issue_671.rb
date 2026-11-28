@@ -85,4 +85,11 @@ class TestSecurityIssue671 < Minitest::Test
     assert @guard.verify_command_safety!("echo x > notes.txt")
     assert @guard.verify_command_safety!("cp a.txt b.txt")
   end
+
+  def test_read_only_git_pathspecs_stay_allowed
+    [
+      "git status .git", "git log --oneline .git/config", "git diff .rubik/config.yml",
+      "git show HEAD:.env"
+    ].each { |command| assert @guard.verify_command_safety!(command), command }
+  end
 end

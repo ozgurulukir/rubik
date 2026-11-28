@@ -31,7 +31,7 @@ module Rubik
           resolved = ShellResolver.resolve(cmd, preference: @options[:shell] || "auto")
           # Defense in depth: the POSIX argv path used to reach spawn with no
           # gate at all (only the cmd.exe branch re-verified). Gate it here.
-          # cmd is already gated inside verify_cmd_safe with cmd semantics.
+          # cmd is already gated inside spawn_args_for with cmd semantics.
           # PowerShell cmdlets use a different vocabulary the POSIX classifier
           # cannot classify. pwsh routing therefore relies on the upstream
           # RunCommandTool gate; direct Sandbox::Runner callers must gate first.
@@ -95,11 +95,14 @@ module Rubik
           # the cmd.exe-specific static check is a different layer: the
           # upstream gate classifies with POSIX semantics, so `start calc`
           # can be approved there and still be destructive under cmd.exe.
-          # Keep that check even for verified commands (#672).
-          verify_cmd_specific_safe!(cmd)
-          return [cmd] if verified
-
-          verify_command_safety!(cmd, shell: "cmd")
+          # Keep that check even for verified commands (#672). Non-verified
+          # callers go through verify_cmd_safe, which keeps the global gate
+          # ahead of the cmd-specific refinement.
+          if verified
+            verify_cmd_specific_safe!(cmd)
+          else
+            verify_cmd_safe(cmd)
+          end
           [cmd]
         end
 

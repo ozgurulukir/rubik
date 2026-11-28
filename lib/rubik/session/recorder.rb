@@ -49,7 +49,13 @@ module Rubik
         # Session transcripts hold full prompts and tool output: create and
         # keep them owner-only (issue #673), matching the secret store.
         File.open(@session_file, "a", 0o600) do |f|
-          f.chmod(0o600)
+          begin
+            f.chmod(0o600)
+          rescue SystemCallError => e
+            # A chmod failure must not abort the turn; best-effort matches
+            # Config::Store#ensure_owner_only! and the secret store.
+            Rubik::Log.debug(:session, "could not enforce owner-only session file: #{e.class}: #{e.message}")
+          end
           f.puts(Rubik::Platform.safe_json_dump(event))
         end
         event

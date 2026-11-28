@@ -114,9 +114,14 @@ class TestShellResolver < Minitest::Test
   end
 
   def test_powershell_fingerprint_routes_to_pwsh
-    res = Rubik::Sandbox::ShellResolver.resolve("Get-ChildItem $env:TEMP", platform: :windows)
-    assert_equal "pwsh", res[:shell]
-    assert_equal ["pwsh", "-NoProfile", "-NonInteractive", "-Command", "Get-ChildItem $env:TEMP"], res[:argv]
+    # The resolver now spawns the binary it discovers, and CI hosts may have
+    # pwsh installed at an absolute path. Pin discovery so this fingerprint
+    # assertion stays deterministic across hosts.
+    Rubik::Platform.stub :which, proc {} do
+      res = Rubik::Sandbox::ShellResolver.resolve("Get-ChildItem $env:TEMP", platform: :windows)
+      assert_equal "pwsh", res[:shell]
+      assert_equal ["pwsh", "-NoProfile", "-NonInteractive", "-Command", "Get-ChildItem $env:TEMP"], res[:argv]
+    end
   end
 
   def test_powershell_verb_noun_cmdlets_route_to_pwsh
