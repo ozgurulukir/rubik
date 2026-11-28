@@ -98,6 +98,8 @@ class TestSecretSecurity673 < Minitest::Test
   end
 
   def test_session_and_audit_files_are_owner_only
+    skip "Windows does not model POSIX file modes" if Rubik::Platform.windows?
+
     recorder = Rubik::Session::Recorder.new(sessions_dir: File.join(@root, "sessions"), session_name: "s.jsonl")
     recorder.record("note", "hello")
     audit = Rubik::Security::AuditLog.new(File.join(@root, "audit.log"))

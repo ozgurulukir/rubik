@@ -541,8 +541,17 @@ module Rubik
 
         def temp_path?(path)
           p = path.to_s
+          temp_root?(p) || p.include?("AppData/Local/Temp") || p.include?("AppData\\Local\\Temp")
+        end
+
+        # macOS temp roots live under /var/folders (or its /private/var
+        # realpath). SYSTEM_DIRS includes /var, so without this exemption a
+        # relative path resolved against a temp root is misread as a system
+        # path and the workspace-trust gate can never allow it.
+        def temp_root?(path)
+          p = path.to_s
           p == "/tmp" || p.start_with?("/tmp/") || p == "/var/tmp" || p.start_with?("/var/tmp/") ||
-            p.include?("AppData/Local/Temp") || p.include?("AppData\\Local\\Temp")
+            p.start_with?("/var/folders/") || p.start_with?("/private/var/folders/")
         end
 
         def real_file_path?(path)
@@ -595,10 +604,7 @@ module Rubik
 
           return true if Rubik::Platform.dangerous_system_roots.include?(norm) || Rubik::Platform.drive_root?(expanded)
 
-          if norm.start_with?("/tmp/") || norm.start_with?("/var/tmp/") ||
-             norm.include?("/appdata/local/temp/") || norm.include?("\\appdata\\local\\temp\\")
-            return false
-          end
+          return false if temp_root?(norm) || norm.include?("/appdata/local/temp/") || norm.include?("\\appdata\\local\\temp\\")
 
           return true if SYSTEM_DIRS.any? { |sys| Rubik::Platform.path_under?(norm, sys) }
 
