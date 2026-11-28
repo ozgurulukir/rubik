@@ -60,7 +60,9 @@ module Rubik
               ctx.out.puts "\n=== Proposed Plan ==="
               ctx.out.puts res[:output]
               ctx.out.puts "=====================\n"
-              ans = ctx.ask_yes_no("[Rubik::Plan] Should the plan be applied?", default: "y")
+              # Fail closed: ask_yes_no returns the default on Ctrl+C/EOF, so
+              # "y" would execute an unapproved plan on a non-interactive turn.
+              ans = ctx.ask_yes_no("[Rubik::Plan] Should the plan be applied?", default: "n")
               if ["y", "yes", "evet"].include?(ans)
                 ctx.out.puts "[Rubik::Act] Executing approved plan..."
                 ctx.execute_free_text("Execute the following approved plan step by step:\n#{res[:output]}")
@@ -205,10 +207,11 @@ module Rubik
               ctx.out.puts "Network:       #{net_str}"
               ctx.out.puts "Registered:    #{registered_keys.join(', ')}"
             elsif subcmd == "on"
+              # Enabling must preserve an explicitly configured driver; the
+              # dedicated `!sandbox <driver>` branch is the only place that
+              # changes it (issue #688).
               res = ctx.config.set("sandbox.enabled", true, persist: scope)
-              driver_res = ctx.config.set("sandbox.driver", "bwrap", persist: scope) if Rubik::Platform.linux?
               next if Base.report_persist_failure(ctx, res, scope)
-              next if Base.report_persist_failure(ctx, driver_res, scope)
 
               ctx.out.puts "[Sandbox] Enabled (#{ctx.sandbox_runner&.driver&.name || 'default'})."
             elsif subcmd == "off"

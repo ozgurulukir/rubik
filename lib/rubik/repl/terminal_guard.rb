@@ -11,6 +11,10 @@ module Rubik
     class TerminalGuard
       include MonitorMixin
 
+      # #686: a quiet stream session has no prompt to flush the inbox; keep
+      # only the newest N and account for the rest at flush time.
+      QUIET_INBOX_LIMIT = 100
+
       attr_accessor :quiet, :output, :reline
 
       def initialize(output: $stdout, reline: Reline, quiet: false)
@@ -21,6 +25,7 @@ module Rubik
         @reading = false
         @collecting = false
         @inbox = []
+        @inbox_dropped = 0
         @write_monitor = Monitor.new
       end
 
@@ -42,6 +47,10 @@ module Rubik
         buffered, reading = synchronize do
           if @quiet && !force
             @inbox << clean_text
+            if @inbox.size > QUIET_INBOX_LIMIT
+              @inbox.shift
+              @inbox_dropped += 1
+            end
             [true, false]
           else
             [false, @reading]
@@ -63,11 +72,13 @@ module Rubik
 
       def flush_notices!
         items, reading = synchronize do
-          next [nil, false] if @inbox.empty?
+          next [nil, false] if @inbox.empty? && @inbox_dropped.zero?
 
           drained = @inbox.dup
+          dropped = @inbox_dropped
           @inbox.clear
-          [drained, @reading]
+          @inbox_dropped = 0
+          [dropped.positive? ? ["…#{dropped} more notice(s) suppressed", *drained] : drained, @reading]
         end
         return false if items.nil?
 
@@ -97,9 +108,8 @@ module Rubik
       # behavior — rubik.gemspec floors that version and
       # test/integration/test_reline_wakeup_contract.rb pins the real gate
       # (on 0.6.x the injected Enter strands until the next keystroke).
-      # idle_and_empty? is re-evaluated
-      # inside this critical section (Monitor reentrancy makes the nested
-      # synchronize free); the residual window between check and gate
+      # idle_and_empty? is re-evaluated inside this critical section (Monitor
+      # reentrancy makes the nested synchronize free); the residual window between check and gate
       # consumption is inherent to Reline's thread model and accepted. A
       # failing ungetc degrades to false — never raises into the kworker.
       # with_reading never holds this monitor during readline, so this

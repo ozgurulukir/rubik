@@ -44,6 +44,9 @@ module Rubik
         return if user_text.to_s.strip.empty?
         return if assistant_content.nil? || assistant_content.to_s.strip.empty?
 
+        # #686: mark only an actually delivered answer, so a late error in
+        # the settle tail cannot append a contradictory failed-turn row.
+        @turn_outcome_recorded = true
         @conversation_history << { role: "user", content: user_text }
         @conversation_history << { role: "assistant", content: assistant_content.to_s }
         trim_conversation_window!
@@ -222,10 +225,22 @@ module Rubik
         harness = Rubik::Coeffects.get(@runtime_manager&.context, Rubik::Coeffects::PRUNER)
         return unless harness
 
-        new_window, receipt = harness.take_applicable_plan!(@conversation_history)
+        # #686: the bus thread injects notices into @conversation_history
+        # under the router's mutex (issue #557). Copy-validate-swap must hold
+        # the SAME mutex or a notice appended mid-take lands in the discarded
+        # array and is lost. Bare EmitHost doubles skip the lock.
+        apply = lambda do
+          result = harness.take_applicable_plan!(@conversation_history)
+          @conversation_history = result[0] if result && result[0]
+          result
+        end
+        new_window, receipt = if respond_to?(:notice_router)
+                                notice_router.subagent_notices_mutex.synchronize(&apply)
+                              else
+                                apply.call
+                              end
         return unless new_window
 
-        @conversation_history = new_window
         Rubik::Storage::Vakanuvis::Orientation.inject_after_compaction!(@conversation_history, @runtime_manager, config: @config)
         line = "[Pruner] Applied staged plan: dropped #{receipt[:dropped]} unit(s), " \
                "summarized #{receipt[:summarized]} (#{receipt[:skipped_stale]} stale op(s) skipped) — " \

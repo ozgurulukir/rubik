@@ -16,10 +16,7 @@ module Rubik
           raw_target = target.strip
 
           # Extract registered providers from registry and config
-          registered_providers = []
-          registered_providers += ctx.llm_registry.list if ctx.llm_registry
-          registered_providers += Rubik::Storage::Layout.config_get(ctx.config, "providers", {}).keys if ctx.config
-          registered_providers = registered_providers.map { |p| p.to_s.downcase }.uniq
+          registered_providers = registered_provider_names(ctx)
 
           # 1. Explicit provider prefix with colon: e.g. "openrouter:anthropic/claude-3.5-sonnet"
           if raw_target.include?(":")
@@ -66,16 +63,33 @@ module Rubik
           [current_default_prov, raw_target]
         end
 
+        # Provider names are the only valid first token of a multi-argument
+        # `!model <provider> <model>` switch. Shared with the parsers so
+        # validation and parsing cannot disagree (issue #689).
+        def self.registered_provider_names(ctx)
+          names = []
+          names += ctx.llm_registry.list if ctx.llm_registry
+          names += Rubik::Storage::Layout.config_get(ctx.config, "providers", {}).keys if ctx.config
+          names.map { |p| p.to_s.downcase }.uniq
+        end
+
+        # A single token is always a model name under the default provider.
+        # Multiple tokens are only meaningful when the first names a known
+        # provider; otherwise it is a mistyped subcommand, not a mutation.
+        def self.valid_model_switch_args?(clean_args, ctx)
+          args = Array(clean_args)
+          return true if args.size <= 1
+
+          registered_provider_names(ctx).include?(args.first.to_s.downcase)
+        end
+
         def self.parse_model_args(clean_args, ctx)
           return ["ollama", ""] if clean_args.nil? || clean_args.empty?
 
           clean_array = clean_args.is_a?(Array) ? clean_args : clean_args.to_s.strip.split(/\s+/)
           return ["ollama", ""] if clean_array.empty?
 
-          registered_providers = []
-          registered_providers += ctx.llm_registry.list if ctx.llm_registry
-          registered_providers += Rubik::Storage::Layout.config_get(ctx.config, "providers", {}).keys if ctx.config
-          registered_providers = registered_providers.map { |p| p.to_s.downcase }.uniq
+          registered_providers = registered_provider_names(ctx)
 
           # 1. If 2 or more space-separated arguments: e.g. ["openrouter", "deepseek/deepseek-v4-flash"]
           if clean_array.length >= 2
@@ -187,6 +201,10 @@ module Rubik
         private_class_method def self.handle_set_role_command(clean_args, ctx, scope)
           role = clean_args[1].to_s.downcase
           model_args = clean_args[2..]
+          unless ["default", "fast", "advanced"].include?(role)
+            ctx.out.puts "Usage: !model set <default|fast|advanced> [<provider>] <model_name> [--project|--global]"
+            return
+          end
           if model_args.nil? || model_args.empty?
             ctx.out.puts "Usage: !model set <default|fast|advanced> [<provider>] <model_name> [--project|--global]"
           else
@@ -217,6 +235,13 @@ module Rubik
             scope, clean_args = Base.parse_scope(args)
             subcmd = clean_args.first&.downcase
 
+            # Model/router selection is runtime policy — an agent must not
+            # redirect the runtime at another provider (issue #687).
+            if ctx.agent_caller && !subcmd.nil? && subcmd != "list"
+              ctx.out.puts "Security Error: model routing changes are operator-only and cannot be altered by autonomous agents."
+              next
+            end
+
             if clean_args.empty? || subcmd == "list"
               handle_list_models(ctx)
             elsif subcmd == "route"
@@ -227,6 +252,12 @@ module Rubik
               handle_context_command(clean_args, ctx, scope)
             elsif subcmd == "set"
               handle_set_role_command(clean_args, ctx, scope)
+            elsif !valid_model_switch_args?(clean_args, ctx)
+              # `!model contekt 100` is a mistyped `context`, and any other
+              # unknown first token is equally not a provider/model switch.
+              # Refuse instead of silently writing it as a model name (#689).
+              ctx.out.puts "Unknown !model form '#{clean_args.first}'. " \
+                           "Use a subcommand (list|route|add|context|set) or a registered provider."
             else
               handle_switch_default_model(clean_args, ctx, scope)
             end

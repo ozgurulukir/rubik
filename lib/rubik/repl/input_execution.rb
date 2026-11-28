@@ -171,7 +171,10 @@ module Rubik
         routed = route_free_text!(text)
         return if routed.nil?
 
-        @runtime_manager.provide(:llm_client, routed[:provider])
+        # #685: re-providing the SAME provider object forces a full fiber
+        # reconcile and rebuilds every active fiber injecting llm_client.
+        ctx = @runtime_manager&.context
+        @runtime_manager.provide(:llm_client, routed[:provider]) unless Rubik::Coeffects.get(ctx, Rubik::Coeffects::LLM_CLIENT).equal?(routed[:provider])
 
         # Pruner apply seam (context-pruner 2026-10-09): budayıcı bir plan
         # aşamaladıysa pencereyi turn tohumlanmadan ÖNCE takas et (knob
@@ -205,6 +208,7 @@ module Rubik
       # the wake debt and records the turn's entry events. Returns the token
       # for the rescue ladder.
       def start_free_text_turn!(text)
+        @turn_outcome_recorded = false
         task = Rubik::Orchestrator::TaskCancellation.new
         @active_task = task
         @runtime_manager&.provide(Rubik::Coeffects::TASK_CANCELLATION, task)
@@ -500,7 +504,7 @@ module Rubik
                           "question" => text.to_s.strip[0, 80],
                           "reason" => "Interrupted by user (^C)")
         @output.puts "\n⚠️ [Rubik::Agent] Task cancelled by user (^C)."
-        record_failed_turn!(text, "cancelled", "Interrupted by user (^C)", orchestrator)
+        record_failed_turn_unless_outcome!(text, "cancelled", "Interrupted by user (^C)", orchestrator)
         merge_failed_turn_tool_history!(orchestrator)
       end
 
@@ -512,7 +516,7 @@ module Rubik
       def handle_llm_client_error!(text, error, orchestrator)
         message = Rubik::Platform.safe_utf8(error.message)
         @output.puts "[Rubik::LLM Error] #{message}"
-        record_failed_turn!(text, "failed", message, orchestrator)
+        record_failed_turn_unless_outcome!(text, "failed", message, orchestrator)
         merge_failed_turn_tool_history!(orchestrator)
         stash_and_announce_resume!(orchestrator) unless @autonomous_turn
       end
@@ -522,8 +526,19 @@ module Rubik
       def handle_unexpected_error!(text, error, orchestrator)
         message = Rubik::Platform.safe_utf8(error.message)
         @output.puts "[Error] #{error.class}: #{message}"
-        record_failed_turn!(text, "failed", "#{error.class}: #{message}", orchestrator)
+        record_failed_turn_unless_outcome!(text, "failed", "#{error.class}: #{message}", orchestrator)
         merge_failed_turn_tool_history!(orchestrator)
+      end
+
+      # #686: a successful outcome is already in history. A later error in the
+      # settle tail is logged instead of posting a second turn_finished event
+      # and a contradictory "[Turn failed: …]" row.
+      def record_failed_turn_unless_outcome!(text, kind, reason, orchestrator)
+        if @turn_outcome_recorded
+          Rubik::Log.warn(:repl, "[rubik] late turn error after the outcome was recorded: #{reason}")
+          return
+        end
+        record_failed_turn!(text, kind, reason, orchestrator)
       end
 
       # Ensure-phase teardown. Cleanup must never mask the in-flight exception
@@ -543,6 +558,14 @@ module Rubik
         end
         kill_spinner!(renderer&.spinner)
         flush_subagent_notices! if respond_to?(:flush_subagent_notices!)
+        # #686: quiet notices buffered during the turn have no interactive
+        # prompt to drain them in stream/agent-only sessions. A failing
+        # output must not mask the in-flight exception from this ensure.
+        begin
+          @terminal_guard&.flush_notices!
+        rescue StandardError => e
+          Rubik::Log.warn(:repl, "[rubik] turn notice flush failed: #{e.class}: #{e.message}")
+        end
         # Session review B3: notices stranded in the ended loop's inbox never
         # reached the model channel and owed no wake — an idle maestro learned
         # about a budget pause only at the next manual prompt (11 min in the

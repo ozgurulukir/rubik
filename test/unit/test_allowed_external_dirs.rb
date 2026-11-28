@@ -220,7 +220,7 @@ class TestAllowedExternalDirs < Minitest::Test
     # 2. Add allowed directory
     out.reopen
     shell.execute_input("!allow #{@allowed_dir1} --project")
-    assert_includes out.string, "[Rubik::Allow] Added allowed external directory: #{@allowed_dir1} (Mode: Read-Write)"
+    assert_includes out.string, "[Rubik::Allow] Added allowed external directory: #{@allowed_dir1} (Mode: Read-Only)"
     assert_includes out.string, "[Project level (.rubik/config.yml)]"
 
     # Verify buffer manager and sandbox runner received it
@@ -239,7 +239,7 @@ class TestAllowedExternalDirs < Minitest::Test
     # 4. Check list output
     out.reopen
     shell.execute_input("!allow list")
-    assert_includes out.string, "ALLOWED 1] #{@allowed_dir1} (Read-Write)"
+    assert_includes out.string, "ALLOWED 1] #{@allowed_dir1} (Read-Only)"
     assert_includes out.string, "ALLOWED 2] #{@allowed_dir2} (Read-Only)"
 
     # 5. Remove allowed directory
@@ -337,7 +337,7 @@ class TestAllowedExternalDirs < Minitest::Test
     assert_includes out.string, "=== Configured Workspace Roots ==="
     assert_includes out.string, "[PRIMARY] #{@temp_root}"
     assert_includes out.string, "=== Allowed External Dirs (Zero-AST) ==="
-    assert_includes out.string, "[ALLOWED 1] #{@allowed_dir1} (Read-Write)"
+    assert_includes out.string, "[ALLOWED 1] #{@allowed_dir1} (Read-Only)"
 
     # Use !workspace allow
     out.reopen

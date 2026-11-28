@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "base"
+require_relative "../../platform"
 require_relative "../../storage/layout"
 require_relative "../step_formatter"
 require_relative "../../prompt"
@@ -80,22 +81,41 @@ module Rubik
 
         private_class_method def self.handle_context_add(args, ctx)
           file = args[1]
-          if file
-            ctx.context_index.update_file(file)
-            full_path = File.join(ctx.buffer_manager.root_dir, file)
-            ctx.ast_graph.index_file(full_path) if File.exist?(full_path)
+          if file.nil? || file.to_s.strip.empty?
+            ctx.out.puts "Usage: !context add <relative_file_path>"
+            return
           end
+
+          root = ctx.buffer_manager&.root_dir || Dir.pwd
+          full_path = File.expand_path(file, root)
+          allowed = [root] + Array(ctx.buffer_manager&.additional_roots) +
+                    Array(ctx.buffer_manager&.allowed_external_dirs)
+          unless allowed.any? { |dir| Rubik::Platform.resolved_path_under?(full_path, File.expand_path(dir, root)) }
+            ctx.out.puts "Security Error: '#{file}' resolves outside the workspace and allowed directories."
+            return
+          end
+          unless File.file?(full_path)
+            ctx.out.puts "File not found: #{file} (nothing added to the context index)."
+            return
+          end
+
+          ctx.context_index.update_file(file)
+          ctx.ast_graph&.index_file(full_path)
           ctx.out.puts "Added #{file} to context index and AST graph."
         end
 
         private_class_method def self.handle_context_drop(args, ctx)
           file = args[1]
-          if file
-            ctx.context_index.files.delete(file)
-            ctx.out.puts "Removed #{file} from context index."
-          else
+          if file.nil? || file.to_s.strip.empty?
             ctx.out.puts "Usage: !context drop <relative_file_path>"
+            return
           end
+
+          unless ctx.context_index.files.delete(file)
+            ctx.out.puts "File '#{file}' is not in the context index (nothing removed)."
+            return
+          end
+          ctx.out.puts "Removed #{file} from context index."
         end
 
         private_class_method def self.handle_context_compact(ctx)
@@ -191,6 +211,13 @@ module Rubik
                                           usage: USAGE_STEPS, audience: :both) do |args, ctx|
             scope, clean_args = Base.parse_scope(args)
 
+            # Budget knobs are runtime policy: an agent raising its own limit
+            # defeats the operator's governance (issue #687).
+            if ctx.agent_caller && !clean_args.empty? && clean_args.first.downcase != "status"
+              ctx.out.puts "Security Error: agent step-budget changes are operator-only."
+              next
+            end
+
             if clean_args.empty? || clean_args.first.downcase == "status"
               cur_max = Rubik::Storage::Layout.config_get(ctx.config, "agent.max_steps", 40)
               goal_max = Rubik::Storage::Layout.config_get(ctx.config, "agent.goal_max_steps", 100)
@@ -234,7 +261,7 @@ module Rubik
 
                 ctx.out.puts "Plan mode max steps set to #{num} [#{Base.scope_label(scope)}]."
               end
-            elsif clean_args.first.to_i.positive?
+            elsif clean_args.first.match?(/\A\d+\z/) && clean_args.first.to_i.positive?
               num = clean_args.first.to_i
               res = ctx.config.set("agent.max_steps", num, persist: scope)
               next if Base.report_persist_failure(ctx, res, scope)
@@ -278,6 +305,10 @@ module Rubik
               ctx.out.puts "  3 - debug   (Full raw I/O, latencies, diagnostics)"
             else
               raw_val = clean_args.first.downcase
+              unless ["quiet", "0", "normal", "1", "verbose", "2", "debug", "trace", "3"].include?(raw_val)
+                ctx.out.puts "Usage: !verbosity <quiet|normal|verbose|debug>"
+                next
+              end
               level = Rubik::REPL::StepFormatter.normalize_level(raw_val)
               level_name = case level
                            when Rubik::REPL::StepFormatter::LEVEL_QUIET then "quiet"

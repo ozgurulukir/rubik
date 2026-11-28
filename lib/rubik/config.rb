@@ -25,6 +25,10 @@ module Rubik
 
     DEFAULT_CONFIG = Defaults::DEFAULT_CONFIG
     SENSITIVE_PROJECT_CONFIG_KEYS = DeepOps::SENSITIVE_PROJECT_CONFIG_KEYS
+    OPERATOR_ONLY_CONFIG_PREFIXES = DeepOps::OPERATOR_ONLY_CONFIG_PREFIXES
+
+    def self.operator_only_config_key?(key) = DeepOps.operator_only_config_key?(key)
+
     attr_reader :data, :warnings, :root_dir, :home_dir,
                 :defaults_layer, :global_layer, :project_layer, :env_layer, :session_layer
     attr_accessor :event_bus
@@ -85,7 +89,7 @@ module Rubik
         typed_val = normalize_value(key, value)
 
         policy = guard_secret_write(key, typed_val, persist)
-        return { ok: false, error: policy[:block] } if policy&.key?(:block)
+        return { ok: false, error: policy[:block], reason: :policy_blocked } if policy&.key?(:block)
 
         typed_val = policy[:typed_val] if policy&.key?(:typed_val)
 

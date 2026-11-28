@@ -21,7 +21,15 @@ module Rubik
         return Rubik::UI::Approvals.keypress_yes_no(self, prompt, default: default_answer, theme: @ui_theme) if @ui_theme&.color?
 
         hint = default_answer.start_with?("y") ? "[Y/n]" : "[y/N]"
-        answer = @reline.readline("#{prompt} #{hint}: ", false)
+        # #684: route even the plain-terminal fallback through the guard so a
+        # background notice arriving mid-prompt clears the line and redisplays
+        # it instead of landing before the cursor.
+        reader = -> { @reline.readline("#{prompt} #{hint}: ", false) }
+        answer = if @terminal_guard.respond_to?(:with_reading)
+                   @terminal_guard.with_reading(&reader)
+                 else
+                   reader.call
+                 end
         answer = default_answer if answer.nil? # EOF (Ctrl+D/Ctrl+Z) -> default
         answer = answer.to_s.strip.downcase
         answer.empty? ? default_answer : answer

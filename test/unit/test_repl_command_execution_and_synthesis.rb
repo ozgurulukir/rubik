@@ -43,8 +43,15 @@ class TestReplCommandExecutionAndSynthesis < Minitest::Test
   end
 
   def test_llm_can_update_model_and_context_via_repl
+    # Model routing is operator-only: the agent-facing tool must be refused.
+    original_fast = @config.model_spec(:fast)["name"]
     res = @exec_tool.execute("command" => "!model set fast ollama/qwen2.5-coder:7b")
-    assert_includes res, "Set model role 'fast' to ollama/qwen2.5-coder:7b"
+    assert_includes res, "Security Error"
+    assert_equal original_fast, @config.model_spec(:fast)["name"]
+
+    @output.reopen
+    @shell.execute_input("!model set fast ollama/qwen2.5-coder:7b")
+    assert_includes @output.string, "Set model role 'fast' to ollama/qwen2.5-coder:7b"
     assert_equal "qwen2.5-coder:7b", @config.model_spec(:fast)["name"]
 
     # Scan reports success for a root with files.

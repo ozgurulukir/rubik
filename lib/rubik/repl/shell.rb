@@ -69,6 +69,11 @@ module Rubik
         # Plan 91 — set by the !paste command, consumed once by
         # read_and_process_line to enter explicit paste mode.
         @paste_requested = false
+        # #684: a paste burst's terminating line is consumed by the collector
+        # and re-fed through the normal loop on the next iteration.
+        @pending_line = nil
+        @pending_line_at = nil
+        @stopped = false
         @conversation_history = []
         # The in-flight Orchestrator::Loop during a free-text/goal turn, nil at
         # idle. Set for the duration of a turn only (same-thread, synchronous
@@ -77,13 +82,21 @@ module Rubik
         # a different, rebuilt-on-reprovide object no running turn is using.
         @active_loop = nil
 
-        wire_runtime_context(parts)
-        load_plugins(parts)
-        register_runtime_services
-        build_and_provide_tool_registry
-        sync_ui
-        sync_default_llm_route
-        warm_up!
+        begin
+          wire_runtime_context(parts)
+          load_plugins(parts)
+          register_runtime_services
+          build_and_provide_tool_registry
+          sync_ui
+          sync_default_llm_route
+          warm_up!
+        rescue StandardError, Interrupt
+          # #685: phases 2-8 start threads/services one by one. A mid-boot
+          # failure must unwind the partial accumulator (AGENTS.md 1A/5)
+          # before the original error reaches the caller.
+          stop
+          raise
+        end
       end
 
       def sync_context_and_ast(files)
@@ -150,12 +163,18 @@ module Rubik
 
       def run(input_stream = nil)
         @running = true
+        @stopped = false # a Shell may be reused after an idempotent stop
 
         if input_stream
           run_stream(input_stream)
         else
           run_interactive
         end
+      ensure
+        # #685: stream/script mode must tear down just like interactive mode.
+        # run_interactive has its own ensure; stop is idempotent, so the
+        # second call is a no-op.
+        stop
       end
 
       def running?
@@ -163,29 +182,45 @@ module Rubik
       end
 
       def stop
-        if @buffer_manager&.dirty? && (@config.nil? || Rubik::Storage::Layout.config_get(@config, "buffer.exit_guard", true) != false)
-          count = @buffer_manager.dirty_files.size
-          @output.puts "⚠️ Warning: You have #{count} unapplied dirty buffer change(s)! Run '!apply' to persist or '!diff' to review."
+        return if @stopped
+
+        @stopped = true
+
+        isolate_stop_step("dirty-buffer warning") do
+          if @buffer_manager&.dirty? && (@config.nil? || Rubik::Storage::Layout.config_get(@config, "buffer.exit_guard", true) != false)
+            count = @buffer_manager.dirty_files.size
+            @output.puts "⚠️ Warning: You have #{count} unapplied dirty buffer change(s)! Run '!apply' to persist or '!diff' to review."
+          end
         end
-        @ui_renderer&.spinner&.kill
-        stop_background_indexer
-        @config_cleanups&.reverse_each(&:call)
+        isolate_stop_step("spinner kill") { @ui_renderer&.spinner&.kill }
+        isolate_stop_step("background indexer teardown") { stop_background_indexer }
+        cleanups = @config_cleanups || []
         @config_cleanups = []
+        cleanups.reverse_each { |cleanup| isolate_stop_step("config cleanup") { cleanup.call } }
         # Ordering is load-bearing: disposing the runtime manager drains the
         # ctx.on_dispose inverses (including LSP and MCP stop_all, and the
         # subagent-notice unsubscribe) BEFORE shutdown_all kills subagents,
         # so kill-time completion events find no listener and never spam the
         # terminal on exit. Subsequent stop_all calls are idempotent no-ops.
-        @runtime_manager&.dispose!
-        @subagent_supervisor&.shutdown_all
-        @lsp_manager&.stop_all
-        @mcp_manager&.stop_all
+        isolate_stop_step("runtime disposal") { @runtime_manager&.dispose! }
+        isolate_stop_step("subagent shutdown") { @subagent_supervisor&.shutdown_all }
+        isolate_stop_step("LSP shutdown") { @lsp_manager&.stop_all }
+        isolate_stop_step("MCP shutdown") { @mcp_manager&.stop_all }
         Rubik.current_shell = nil if Rubik.current_shell == self
         Rubik.runtime_manager = nil if Rubik.runtime_manager == @runtime_manager
         @running = false
       end
       alias close stop
       alias dispose stop
+
+      # #685/#684: teardown steps are independent. One raising cleanup must
+      # neither skip the remaining steps nor replace an in-flight exception
+      # when stop runs from an ensure block.
+      def isolate_stop_step(label)
+        yield
+      rescue StandardError => e
+        Rubik::Log.warn(:repl, "[rubik] stop: #{label} failed: #{e.class}: #{e.message}")
+      end
 
       # Parses and dispatches a single line of REPL input to the appropriate handler.
       #

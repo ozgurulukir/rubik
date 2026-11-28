@@ -11,6 +11,10 @@ module Rubik
     # @ast_graph, @cache_store, @logger, @event_bus); mixin yalnızca ısınma
     # politikasını kodlar.
     module AstWarmup
+      # #685: teardown must not block the main thread on an indexer that
+      # ignores the cooperative stop flag (the flag is checked per file).
+      INDEXER_JOIN_TIMEOUT = 2.0
+
       # Öneri 3 (Kademe 4): warm_ast_graph / stop_background_indexer /
       # join_indexer_safely / perform_warm_ast_graph,
       # lib/rubik/repl/ast_warmup.rb mixin'ine taşındı (AST grafiği ısınma ve
@@ -82,7 +86,8 @@ module Rubik
         return unless @indexer_thread
 
         @indexer_stop_requested = true
-        join_indexer_safely
+        result = join_indexer_safely(INDEXER_JOIN_TIMEOUT)
+        debug_warn("Background AST indexer did not stop within #{INDEXER_JOIN_TIMEOUT}s") if result == :timeout
         @indexer_thread = nil unless @indexer_thread&.alive?
       rescue StandardError => e
         debug_warn("Background AST indexer teardown failed: #{e.class}: #{e.message}")
@@ -92,7 +97,7 @@ module Rubik
       def join_indexer_safely(timeout = nil)
         result = Rubik::Concurrency::Join.thread(@indexer_thread, timeout: timeout)
         debug_warn("Background AST indexer join failed: #{result.class}: #{result.message}") if result.is_a?(StandardError)
-        nil
+        result
       end
 
       def perform_warm_ast_graph

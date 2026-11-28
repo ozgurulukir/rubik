@@ -41,8 +41,12 @@ module Rubik
                 ctx.out.puts "Task '#{task_id}' not found."
               end
             when "kill-all", "killall"
-              task_mgr.kill_all
-              ctx.out.puts "All background tasks terminated."
+              if ctx.agent_caller
+                ctx.out.puts "Security Error: !tasks kill-all is operator-only."
+              else
+                task_mgr.kill_all
+                ctx.out.puts "All background tasks terminated."
+              end
             else
               ctx.out.puts "Unknown !tasks subcommand: #{subcmd}. #{USAGE_TASKS}"
             end

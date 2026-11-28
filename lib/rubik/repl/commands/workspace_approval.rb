@@ -49,7 +49,9 @@ module Rubik
           sync_index_if_enabled!
 
           current_roots = Array(Rubik::Storage::Layout.config_get(@config, "workspace.additional_roots", [])).dup
-          current_roots << @path unless current_roots.include?(@path)
+          # Persist the expanded path so `~/x` and its absolute form cannot
+          # both accumulate as separate entries (issue #689).
+          current_roots << expanded unless current_roots.include?(expanded)
           res = @config.set("workspace.additional_roots", current_roots, persist: @scope)
           return if Base.report_persist_failure(@out, res, @scope)
 
@@ -66,9 +68,18 @@ module Rubik
           @sandbox_runner&.add_allowed_dir(@path)
 
           current_dirs = Array(Rubik::Storage::Layout.config_get(@config, "workspace.allowed_external_dirs", [])).dup
-          current_dirs << @path unless current_dirs.include?(@path)
+          current_dirs << expanded unless current_dirs.include?(expanded)
           res = @config.set("workspace.allowed_external_dirs", current_dirs, persist: @scope)
           return if Base.report_persist_failure(@out, res, @scope)
+
+          rw_dirs = Array(Rubik::Storage::Layout.config_get(@config, "workspace.rw_allowed_dirs", [])).dup
+          if @rw
+            rw_dirs << expanded unless rw_dirs.include?(expanded)
+          else
+            rw_dirs.reject! { |d| File.expand_path(d.to_s, @effective_root) == expanded }
+          end
+          rw_res = @config.set("workspace.rw_allowed_dirs", rw_dirs, persist: @scope)
+          return if Base.report_persist_failure(@out, rw_res, @scope)
 
           mode_str = @rw ? "Read-Write" : "Read-Only"
           @out.puts "[Rubik::Allow] Added allowed external directory: #{expanded} (Mode: #{mode_str}) " \
@@ -78,11 +89,17 @@ module Rubik
         # !workspace remove <path>: unregister an additional root, re-index,
         # and prune persisted entries (matched by resolved path or raw arg).
         def remove_root!
+          current_roots = Array(Rubik::Storage::Layout.config_get(@config, "workspace.additional_roots", [])).dup
+          expanded = File.expand_path(@path.to_s, @effective_root)
+          unless current_roots.any? { |r| File.expand_path(r.to_s, @effective_root) == expanded || r == @path }
+            @out.puts "[Rubik::Workspace] '#{@path}' is not a configured additional root."
+            return
+          end
+
           expanded = @buffer_manager.remove_root(@path)
 
           sync_index_if_enabled!
 
-          current_roots = Array(Rubik::Storage::Layout.config_get(@config, "workspace.additional_roots", [])).dup
           current_roots.reject! { |r| File.expand_path(r, @effective_root) == expanded || r == @path }
           res = @config.set("workspace.additional_roots", current_roots, persist: @scope)
           return if Base.report_persist_failure(@out, res, @scope)
@@ -93,13 +110,24 @@ module Rubik
         # !allow-dir remove <path>: retract an allowed external directory
         # from Buffer and Sandbox, then prune persisted entries.
         def remove_allowed_dir!
+          current_dirs = Array(Rubik::Storage::Layout.config_get(@config, "workspace.allowed_external_dirs", [])).dup
+          expanded = File.expand_path(@path.to_s, @effective_root)
+          unless current_dirs.any? { |d| File.expand_path(d.to_s, @effective_root) == expanded || d == @path }
+            @out.puts "[Rubik::Allow] '#{@path}' is not a configured allowed external directory."
+            return
+          end
+
           expanded = @buffer_manager&.remove_allowed_dir(@path)
           @sandbox_runner&.remove_allowed_dir(@path)
 
-          current_dirs = Array(Rubik::Storage::Layout.config_get(@config, "workspace.allowed_external_dirs", [])).dup
-          current_dirs.reject! { |d| File.expand_path(d, @effective_root) == expanded || d == @path }
+          current_dirs.reject! { |d| File.expand_path(d.to_s, @effective_root) == expanded || d == @path }
           res = @config.set("workspace.allowed_external_dirs", current_dirs, persist: @scope)
           return if Base.report_persist_failure(@out, res, @scope)
+
+          rw_dirs = Array(Rubik::Storage::Layout.config_get(@config, "workspace.rw_allowed_dirs", [])).dup
+          rw_dirs.reject! { |d| File.expand_path(d.to_s, @effective_root) == expanded }
+          rw_res = @config.set("workspace.rw_allowed_dirs", rw_dirs, persist: @scope)
+          return if Base.report_persist_failure(@out, rw_res, @scope)
 
           @out.puts "[Rubik::Allow] Removed allowed external directory: #{expanded} [#{Base.scope_label(@scope)}]."
         end
@@ -149,6 +177,13 @@ module Rubik
           return if Base.report_persist_failure(@out, res, scope)
 
           @out.puts "[Rubik::AllowCmd] Added command prefix: #{entry} [#{Base.scope_label(scope)}]."
+        end
+
+        # Legacy shorthand (`!allow-cmd node`) still gets the same security
+        # refusal; anything not refused is a typo, not an implicit `add`.
+        def blocked_shorthand?(tokens)
+          entry = tokens.reject { |token| token == "--force" }.join(" ").strip
+          broad_token_blocked?(entry) || catastrophic_pattern_blocked?(entry)
         end
 
         def remove(entry, scope)

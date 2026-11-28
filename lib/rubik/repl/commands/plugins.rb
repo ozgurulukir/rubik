@@ -133,6 +133,14 @@ module Rubik
 
           scope = flags.include?("--global") ? :global : :project
 
+          unless flags.include?("--force")
+            answer = ctx.ask_yes_no("Delete plugin '#{name}' from disk (#{scope})?", default: "n")
+            unless ["y", "yes", "evet"].include?(answer.to_s.downcase)
+              ctx.out.puts "Cancelled: plugin '#{name}' was not removed."
+              return
+            end
+          end
+
           unloaded = manager.unload_plugin(name, runtime_manager: ctx.runtime_manager)
           ctx.out.puts "🧹 Plugin #{name} fiber terminated (inverse records executed)." if unloaded
 
@@ -162,12 +170,15 @@ module Rubik
         end
 
         def self.enable_plugin(ctx, _manager, name)
-          # Not implemented deeply for now, simply unpauses fiber
-          ctx.out.puts "Plugin #{name} enabled (placeholder)."
+          # No fiber pause/resume contract exists yet — claiming success here
+          # hides the fact that nothing changed.
+          ctx.out.puts "Plugin #{name} enable is not implemented (no change made)."
+          false
         end
 
         def self.disable_plugin(ctx, _manager, name)
-          ctx.out.puts "Plugin #{name} disabled (placeholder)."
+          ctx.out.puts "Plugin #{name} disable is not implemented (no change made)."
+          false
         end
 
         def self.info_plugin(ctx, _manager, name)

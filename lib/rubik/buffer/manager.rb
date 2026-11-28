@@ -50,7 +50,15 @@ module Rubik
         @allowed_external_dirs = (allowed_external_dirs || []).map { |d| File.expand_path(d.to_s, @root_dir) }.uniq
         @allow_external_writes = allow_external_writes || false
         @rw_roots = Set.new
-        @rw_allowed_dirs = Set.new(@allowed_external_dirs)
+        # Only dirs explicitly persisted as read-write regain write access on
+        # reload; the rest stay read-only (issue #688). Configs that predate
+        # the mode key keep the legacy read-write default.
+        persisted_rw = config && Rubik::Storage::Layout.config_get(config, "workspace.rw_allowed_dirs", nil)
+        @rw_allowed_dirs = if persisted_rw.nil?
+                             Set.new(@allowed_external_dirs)
+                           else
+                             Set.new(Array(persisted_rw).map { |d| File.expand_path(d.to_s, @root_dir) })
+                           end
         @event_bus = event_bus
         @guard = guard || Rubik::Security::Guard.new
         @config = config
@@ -89,10 +97,13 @@ module Rubik
         end
       end
 
-      def add_allowed_dir(path, rw: true) # rubocop:disable Naming/MethodParameterName -- rw: bilinçli kisa kwarg
+      # `rw: nil` (config-wiring / injected-buffer reloads) preserves the
+      # persisted mode instead of silently promoting a read-only grant.
+      def add_allowed_dir(path, rw: nil) # rubocop:disable Naming/MethodParameterName -- rw: bilinçli kisa kwarg
         @monitor.synchronize do
           expanded = File.expand_path(path.to_s, @root_dir)
           @allowed_external_dirs << expanded unless @allowed_external_dirs.include?(expanded)
+          rw = @rw_allowed_dirs.include?(expanded) if rw.nil?
           if rw
             @rw_allowed_dirs << expanded
           else

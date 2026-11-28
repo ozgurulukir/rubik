@@ -90,6 +90,14 @@ module Rubik
           scope, clean_args = Base.parse_scope(args)
           sub = clean_args.first&.downcase || "status"
 
+          # Mirror the !mcp gate: agents may inspect LSP state but must not
+          # enable it, spawn/stop language servers or reset the circuit
+          # breaker — those bypass the operator-only lsp.* config guard.
+          if ctx.agent_caller && !["status", "servers", "diag", "diagnostics"].include?(sub)
+            ctx.out.puts "Security Error: LSP server management ('#{sub}') is operator-only and cannot be altered by autonomous agents."
+            return
+          end
+
           case sub
           when "status"
             handle_lsp_status(ctx)

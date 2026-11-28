@@ -2,6 +2,8 @@
 
 require_relative "../events"
 require_relative "../log"
+require_relative "../platform"
+require_relative "../security/redactor"
 require_relative "../orchestrator/subagent/notices"
 require_relative "../prompt/conversation_rows"
 require_relative "pending_notice_queue"
@@ -93,13 +95,20 @@ module Rubik
         return unless shell_state(:running) && shell_state(:output)
         return unless payload.is_a?(Hash)
 
-        name = payload[:server]
+        name = safe_notice_text(payload[:server])
         line = if state == :loaded
-                 "mcp: server '#{name}' ready (#{payload[:tools] || 0} tools)"
+                 "mcp: server '#{name}' ready (#{safe_notice_text(payload[:tools] || 0)} tools)"
                else
-                 "mcp: server '#{name}' failed (#{payload[:error]})"
+                 "mcp: server '#{name}' failed (#{safe_notice_text(payload[:error])})"
                end
         shell_state(:terminal_guard)&.print_safe_notice(line)
+      end
+
+      # #686: MCP boot payloads are process/network controlled. Scrub binary
+      # bytes before the terminal write and mask embedded credentials, the
+      # same hygiene handle_llm_client_error! applies to HTTP error bodies.
+      def safe_notice_text(value)
+        Rubik::Security::Redactor.redact(Rubik::Platform.safe_utf8(value.to_s)).to_s
       end
 
       def wire_subagent_events!
@@ -168,26 +177,40 @@ module Rubik
 
       def route_subagent_notice(notice)
         line = Rubik::Orchestrator::Subagent::Notices.user_line(notice)
-        if shell_state(:active_loop)
-          active_loop = shell_state(:active_loop)
-          active_loop.enqueue_subagent_notice(notice) if active_loop.respond_to?(:enqueue_subagent_notice)
-          subagent_notices_mutex.synchronize { subagent_notices << line }
+        return if shell_state(:active_loop) && enqueue_to_active_loop(notice, line)
+
+        inject_subagent_notice_into_conversation_history!(notice)
+        output = shell_state(:output)
+        if shell_state(:terminal_guard)
+          shell_state(:terminal_guard).print_safe_notice(line)
         else
-          inject_subagent_notice_into_conversation_history!(notice)
-          output = shell_state(:output)
-          if shell_state(:terminal_guard)
-            shell_state(:terminal_guard).print_safe_notice(line)
-          else
-            output.puts "\n#{line}"
-          end
-          # Wakeloop fix 2026-10-09: an event landing inside an AUTONOMOUS
-          # turn's idle-path windows (before @active_loop is set, or in the
-          # ensure tail after it is cleared) must not arm a follow-up wake —
-          # that is the probabilistic residue of the chained-auto-turn bug.
-          # History injection and the printed line above still happen (no
-          # loss); only the synthetic Enter is withheld. A fresh event at a
-          # genuinely idle prompt (@autonomous_turn false) wakes as designed.
-          request_reactive_wakeup!(notice) unless shell_state(:autonomous_turn)
+          output.puts "\n#{line}"
+        end
+        # Wakeloop fix 2026-10-09: an event landing inside an AUTONOMOUS
+        # turn's idle-path windows (before @active_loop is set, or in the
+        # ensure tail after it is cleared) must not arm a follow-up wake —
+        # that is the probabilistic residue of the chained-auto-turn bug.
+        # History injection and the printed line above still happen (no
+        # loss); only the synthetic Enter is withheld. A fresh event at a
+        # genuinely idle prompt (@autonomous_turn false) wakes as designed.
+        request_reactive_wakeup!(notice) unless shell_state(:autonomous_turn)
+      end
+
+      # #686: share the standby mutex with the turn-thread teardown drain.
+      # Teardown clears @active_loop BEFORE draining under this mutex, so a
+      # notice that saw the old loop but enqueues after the clear re-checks
+      # here and falls through to the idle path instead of stranding in a
+      # dead loop's inbox.
+      def enqueue_to_active_loop(notice, line)
+        loop_instance = shell_state(:active_loop)
+        return false unless loop_instance
+
+        subagent_notices_mutex.synchronize do
+          return false unless shell_state(:active_loop).equal?(loop_instance)
+
+          loop_instance.enqueue_subagent_notice(notice) if loop_instance.respond_to?(:enqueue_subagent_notice)
+          subagent_notices << line
+          true
         end
       end
 
@@ -293,7 +316,8 @@ module Rubik
       def deliver_stranded_loop_notices!(loop_instance, arm_wake: true)
         return unless loop_instance.respond_to?(:subagent_notice_inbox)
 
-        loop_instance.subagent_notice_inbox.drain_all.each do |notice|
+        notices = subagent_notices_mutex.synchronize { loop_instance.subagent_notice_inbox.drain_all }
+        notices.each do |notice|
           inject_subagent_notice_into_conversation_history!(notice)
           request_reactive_wakeup!(notice) if arm_wake
         rescue StandardError => e

@@ -104,6 +104,45 @@ class TestPasteSupport < Minitest::Test
                  "empty lines inside a paste block must be preserved verbatim"
   end
 
+  def test_paste_burst_replays_the_line_that_ends_the_burst
+    # #684: the collector consumes the first non-burst line at the "paste…"
+    # prompt. It must be executed as the user's next command, not discarded.
+    clock = [0.0, 0.010, 0.020, 0.030, 0.200]
+    lines = ["", "a1", "a2", "b1", "exit"]
+    executed = executed_shell(lines, clock)
+    assert_equal ["", "a1\na2", "b1"], executed,
+                 "the typed line ending a burst must be executed: #{executed.inspect}"
+  end
+
+  def test_pasted_heredoc_opener_enters_heredoc_mode_instead_of_a_burst
+    # #684: bracketed paste reports in_pasting? for every line; a pasted
+    # opener must still be stripped by heredoc mode, never joined into a burst.
+    executed = []
+    @shell.define_singleton_method(:execute_input) { |text| executed << text }
+    @shell.define_singleton_method(:paste_clock) { 0.0 }
+    @shell.define_singleton_method(:paste_pending?) { true }
+    @shell.define_singleton_method(:paste_burst_eligible?) { true }
+    lines = ["", "<< EOF", "hello", "EOF", "\x04"]
+    Reline.stub(:readline, ->(_prompt, _add_hist) { lines.shift }) do
+      @shell.run_interactive
+    end
+    assert_equal ["", "hello"], executed,
+                 "a pasted heredoc must be stripped, not sent raw: #{executed.inspect}"
+  end
+
+  def test_pasted_bang_heredoc_opener_is_exempt_from_burst
+    executed = []
+    @shell.define_singleton_method(:execute_input) { |text| executed << text }
+    @shell.define_singleton_method(:paste_clock) { 0.0 }
+    @shell.define_singleton_method(:paste_pending?) { true }
+    @shell.define_singleton_method(:paste_burst_eligible?) { true }
+    lines = ["", "!plan << EOF", "body", "EOF", "\x04"]
+    Reline.stub(:readline, ->(_prompt, _add_hist) { lines.shift }) do
+      @shell.run_interactive
+    end
+    assert_equal ["", "!plan\nbody"], executed
+  end
+
   def test_paste_join_window_config
     assert_equal 120, @shell.paste_join_window_ms
   end

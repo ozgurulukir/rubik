@@ -26,7 +26,6 @@ module Rubik
               ctx.out.puts "SubagentSupervisor is not available."
               return
             end
-
             case subcmd
             when nil, "list" then render_list(ctx, sup)
             when "status" then render_status(ctx, sup, args[1])
@@ -38,6 +37,8 @@ module Rubik
             when "wait" then handle_wait(ctx, sup, args[1], args[2])
             when "kill" then handle_kill(ctx, sup, args[1])
             when "kill-all", "killall"
+              return ctx.out.puts("Security Error: !subagents kill-all is operator-only.") if ctx.agent_caller
+
               sup.kill_all
               ctx.out.puts "All subagents terminated."
             else
@@ -48,9 +49,8 @@ module Rubik
           description = "Supervise and manage autonomous subagents (list, status, types, extend, resume, kill, kill-all)"
           shell.register_command("subagents", description: description, usage: USAGE_SUBAGENTS, audience: :both, &handler)
           shell.register_command("subagent", description: "Alias for !subagents", usage: USAGE_SUBAGENTS, audience: :both, &handler)
-          # NB: no "agents" alias — System owns !agents (the interactive
-          # agent/fiber board); a second registration here would silently
-          # overwrite it (register_command only refuses custom-over-builtin).
+          # NB: no "agents" alias — System owns !agents; a second registration
+          # would silently overwrite it (register_command refuses custom-over-builtin).
         end
 
         def self.resolve_supervisor(ctx) = ctx.subagent_supervisor

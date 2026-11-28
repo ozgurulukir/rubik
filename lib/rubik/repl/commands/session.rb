@@ -104,6 +104,9 @@ module Rubik
             end
             res = ctx.resume_session(target_id)
             ctx.out.puts "Resume failed: #{res[:error]}" unless res[:ok]
+          rescue StandardError => e
+            # A corrupt session must not wedge the interactive loop.
+            ctx.out.puts "Resume failed: #{e.class}: #{e.message}"
           end
 
           def run_info(ctx)
@@ -126,6 +129,18 @@ module Rubik
             target_dir = File.join(root_d, ".rubik", "sessions")
             FileUtils.mkdir_p(target_dir)
             target_file = File.join(target_dir, "#{safe_name}.jsonl")
+
+            current_file = ctx.recorder.session_file
+            if current_file && File.expand_path(current_file) == File.expand_path(target_file)
+              # Saving twice must not FileUtils.cp a file onto itself.
+              ctx.recorder.flush
+              ctx.out.puts "[Rubik::Session] Session already saved to #{target_file}"
+              return
+            end
+            if File.exist?(target_file)
+              ctx.out.puts "Error: Session '#{safe_name}' already exists at #{target_file}; choose another name."
+              return
+            end
 
             # Durability barrier before the copy so the copied JSONL can
             # never carry a torn tail from the recorder's append stream

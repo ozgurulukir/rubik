@@ -170,6 +170,10 @@ module Rubik
           when :completed then @gate.completion_event(payload)
           end
         rescue StandardError => e
+          # #686: handle_event owns StandardError, so the worker's
+          # dispatch-failed hook never sees a Brief.build crash. Reconcile
+          # the :job placeholder here or every later stage_job reports :busy.
+          @gate.drop_job(payload[:envelope], why: "brief failed") if kind == :job && payload.is_a?(Hash) && payload[:envelope]
           Pruner.log_via(@dmesg, :warn, "event handling failed (#{kind}): #{e.class}: #{e.message}")
         end
 

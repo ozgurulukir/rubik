@@ -102,6 +102,80 @@ class TestReplStream < Minitest::Test
     assert_equal 1, provider.complete_count
   end
 
+  def test_same_provider_is_not_reprovided_on_every_turn
+    # #685: a re-provide of the identical object reconciles every active
+    # fiber injecting llm_client; a routed turn must not pay that cost.
+    chunks = [
+      Rubik::LLM::Chunk.new(text_delta: "ok", done: false),
+      Rubik::LLM::Chunk.new(usage: { input_tokens: 1, output_tokens: 1 }, done: true)
+    ]
+    provider = MockStreamProvider.new(chunks: chunks)
+    stub_router_with_provider(provider)
+    provides = []
+    manager = @shell.runtime_manager
+    original = manager.method(:provide)
+    manager.define_singleton_method(:provide) do |name, service|
+      provides << name if name == :llm_client
+      original.call(name, service)
+    end
+
+    @shell.execute_free_text("turn one")
+    @shell.execute_free_text("turn two")
+
+    assert_empty provides, "routing to the same provider must not re-provide: #{provides.inspect}"
+  end
+
+  def test_different_provider_is_reprovided
+    chunks = [Rubik::LLM::Chunk.new(usage: { input_tokens: 1, output_tokens: 1 }, done: true)]
+    first = MockStreamProvider.new(chunks: chunks)
+    second = MockStreamProvider.new(chunks: chunks.map(&:dup))
+    call = 0
+    router = Object.new
+    router.define_singleton_method(:route) do |*_a, **_kw|
+      call += 1
+      { role: "default", model: "mock-model", provider: call == 1 ? first : second,
+        context_limit: 4096, max_output_tokens: 1024 }
+    end
+    @shell.instance_variable_set(:@router, router)
+    @shell.runtime_manager.provide(:llm_client, first)
+    provides = []
+    manager = @shell.runtime_manager
+    original = manager.method(:provide)
+    manager.define_singleton_method(:provide) do |name, service|
+      provides << name if name == :llm_client
+      original.call(name, service)
+    end
+
+    @shell.execute_free_text("turn one")
+    @shell.instance_variable_set(:@conversation_route_stamp, nil) # !model-style reset
+    @shell.execute_free_text("turn two")
+
+    assert_equal [:llm_client], provides, "an identity change must still re-provide"
+  end
+
+  def test_late_settle_error_does_not_write_a_contradictory_failed_turn
+    # #686: the answer is already in history when the tool-history merge
+    # raises. The rescue must log the late error, not append a failed row.
+    chunks = [
+      Rubik::LLM::Chunk.new(text_delta: "Delivered answer", done: false),
+      Rubik::LLM::Chunk.new(usage: { input_tokens: 1, output_tokens: 1 }, done: true)
+    ]
+    provider = MockStreamProvider.new(chunks: chunks)
+    stub_router_with_provider(provider)
+    calls = 0
+    @shell.define_singleton_method(:merge_unseen_turn_tool_history!) do |*_args|
+      calls += 1
+      raise "late merge boom" if calls == 1
+    end
+
+    @shell.execute_free_text("question")
+
+    rows = @shell.conversation_history
+    refute rows.any? { |r| r[:content].to_s.include?("[Turn failed") },
+           "a late error must not contradict the delivered answer: #{rows.inspect}"
+    assert(rows.any? { |r| r[:content].to_s == "Delivered answer" })
+  end
+
   def test_repl_execute_free_text_interrupt_handling
     provider = MockStreamProvider.new(raise_interrupt: true)
     stub_router_with_provider(provider)
