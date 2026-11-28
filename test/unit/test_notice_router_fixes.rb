@@ -81,4 +81,19 @@ class TestNoticeRouterFixes < Minitest::Test
     refute_includes line, "supersecret", "credentials must be masked"
     assert_includes line, "mcp: server 'srv' failed"
   end
+
+  def test_mcp_boot_tool_count_is_sanitised
+    host = host_double
+    lines = []
+    guard = Object.new
+    guard.define_singleton_method(:print_safe_notice) { |line| lines << line }
+    host.instance_variable_set(:@terminal_guard, guard)
+    router = Rubik::REPL::NoticeRouter.new(host)
+
+    router.print_mcp_boot_notice(:loaded, { server: "srv", tools: "3\xFF".b })
+
+    assert_equal 1, lines.size
+    assert lines.first.valid_encoding?, "tool count must be scrubbed before printing"
+    assert_includes lines.first, "mcp: server 'srv' ready"
+  end
 end

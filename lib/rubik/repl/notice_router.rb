@@ -97,7 +97,7 @@ module Rubik
 
         name = safe_notice_text(payload[:server])
         line = if state == :loaded
-                 "mcp: server '#{name}' ready (#{payload[:tools] || 0} tools)"
+                 "mcp: server '#{name}' ready (#{safe_notice_text(payload[:tools] || 0)} tools)"
                else
                  "mcp: server '#{name}' failed (#{safe_notice_text(payload[:error])})"
                end

@@ -40,7 +40,8 @@ class TestReplIssueFixes687688689 < Minitest::Test
   def test_agent_cannot_set_provider_model_router_or_agent_config
     ctx = agent_ctx
     handler = @shell.commands["config"][:handler]
-    ["providers.openai.endpoint", "models.default.provider", "model.name", "router.mode", "agent.max_steps", "llm.headers.X"].each do |key|
+    ["providers.openai.endpoint", "models.default.provider", "model.name", "router.mode", "agent.max_steps",
+     "llm.headers.X", "workspace.rw_allowed_dirs"].each do |key|
       reset_out
       handler.call(["set", key, "https://evil.example"], ctx)
       assert_includes @out.string, "Security Error", "#{key} must be operator-only"
@@ -66,6 +67,7 @@ class TestReplIssueFixes687688689 < Minitest::Test
       "models" => { "default" => { "provider" => "evil" } },
       "model" => { "name" => "evil" },
       "router" => { "mode" => "manual" },
+      "workspace" => { "rw_allowed_dirs" => ["/evil"], "safe" => 3 },
       "ui" => { "verbosity" => "quiet" }
     }
     filtered = @config.send(:filter_untrusted_project_config, raw)
@@ -77,6 +79,8 @@ class TestReplIssueFixes687688689 < Minitest::Test
     refute filtered["tools"].key?("circuit_breaker")
     refute filtered["llm"].key?("headers")
     ["models", "model", "router"].each { |k| refute filtered.key?(k) }
+    refute filtered["workspace"].key?("rw_allowed_dirs")
+    assert_equal 3, filtered.dig("workspace", "safe")
     assert_equal "quiet", filtered.dig("ui", "verbosity")
   end
 
@@ -178,6 +182,40 @@ class TestReplIssueFixes687688689 < Minitest::Test
     @shell.execute_input("!provider add zz2 https://api.example.com --context=abc")
     assert_includes @out.string, "positive integer"
     assert_nil @config.provider_spec("zz2")
+  end
+
+  def test_provider_add_model_rejects_nonpositive_context
+    @shell.execute_input("!provider add zz3 https://api.example.com")
+    ["--context=0", "--context=-5", "--context=abc"].each do |flag|
+      reset_out
+      @shell.execute_input("!provider add-model zz3 m1 #{flag}")
+      assert_includes @out.string, "positive integer", flag
+    end
+    assert_equal [{ "name" => "default", "context_limit" => 32_768 }], @config.provider_spec("zz3")["models"]
+  end
+
+  def test_allow_dir_remove_reports_failed_rw_mode_persistence
+    ext = File.join(@root, "outside-allow")
+    FileUtils.mkdir_p(ext)
+    @config.set("workspace.allowed_external_dirs", [ext], persist: false)
+    @config.set("workspace.rw_allowed_dirs", [ext], persist: false)
+
+    original_set = @config.method(:set)
+    @config.define_singleton_method(:set) do |key, value, persist: nil|
+      next({ ok: false, error: "disk full" }) if key == "workspace.rw_allowed_dirs"
+
+      original_set.call(key, value, persist: persist)
+    end
+
+    out = StringIO.new
+    approval = Rubik::REPL::Commands::WorkspaceApproval.new(
+      path: ext, read_write: false, scope: :session, config: @config,
+      buffer_manager: @shell.buffer_manager, out: out, guard: Object.new
+    )
+    approval.remove_allowed_dir!
+
+    assert_includes out.string, "could not save"
+    refute_includes out.string, "Removed allowed external directory"
   end
 
   def test_session_scope_provider_remove_keeps_global_provider_and_secret

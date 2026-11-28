@@ -22,7 +22,7 @@ module Rubik
         "test.", "linter.", "project.test_command", "adapter.", "skills.paths",
         "storage.root", "buffer.model_can_apply", "buffer.auto_apply",
         "workspace.allow_external_writes", "workspace.allowed_external_dirs",
-        "workspace.additional_roots", "tools.circuit_breaker.",
+        "workspace.additional_roots", "workspace.rw_allowed_dirs", "tools.circuit_breaker.",
         "providers.", "models.", "model.", "router.", "agent.", "llm.headers"
       ].freeze
 

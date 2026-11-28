@@ -147,6 +147,10 @@ module Rubik
 
           context_arg = clean_args.find { |a| a.start_with?("--context=") }
           c_limit = context_arg ? context_arg.split("=", 2).last.to_i : 32_768
+          if c_limit <= 0
+            ctx.out.puts "Error: --context must be a positive integer."
+            return
+          end
 
           res = ctx.config.upsert_provider_model(p_name, m_name, context_limit: c_limit, persist: scope)
           ctx.refresh_llm_registry!

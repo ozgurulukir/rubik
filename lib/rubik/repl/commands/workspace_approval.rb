@@ -126,7 +126,8 @@ module Rubik
 
           rw_dirs = Array(Rubik::Storage::Layout.config_get(@config, "workspace.rw_allowed_dirs", [])).dup
           rw_dirs.reject! { |d| File.expand_path(d.to_s, @effective_root) == expanded }
-          @config.set("workspace.rw_allowed_dirs", rw_dirs, persist: @scope)
+          rw_res = @config.set("workspace.rw_allowed_dirs", rw_dirs, persist: @scope)
+          return if Base.report_persist_failure(@out, rw_res, @scope)
 
           @out.puts "[Rubik::Allow] Removed allowed external directory: #{expanded} [#{Base.scope_label(@scope)}]."
         end
