@@ -149,8 +149,8 @@ subcommands:
       --track: {overrides: LOCAL_EFFECTS, risk: LOW, aliases: [-t]}
       --no-track: {}
       --create-reflog: {overrides: LOCAL_EFFECTS, risk: LOW}
-      -f: {}
-      --force: {aliases: [-f]}
+      -f: {overrides: DANGEROUS}
+      --force: {overrides: DANGEROUS, aliases: [-f]}
       --recurse-submodules: {}
   remote:
     classification: READONLY
@@ -283,6 +283,8 @@ subcommands:
       --autosquash: {}
       --no-autosquash: {}
       --onto: {takes_value: true}
+      --exec: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      -x: {overrides: DANGEROUS, takes_value: true, risk: HIGH, aliases: [--exec]}
   cherry-pick:
     classification: LOCAL_EFFECTS
     strict: false
@@ -336,6 +338,7 @@ subcommands:
     risk: LOW
     strict: false
     options:
+      --separate-git-dir: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
       --upload-pack: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
       --receive-pack: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
       --exec: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
@@ -351,6 +354,9 @@ subcommands:
     classification: LOCAL_EFFECTS
     risk: LOW
     strict: false
+    options:
+      -B: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
+      --orphan: {overrides: DANGEROUS, takes_value: true, risk: HIGH}
   switch:
     classification: LOCAL_EFFECTS
     risk: LOW

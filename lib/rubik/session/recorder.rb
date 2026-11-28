@@ -46,7 +46,10 @@ module Rubik
         }
 
         push_event(event)
-        File.open(@session_file, "a") do |f|
+        # Session transcripts hold full prompts and tool output: create and
+        # keep them owner-only (issue #673), matching the secret store.
+        File.open(@session_file, "a", 0o600) do |f|
+          f.chmod(0o600)
           f.puts(Rubik::Platform.safe_json_dump(event))
         end
         event

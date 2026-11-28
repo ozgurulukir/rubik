@@ -30,7 +30,7 @@ module Rubik
           raise NotImplementedError
         end
 
-        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0")
+        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0", verified: false)
           raise NotImplementedError
         end
 

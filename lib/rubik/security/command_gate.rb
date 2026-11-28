@@ -15,8 +15,9 @@ module Rubik
     # un-bypassable catastrophic fallback regex, and the blocked-segment
     # guidance evidence. Owns the live-reconfigurable probe/root/shell
     # state; allowlist verdicts delegate to the injected Allowlist,
-    # critical-path writes to the injected PathPolicy, and every decision
-    # is audit-logged through the injected AuditLog.
+    # critical-path writes to the injected PathPolicy, and security-significant
+    # decisions are audit-logged through the injected AuditLog (allow paths
+    # are intentionally unlogged — see SECURITY.md "Known limits").
     class CommandGate
       # Pipe-to-interpreter (the curl|bash RCE shape). This pattern lives in
       # the UN-BYPASSABLE fallback gate: verify_command_fallback_regex! runs
@@ -45,8 +46,13 @@ module Rubik
         PIPE_TO_INTERPRETER_PATTERN,
         /:\(\)\{\s*:\|:&\s*\};:/, # fork bomb
         %r{\bdd\s+.*(?:if=|of=/dev/)}i,
-        /\bmkfs(?:\.\w+)?\b/i,
-        /\b(?:shutdown|reboot|poweroff|halt)\b(?:\s+.*)?/i,
+        /(?:^|[;&|\n]\s*)(?:sudo\s+|doas\s+|env\s+|nohup\s+|nice\s+)*mkfs(?:\.\w+)?\b/i,
+        # Word-shaped catastrophic commands must sit at a command position
+        # (start of the expression or just after a shell operator). Matching
+        # them anywhere in the raw string blocked harmless prose such as
+        # `echo shutdown` or `git commit -m "fix reboot handler"` with no way
+        # to allowlist it. Wrappers stay covered (issue #670).
+        /(?:^|[;&|\n]\s*)(?:sudo\s+|doas\s+|env\s+|nohup\s+|nice\s+)*(?:shutdown|reboot|poweroff|halt)\b(?:\s+.*)?/i,
         /\b(?:Format-Volume|Clear-Disk|Initialize-Disk|Remove-Partition|Stop-Computer|Restart-Computer)\b/i,
         /\bdiskpart\b/i,
         /\brm\s+.*--no-preserve-root/i,
@@ -54,7 +60,7 @@ module Rubik
         %r{erase\s+.*/s.*[a-z]:\\}i,
         %r{rmdir\s+.*/s.*[a-z]:\\}i,
         %r{rd\s+.*/s.*[a-z]:\\}i,
-        /format\s+[a-z]:/i,
+        /(?:^|[;&|\n]\s*)(?:sudo\s+|doas\s+|env\s+|nohup\s+|nice\s+)*format\s+[a-z]:/i,
         /Remove-Item\s+.*-Recurse.*[a-z]:\\/i,
         /%0\|%0/
       ].freeze
@@ -81,7 +87,7 @@ module Rubik
         return false if cmd_str.to_s.match?(Allowlist::RAW_ALLOWLIST_UNSAFE_PATTERN)
 
         ast ||= begin
-          Rubik::Security::Classifier.classify(cmd_str.to_s)
+          Rubik::Security::Classifier.classify(cmd_str.to_s, root: @root_dir)
         rescue StandardError
           nil
         end
@@ -148,7 +154,7 @@ module Rubik
       def verify_command_safety!(cmd, shell: nil, allow_unknown: false)
         cmd_str = cmd.to_s
         begin
-          ast = Rubik::Security::Classifier.classify(cmd_str, shell: shell)
+          ast = Rubik::Security::Classifier.classify(cmd_str, shell: shell, root: @root_dir)
           @path_policy.check_critical_path_writes!(ast, cmd_str)
           # Phase pipeline: each phase returns true when it has already
           # produced an allow verdict (audit + fallback regex included),

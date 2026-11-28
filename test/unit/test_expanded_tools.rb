@@ -171,7 +171,7 @@ class TestExpandedTools < Minitest::Test
     script = <<~SCRIPT
       bash -c '
       git checkout -q main
-      git checkout -q -B merge-sim main
+      git checkout -q -b merge-sim main
       for n in 144 145 147 143; do
         echo "===== merging PR $n ====="
         if git merge --no-edit -q review-pr-$n 2>/tmp/m.err; then
@@ -196,7 +196,7 @@ class TestExpandedTools < Minitest::Test
     refute_includes res, "was denied"
     # The full multi-line script must not be re-embedded anywhere (the old
     # defect): no line of the message contains a script statement verbatim.
-    refute_includes res, "git checkout -q -B merge-sim main"
+    refute_includes res, "git checkout -q -b merge-sim main"
   end
 
   # Concise/wrapper boundary: a single dangerous TOP-LEVEL command keeps the

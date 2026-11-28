@@ -5,6 +5,15 @@ module Rubik
     module Redactor
       MASK_STRING = "***MASKED***"
 
+      # Header and shell credential shapes that are not NAME=VALUE
+      # assignments: `Authorization: Basic <base64>`, session cookies, Slack
+      # tokens and password flags on mysql/sshpass (issue #673).
+      BASIC_AUTH_PATTERN = %r{\bAuthorization:\s*(?:Basic|Bearer)\s+[A-Za-z0-9+/=._~-]{4,}}i
+      COOKIE_SESSION_PATTERN = /\bCookie:\s*session=[^\s,;]+/i
+      SLACK_TOKEN_PATTERN = /\bxox[baprs]-[A-Za-z0-9-]{10,}/
+      MYSQL_PASSWORD_PATTERN = /\bmysql\b[^\n]{0,200}?\s-p[^\s]+/i
+      SSHPASS_PASSWORD_PATTERN = /\bsshpass\b\s+-p\s*[^\s]+/i
+
       PATTERNS = [
         /sk-ant-[a-zA-Z0-9_-]{20,}/,
         /sk-[a-zA-Z0-9_-]{20,}/,
@@ -14,7 +23,12 @@ module Rubik
         /AIzaSy[a-zA-Z0-9_-]{33}/,
         /\bbearer\s+[a-zA-Z0-9_\-.]{20,}/i,
         /-----BEGIN [A-Z0-9_\s-]+PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9_\s-]+PRIVATE KEY-----/,
-        %r{(https?://[^\s/@:]+:)([^\s/@:]+)@}
+        %r{(https?://[^\s/@:]+:)([^\s/@:]+)@},
+        BASIC_AUTH_PATTERN,
+        COOKIE_SESSION_PATTERN,
+        SLACK_TOKEN_PATTERN,
+        MYSQL_PASSWORD_PATTERN,
+        SSHPASS_PASSWORD_PATTERN
       ].freeze
 
       # Generic NAME <sep> VALUE assignment. The name is normalized (camelCase
@@ -22,7 +36,10 @@ module Rubik
       # match time, so `password=...`, `OPENAI_API_KEY=...`, `apiKey=...` and the
       # `--key=...` flag form all share ONE rule. The optional `--` prefix is
       # what makes provider CLI flags land here (issue #542).
-      ASSIGNMENT_KEY_REGEX = /(--)?\b([A-Za-z][A-Za-z0-9_-]*)(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/
+      # Optional quotes around the name cover JSON objects (`"apiKey":"..."`
+      # has a quote between the name and the separator, which the old shape
+      # could not cross) without changing the CLI/env forms.
+      ASSIGNMENT_KEY_REGEX = /(--)?["']?\b([A-Za-z][A-Za-z0-9_-]*)\b["']?(\s*[:=]\s*)(['"][^'"]*['"]|[^\s,;'"]+)/
       # Positional counterpart of `--key=...`: `!provider set <name> key <value>`
       # has no separator, so it needs its own bounded shape (no prose masking).
       CLI_POSITIONAL_KEY_REGEX = /\b(set\s+\S+\s+(?:key|api[_-]?key|secret|token|password|passwd)\s+)(['"][^'"]*['"]|[^\s,;'"]+)/i
@@ -33,16 +50,35 @@ module Rubik
       STATIC_PATTERNS = PATTERNS.reject { |pattern| pattern == URL_PATTERN }.freeze
       # Skip static replacement passes for assignment-only and URL-only inputs.
       STATIC_PATTERNS_COMBINED_REGEX = Regexp.union(STATIC_PATTERNS).freeze
+      # One credential vocabulary drives BOTH the raw-text fast path and the
+      # normalized-key decision (issue #673). Without this, `apiKey`,
+      # `privateKey`, `credential` and `auth: hunter2` skipped every mask.
+      # `auth` is bounded so the ordinary field `author` is not a credential.
+      SECRET_WORD_PATTERN = /api.?key|auth(?:orization)?(?=\b|_)|password|passwd|secret|credential|private.?key|(?:\b|_)key(?:\b|_)/i
+
       # `key` is load-bearing: without it `--key=...` and `apiKey` take the
       # fast path and keep the credential verbatim (issue #542).
-      QUICK_CHECK_REGEX = %r{sk-|AKIA|ghp_|github_pat_|AIza|bearer|PRIVATE KEY|://[^\s/@:]+:|password|passwd|api_key|secret|token|\bkey\b}i
+      QUICK_CHECK_REGEX = Regexp.union(
+        /sk-|AKIA|ghp_|github_pat_|AIza|bearer|PRIVATE KEY/i,
+        %r{://[^\s/@:]+:},
+        SECRET_WORD_PATTERN,
+        # Raw camelCase names have no underscore for SECRET_WORD_PATTERN's
+        # key token to anchor on; this only opts into the deeper key check.
+        /[A-Za-z]key\b/i,
+        /token/i,
+        BASIC_AUTH_PATTERN,
+        COOKIE_SESSION_PATTERN,
+        SLACK_TOKEN_PATTERN,
+        MYSQL_PASSWORD_PATTERN,
+        SSHPASS_PASSWORD_PATTERN
+      ).freeze
 
       # Anahtar-maskeleme desenleri (Session::Recorder#mask_payload ile aynı
       # aile): sır görünümlü anahtarların değerleri desen eşleşmese bile
       # maskelenir. Her iki desen de NORMALİZE anahtara uygulanır; sayaç
       # istisnası tam adla eşleşir, yoksa `auth_tokens` gibi bir sır anahtarı
       # `tokens` alt dizgisi yüzünden yanlışlıkla istisna sayılırdı (#542).
-      SECRET_KEY_REGEX = /(?:api_key|auth|password|passwd|secret|_token\z|\Atoken\b|\bkey\b)/i
+      SECRET_KEY_REGEX = /(?:#{SECRET_WORD_PATTERN.source}|_token\z|\Atoken\b)/i
       TOKEN_COUNT_REGEX = /\A(?:tokens|token_count|max_tokens)\z/i
       TOKEN_NAME_REGEX = /(?:\Atoken\b|_token\z)/i
 

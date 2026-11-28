@@ -31,7 +31,11 @@ module Rubik
         EXECUTED_ENV_VARS = [
           "GIT_SSH_COMMAND", "GIT_EDITOR", "GIT_SEQUENCE_EDITOR", "GIT_EXTERNAL_DIFF",
           "GIT_PAGER", "GIT_ASKPASS", "EDITOR", "VISUAL", "PAGER", "SHELL", "BASH_ENV", "ENV",
-          "SSH_ASKPASS", "SSH_COMMAND", "LESSOPEN"
+          "SSH_ASKPASS", "SSH_COMMAND", "LESSOPEN",
+          # Code-loading variables (issue #670): their VALUES are loaded as
+          # code by the host binary, so an unclassifiable payload must fail
+          # closed instead of hiding behind a clean outer allowlist entry.
+          "NODE_OPTIONS", "NODE_PATH", "PERL5OPT", "RUBYLIB", "PYTHONPATH", "PYTHONINSPECT"
         ].freeze
         EXECUTED_ENV_PREFIXES = ["GIT_CONFIG_"].freeze
         # Pre-subcommand git config assignments that redirect execution
@@ -39,10 +43,34 @@ module Rubik
         # removes these before subcommand options are evaluated, so the
         # Engine must gate them from the raw argv (#539 residual).
         GIT_CONFIG_FLAGS = ["-c", "--config"].freeze
+        # Values of these options are prose/payload, never config flags —
+        # `git commit -m "--config=core.editor=evil"` must stay a commit.
+        GIT_MESSAGE_OPTIONS = ["-m", "--message", "--fixup", "--squash"].freeze
         DANGEROUS_GIT_CONFIG_KEYS = [
           "core.editor", "core.hookspath", "core.pager", "core.sshcommand",
-          "core.fsmonitor", "core.gitproxy", "diff.external"
+          "core.fsmonitor", "core.gitproxy", "diff.external", "include.path",
+          "credential.helper", "sequence.editor"
         ].freeze
+        DANGEROUS_GIT_CONFIG_PATTERNS = [
+          /\Aalias\./i,
+          /\Aincludeif\..*\.path\z/i,
+          /\Aprotocol\..*\.allow\z/i,
+          /\Afilter\..*/i,
+          /\Amerge\..*\.driver\z/i,
+          /\Adiff\..*\.command\z/i,
+          /\Adifftool\..*\.cmd\z/i,
+          /\Aurl\..*\.insteadof\z/i,
+          /\Asubmodule\..*\.url\z/i
+        ].freeze
+        # `ext::`/`fd::`/`<helper>::` transports spawn a shell (issue #670).
+        DANGEROUS_GIT_URL_SCHEME = /\A[a-zA-Z][a-zA-Z0-9+.-]*::/
+        # Shell escape/glob forms that can spell a system path while evading
+        # a raw token comparison (issue #670).
+        GLOB_PATH_PATTERN = /[*?\[\]]/
+        PATH_SHAPED_TOKEN = %r{\A(?:/|~|\$|[a-zA-Z]:[\\/]|\.\.?/)}
+        CD_WRAPPERS = ["builtin", "command", "time", "nohup"].freeze
+        CD_OPTIONS = ["-L", "-P", "-e", "--"].freeze
+        UNRESOLVED_CD_TARGET = "<unresolved-cd-target>"
 
         def self.default_database
           @default_database ||= CommandDatabase.new
@@ -52,8 +80,8 @@ module Rubik
           @default_database = nil
         end
 
-        def self.classify_expression(expression, database: nil, shell: nil)
-          new(database: database, shell: shell).classify(expression)
+        def self.classify_expression(expression, database: nil, shell: nil, root: nil)
+          new(database: database, shell: shell, root: root).classify(expression)
         end
 
         # Public interface predicate over the Matcher's builtin vocabulary.
@@ -64,9 +92,10 @@ module Rubik
           Matcher::BUILTIN_DANGEROUS_CMDS.include?(binary.to_s)
         end
 
-        def initialize(database: nil, shell: nil)
+        def initialize(database: nil, shell: nil, root: nil)
           @database = database || self.class.default_database
           @shell = shell
+          @root = root
         end
 
         def classify(expression)
@@ -126,11 +155,23 @@ module Rubik
             value = Matcher::Delegation.strip_quotes(value.to_s)
             next [] if value.strip.empty?
 
+            executed = executed_env_var?(name)
             inner_invs, warnings = Parser.parse(value, shell: @shell)
             Matcher::Delegation.record_warnings(parse_warnings, warnings)
+            if inner_invs.empty? && executed
+              # A code-loading variable holding an opaque flag blob (e.g.
+              # `NODE_OPTIONS=--require=...`) parses to no command at all.
+              # Surface it as an UNKNOWN inner so the outer allowlist cannot
+              # rescue a command whose runtime was silently reconfigured.
+              next [Matcher::Delegation.match_inner_command(
+                [name], @database,
+                delegation_mode: "env_assignment", delegation_source: name,
+                min_classification: Classification::UNKNOWN,
+                parse_warnings: parse_warnings
+              ) { |i, db, w| Matcher.match_command(i, db, w, shell: @shell) }]
+            end
             next [] if inner_invs.empty?
 
-            executed = executed_env_var?(name)
             shaped = command_shaped?(inner_invs)
             # A host-executed variable whose payload we cannot classify is
             # the #540 bypass: `GIT_SSH_COMMAND='nc ...' git push` used to
@@ -190,33 +231,64 @@ module Rubik
 
         def dangerous_git_config_key?(key)
           k = key.to_s.downcase
-          DANGEROUS_GIT_CONFIG_KEYS.include?(k) || k.start_with?("alias.")
+          DANGEROUS_GIT_CONFIG_KEYS.include?(k) || DANGEROUS_GIT_CONFIG_PATTERNS.any? { |p| p.match?(k) }
+        end
+
+        # Message-option values are prose, never flags or remote URLs —
+        # `git commit -m "foo::bar"` must stay an ordinary commit.
+        def git_scannable_tokens(argv)
+          skipped = {}
+          GIT_MESSAGE_OPTIONS.each do |opt|
+            argv.each_with_index { |token, i| skipped[i + 1] = true if token == opt }
+          end
+          argv.each_with_index.reject do |token, i|
+            skipped[i] || GIT_MESSAGE_OPTIONS.any? { |opt| token.start_with?("#{opt}=") }
+          end
+        end
+
+        # `ext::`, `fd::` and helper transports spawn a shell; a `+` refspec
+        # force-updates a ref just like `-f` (issue #670).
+        def git_execution_risks?(result, inv)
+          return false unless result.command.first.to_s == "git"
+
+          tokens = git_scannable_tokens(inv.argv).map(&:first)
+          return true if tokens.any? { |t| DANGEROUS_GIT_URL_SCHEME.match?(t) }
+          return true if result.command[1] == "push" && tokens.any? { |t| t.start_with?("+") }
+
+          false
         end
 
         def dangerous_git_config_assignments(result, argv)
-          # Only the pre-subcommand region: global options are stripped there
-          # before subcommand options run (#539 residual). Post-subcommand
-          # -c/--config stays owned by the command definitions; restricting
-          # the scan also avoids flagging config-like text inside -m/--grep.
-          subcommand = result.command[1..].first
-          limit = subcommand ? (argv.index(subcommand) || argv.size) : argv.size
-          candidates = argv[1...limit] || []
+          return [] unless result.command.first.to_s == "git"
 
           assignments = []
-          candidates.each_with_index do |token, i|
-            if GIT_CONFIG_FLAGS.include?(token)
-              value = candidates[i + 1].to_s
-              next unless value.include?("=")
 
-              key, payload = value.split("=", 2)
-              assignments << [key, payload] if dangerous_git_config_key?(key)
-            elsif token.start_with?("--config=")
-              spec = token.delete_prefix("--config=")
-              next unless spec.include?("=")
+          # `git config <key> <value>` writes the key directly; a dangerous
+          # key here changes how git executes later commands (issue #670).
+          if result.command[1] == "config"
+            rest = (argv[2..] || []).dup
+            rest.shift if ["--global", "--system", "--local", "--worktree"].include?(rest.first)
+            rest.shift(2) if ["--file", "-f"].include?(rest.first)
+            key = rest.first
+            value = rest[1]
+            assignments << [key, value] if key && value && dangerous_git_config_key?(key)
+          end
 
-              key, payload = spec.split("=", 2)
-              assignments << [key, payload] if dangerous_git_config_key?(key)
-            end
+          # Scan every position: `-c`/`--config` are global options but git
+          # accepts them after the subcommand too, and stripping them before
+          # subcommand options (issue #539) otherwise hides the payload.
+          git_scannable_tokens(argv).each do |token, i|
+            spec = if GIT_CONFIG_FLAGS.include?(token)
+                     argv[i + 1].to_s
+                   elsif token.start_with?("--config=")
+                     token.delete_prefix("--config=")
+                   elsif token.start_with?("-c") && token.length > 2
+                     token[2..]
+                   end
+            next if spec.nil? || !spec.include?("=")
+
+            key, payload = spec.split("=", 2)
+            assignments << [key, payload] if dangerous_git_config_key?(key)
           end
           assignments
         end
@@ -230,7 +302,8 @@ module Rubik
           return result unless result.command.first.to_s == "git"
 
           assignments = dangerous_git_config_assignments(result, inv.argv)
-          return result if assignments.empty?
+          execution_risk = git_execution_risks?(result, inv)
+          return result if assignments.empty? && !execution_risk
 
           inners = assignments.flat_map do |key, value|
             inner_invs, warnings = Parser.parse(value, shell: @shell)
@@ -246,8 +319,12 @@ module Rubik
             end
           end
 
-          reason = append_reason(result.classification_reason,
-                                 "dangerous git config #{assignments.map(&:first).join(', ')}")
+          detail = if assignments.empty?
+                     "dangerous git execution path"
+                   else
+                     "dangerous git config #{assignments.map(&:first).join(', ')}"
+                   end
+          reason = append_reason(result.classification_reason, detail)
           result.with(
             inner_commands: result.inner_commands + inners,
             classification: Classification::DANGEROUS,
@@ -327,8 +404,8 @@ module Rubik
 
           return result if Classification.severity(result.classification) < Classification.severity(Classification::LOCAL_EFFECTS)
 
-          sys_paths = inv.argv.select { |t| system_path?(t) }
-          sys_paths.concat(inv.redirects.map(&:target).select { |t| system_path?(t) })
+          sys_paths = inv.argv.select { |t| system_path?(t) || dangerous_path_token?(t) }
+          sys_paths.concat(inv.redirects.map(&:target).select { |t| system_path?(t) || dangerous_path_token?(t) })
 
           if sys_paths.any? && result.classification != Classification::DANGEROUS
             reason = "#{result.classification_reason}; elevated to DANGEROUS: system path #{sys_paths[0]}"
@@ -352,12 +429,12 @@ module Rubik
 
           return inner if Classification.severity(inner.classification) < Classification.severity(Classification::LOCAL_EFFECTS)
 
-          sys_path = inner.argv.find { |t| system_path?(t) }
+          sys_path = inner.argv.find { |t| system_path?(t) || dangerous_path_token?(t) }
           if !sys_path && (inner.classification != Classification::DANGEROUS)
             # Redirect targets are attack surface too — the parser moved them
             # out of argv. Skipped when already DANGEROUS so a /dev/tcp
             # redirect does not stack a second reason (outer parity, line ~147).
-            sys_path = inner_redirects(inner).map(&:target).find { |t| system_path?(t) }
+            sys_path = inner_redirects(inner).map(&:target).find { |t| system_path?(t) || dangerous_path_token?(t) }
           end
           if sys_path
             inner.with(classification: Classification::DANGEROUS, risk: Risk::HIGH,
@@ -412,7 +489,9 @@ module Rubik
           end
 
           expression_reason = nil
-          if overall != Classification::DANGEROUS && directories.any? { |d| system_path?(d) } && mutating_pipeline?(command_results)
+          if overall != Classification::DANGEROUS &&
+             directories.any? { |d| d == UNRESOLVED_CD_TARGET || system_path?(d) } &&
+             mutating_pipeline?(command_results)
             overall = Classification::DANGEROUS
             overall_risk = Risk::HIGH
             expression_reason = expression_danger_reason(command_results, directories)
@@ -435,7 +514,7 @@ module Rubik
           named = mutators.first(EXPRESSION_MUTATOR_CAP)
           named << "..." if mutators.size > EXPRESSION_MUTATOR_CAP
           named = "a mutating command" if named.empty?
-          "mutating pipeline (#{named.join(', ')}) touches system directory #{directories.find { |d| system_path?(d) }}"
+          "mutating pipeline (#{named.join(', ')}) touches system directory #{directories.find { |d| d == UNRESOLVED_CD_TARGET || system_path?(d) }}"
         end
 
         def mutator?(result)
@@ -463,6 +542,9 @@ module Rubik
           return false if p.empty? || p.start_with?("-")
 
           p = p[1..-2] if (p.start_with?('"') && p.end_with?('"')) || (p.start_with?("'") && p.end_with?("'"))
+          return false if p.empty? || p.start_with?("-")
+
+          p = decode_path_token(p)
           return false if p.empty? || p.start_with?("-")
 
           # The current user's home is a system path however it is spelled —
@@ -511,6 +593,49 @@ module Rubik
         end
         public :system_path?
 
+        # Bash removes backslashes and decodes $'...' before the kernel sees
+        # a path. Compare the DECODED token so `/et\c/passwd` and
+        # `$'\x2fetc/passwd'` cannot masquerade as a local path (issue #670).
+        def decode_path_token(token)
+          s = token.to_s
+          s = decode_ansi_c(s[2..-2]) if s.start_with?("$'") && s.end_with?("'")
+          # tree-sitter already strips the `$'...'` wrapper but leaves the
+          # \xNN / \nnn escapes in the token. Decode them before matching.
+          s = decode_ansi_c(s) if s.match?(/\\[xX0-7]/)
+          # Windows drive paths keep their backslashes: stripping them would
+          # turn `C:\Windows\System32` into a non-system token.
+          return s if s.match?(%r{\A[a-zA-Z]:[\\/]})
+
+          s = s.gsub(/\\(.)/m) { Regexp.last_match(1) } if s.match?(%r{\A(?:[/~]|\$|\.\.?/)})
+          s
+        end
+
+        def decode_ansi_c(inner)
+          inner.gsub(/\\x([0-9a-fA-F]{1,2})/) { [Regexp.last_match(1).to_i(16)].pack("C") }
+               .gsub(/\\([0-7]{1,3})/) { [Regexp.last_match(1).to_i(8)].pack("C") }
+               .gsub(/\\([\\'"abfnrtv])/) do
+                 case Regexp.last_match(1)
+                 when "a" then "\a"
+                 when "b" then "\b"
+                 when "f" then "\f"
+                 when "n" then "\n"
+                 when "r" then "\r"
+                 when "t" then "\t"
+                 when "v" then "\v"
+                 else Regexp.last_match(1)
+                 end
+               end
+        end
+
+        # A glob metacharacter in a path-shaped argument can expand to a
+        # system path (`/et?/passwd` -> `/etc/passwd`). The severity gate in
+        # the elevation methods limits this fail-closed rule to mutating
+        # commands, so read-only globs stay untouched.
+        def dangerous_path_token?(token)
+          t = token.to_s
+          t.match?(GLOB_PATH_PATTERN) && (t.match?(PATH_SHAPED_TOKEN) || t.include?("/"))
+        end
+
         # Prefix containment against the current user's home. HOME_TOKENS
         # covers ~/$HOME spellings; this covers the literal absolute spelling
         # that dangerous_system_roots only matched exactly (#540). Any
@@ -536,7 +661,7 @@ module Rubik
         end
 
         def safe_expand_path(path)
-          File.expand_path(path)
+          File.expand_path(path, @root || Dir.pwd)
         rescue ArgumentError, TypeError
           # NUL byte / bad tilde / invalid encoding raise ArgumentError,
           # non-String without to_str raises TypeError — fall back to the
@@ -547,7 +672,6 @@ module Rubik
         def collect_directories(results)
           dirs = []
           results.each do |r|
-            dirs << r.argv[1] if r.command.any? && ["cd", "pushd"].include?(r.command[0]) && r.argv.size > 1
             dirs.concat(r.directories) if r.directories
             dirs.concat(extract_argv_directories(r.command, r.argv))
             dirs.concat(collect_inner_directories(r.inner_commands))
@@ -575,9 +699,22 @@ module Rubik
         end
 
         def extract_argv_directories(command, argv)
-          return [] if command.empty? || argv.size <= 1
+          return [] if command.empty? || argv.empty?
 
           bin = command[0]
+          # `builtin cd`, `command cd`, `time cd`, `nohup cd` all change the
+          # shell directory; the matcher surfaces them as wrapper + inner cd,
+          # but unwrap here too so either shape is covered (issue #670).
+          if CD_WRAPPERS.include?(bin) && ["cd", "pushd"].include?(argv[1])
+            bin = argv[1]
+            argv = argv[1..]
+          end
+          if ["cd", "pushd"].include?(bin)
+            target = cd_target(argv)
+            return target ? [target] : []
+          end
+          return [] if argv.size <= 1
+
           pos = case bin
                 when "find", "ls" then argv[1..].find { |a| !a.start_with?("-") }
                 when "cat", "head", "tail", "less", "more"
@@ -587,6 +724,21 @@ module Rubik
                   argv[1..].find { |a| !a.start_with?("-") && (system_path?(a) || a.include?("/")) }
                 end
           pos ? [pos] : []
+        end
+
+        # Resolve the directory a cd/pushd actually targets: skip `-L`, `-P`,
+        # `-e`, `--` (and combined `-LP`), and fail closed for dynamic targets
+        # whose value cannot be known statically (issue #670).
+        def cd_target(argv)
+          rest = (argv[1..] || []).drop_while do |t|
+            CD_OPTIONS.include?(t) ||
+              (t.length > 1 && t.start_with?("-") && t[1..].chars.all? { |c| "LPe".include?(c) })
+          end
+          target = rest.first
+          return "~" if target.nil? || target.empty?
+          return UNRESOLVED_CD_TARGET if target == "-" || target.match?(/[$`]/)
+
+          target
         end
       end
     end

@@ -46,9 +46,10 @@ class TestExecToolsDiagnostics < Minitest::Test
   class MockRunner
     attr_accessor :mock_run_res
 
-    def run(_cmd, timeout: 15, chdir: Dir.pwd)
+    def run(_cmd, timeout: 15, chdir: Dir.pwd, verified: false)
       _ = timeout
       _ = chdir
+      _ = verified
       @mock_run_res
     end
   end

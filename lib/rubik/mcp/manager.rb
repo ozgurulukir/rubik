@@ -9,6 +9,7 @@ require_relative "client"
 require_relative "proxy_tool"
 require_relative "errors"
 require_relative "../runtime/context"
+require_relative "../security/secret_store"
 
 module Rubik
   module MCP
@@ -127,6 +128,10 @@ module Rubik
         cmd = server_defn["command"] || server_defn[:command]
         args = server_defn["args"] || server_defn[:args] || []
         env = server_defn["env"] || server_defn[:env] || {}
+        # Persisted credential-shaped env values are stored as rubik-secret:
+        # pointers (SecretPolicy routes them on add_server). Resolve them at
+        # connect time so booted servers receive the real value (#673).
+        env = env.transform_values { |v| Rubik::Security::SecretStore.resolve(v) } if env.is_a?(Hash)
         inherit_env = server_defn.key?("inherit_env") ? server_defn["inherit_env"] : server_defn[:inherit_env] # credential policy (#429): only explicit false opts out
         inherit_env_kwarg = inherit_env.nil? ? {} : { inherit_env: inherit_env } # strict-kwarg DI factories stay compatible
         base_ctx = @context || @runtime_manager&.context

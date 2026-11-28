@@ -64,6 +64,9 @@ module Rubik
                                   pipeline_position: pipeline_position, pipeline_length: pipeline_length
               )
               results << inv if inv
+              # `[ "$(rm -rf /)" ]` parses as one READONLY test builtin; the
+              # substitution still executes. Walk it exactly like command args.
+              results.concat(extract_nested_from_command_args(node, expression))
             when "negated_command"
               BashExtractors.node_children(node).each do |child|
                 next if child.kind == "!"

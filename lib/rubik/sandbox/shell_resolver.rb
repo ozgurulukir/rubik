@@ -19,11 +19,13 @@ module Rubik
 
       # Syntax cmd.exe (and pwsh) cannot execute correctly.
       BASH_REQUIRED = %r{<\(|>\(|/dev/null|<<[-~]?["']?[A-Za-z]|<<<}
-      # PowerShell-idiomatic tokens: $env: plus any Verb-Noun cmdlet shape
-      # (Select-String, Sort-Object, ConvertTo-Json, Out-File, ...). Live
-      # feedback (Plan 55 §9): models reach for Select-String as readily as
-      # Get-*, so the shape must be generic, not a Get-* prefix.
-      PS_FINGERPRINT = /\$env:|\b[A-Z][a-z]+(?:[A-Z][a-z]+)*-[A-Z][A-Za-z]+\b/
+      # PowerShell-idiomatic tokens: $env: anywhere (cmd/bash mangle it), plus
+      # a Verb-Noun cmdlet shape (Select-String, Sort-Object, ConvertTo-Json,
+      # Out-File, ...). The cmdlet shape is matched ONLY against the first
+      # token of each command segment so a quoted argument such as
+      # `git commit -m "Fix Foo-Bar"` is not mistaken for a cmdlet (#672).
+      PS_ENV_FINGERPRINT = /\$env:/
+      PS_CMDLET_FINGERPRINT = /\b[A-Z][a-z]+(?:[A-Z][a-z]+)*-[A-Z][A-Za-z]+\b/
       # Shell substitution/variables cmd.exe silently mangles. Paired single
       # quotes are POSIX quoting: cmd.exe passes them through literally,
       # which breaks tools like `gh --jq '...'` (Plan 55 §9, live feedback).
@@ -67,6 +69,9 @@ module Rubik
 
         argv = argv_for(chosen, cmd)
         argv = [bash_path(git_bash_candidates, platform: platform), "-c", cmd] if chosen == "bash" && platform == :windows
+        if chosen == POWERSHELL && (ps_path = powershell_path)
+          argv = [ps_path, "-NoProfile", "-NonInteractive", "-Command", cmd]
+        end
 
         { argv: argv, shell: chosen, note: note }
       end
@@ -106,8 +111,7 @@ module Rubik
           return true if shell == "cmd"
 
           if shell == "pwsh"
-            pwsh_found = Rubik::Platform.which("pwsh") || Rubik::Platform.which("powershell")
-            return true if pwsh_found
+            return true if powershell_path
             return false if Rubik::Platform.windows?
 
             # Simulated :windows platform on non-windows test hosts:
@@ -162,10 +166,26 @@ module Rubik
         # SUBSTITUTION so plain `dir 'some filter'` quoting reaches cmd.
         return "bash" if BASH_REQUIRED.match?(cmd)
         return "cmd" if platform == :windows && cmd_builtin?(cmd)
-        return POWERSHELL if PS_FINGERPRINT.match?(cmd)
+        return POWERSHELL if PS_ENV_FINGERPRINT.match?(cmd) || ps_command_token?(cmd)
         return "bash" if platform == :windows && SUBSTITUTION.match?(cmd)
 
         default_shell(platform)
+      end
+
+      # A Verb-Noun-shaped token is a cmdlet only when it is the command of a
+      # pipeline/chain segment, not when it appears inside an argument.
+      def ps_command_token?(cmd)
+        cmd.to_s.split(/[|;&\n\r]+/).any? do |segment|
+          token = segment.strip.split.first.to_s
+          PS_CMDLET_FINGERPRINT.match?(token)
+        end
+      end
+
+      # The binary actually installed: PowerShell 7 is `pwsh`, Windows
+      # PowerShell 5.1 is `powershell`. Spawning the literal `pwsh` when only
+      # the latter exists fails with ENOENT (#672).
+      def powershell_path
+        Rubik::Platform.which("pwsh") || Rubik::Platform.which("powershell")
       end
 
       # First token is a cmd.exe builtin with no standalone binary — cmd.exe

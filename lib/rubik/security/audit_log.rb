@@ -59,7 +59,10 @@ module Rubik
         dir = File.dirname(@audit_log_path)
         FileUtils.mkdir_p(dir) unless File.directory?(dir)
 
-        File.open(@audit_log_path, "a") do |f|
+        # The audit log stores full command text: create and keep it
+        # owner-only (issue #673).
+        File.open(@audit_log_path, "a", 0o600) do |f|
+          f.chmod(0o600)
           f.puts(JSON.dump(entry))
         end
       rescue StandardError => e

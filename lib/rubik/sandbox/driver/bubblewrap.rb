@@ -37,11 +37,11 @@ module Rubik
           Rubik::Platform.linux? && !Rubik::Platform.which("bwrap").nil?
         end
 
-        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0") # rubocop:disable Lint/UnusedMethodArgument
+        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0", verified: false) # rubocop:disable Lint/UnusedMethodArgument
           # Defense-in-depth: re-run the shared session guard before spawning,
           # the same way the docker/podman/process drivers do, so a caller
           # that forgot its own pre-check is still gated by operator policy.
-          verify_command_safety!(cmd)
+          verify_command_safety!(cmd) unless verified
 
           workspace = File.expand_path(chdir)
 

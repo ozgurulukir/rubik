@@ -17,11 +17,11 @@ module Rubik
           !Rubik::Platform.which("podman").nil?
         end
 
-        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0")
+        def run(cmd, timeout: 15, chdir: Dir.pwd, allow_network: false, memory_limit_mb: 512, cpus: "1.0", verified: false)
           # Defense-in-depth (issue #591): re-run the shared session guard
           # before spawning, the same way ProcessDriver does, so a caller
           # that forgot its own pre-check is still gated by operator policy.
-          verify_command_safety!(cmd)
+          verify_command_safety!(cmd) unless verified
 
           image = @options[:image] || DEFAULT_IMAGE
           workspace = File.expand_path(chdir)
@@ -42,14 +42,17 @@ module Rubik
           podman_args.push("--network", "none") unless allow_network
           podman_args.push(image, "sh", "-c", cmd)
 
+          completed = false
           res = begin
-            Rubik::Platform.popen_capture(
+            result = Rubik::Platform.popen_capture(
               *podman_args,
               timeout: timeout,
               chdir: workspace,
               timeout_message: "Podman sandbox execution timed out after #{timeout} seconds",
               error_message: "Podman sandbox error"
             )
+            completed = result.is_a?(Hash) && result[:timed_out] != true
+            result
           ensure
             # Mirror DockerDriver: the watchdog kills the podman client process
             # tree on timeout, and --rm removal is performed by that client, so
@@ -58,7 +61,9 @@ module Rubik
             # code) already removed itself via --rm, and rm-ing a missing
             # container would just warn noise. Best-effort cleanup; a failed
             # `podman rm -f` leaves a trace.
-            if res.nil? || res[:timed_out] == true
+            # `res` is still nil inside ensure (the assignment has not
+            # happened yet), so track completion explicitly instead.
+            unless completed
               removed = system("podman", "rm", "-f", container_name, out: File::NULL, err: File::NULL)
               Rubik::Log.warn(:sandbox, "podman container '#{container_name}' could not be removed") unless removed
             end

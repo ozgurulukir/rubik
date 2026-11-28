@@ -21,6 +21,22 @@ module Rubik
         "id_rsa*"
       ].freeze
 
+      # Commands whose positional arguments name write targets (issue #671).
+      WRITE_COMMANDS = [
+        "cp", "mv", "tee", "touch", "ln", "install", "rm", "mkdir", "rsync", "dd", "chmod", "chown", "git"
+      ].freeze
+
+      # Options whose VALUES are write targets. Positionals cover the common
+      # case; these cover `-o`, `-t`, `-C`, `--target-directory`, etc.
+      WRITE_TARGET_OPTIONS = {
+        "cp" => ["-t", "--target-directory"],
+        "mv" => ["-t", "--target-directory"],
+        "tar" => ["-C", "--directory", "-f", "--file"],
+        "curl" => ["-o", "--output"],
+        "wget" => ["-O", "--output-document"],
+        "git" => ["--separate-git-dir"]
+      }.freeze
+
       def initialize(audit:, custom_patterns: [])
         @critical_patterns = (DEFAULT_CRITICAL_PATTERNS + custom_patterns).uniq
         @audit = audit
@@ -81,12 +97,64 @@ module Rubik
         true
       end
 
+      # Segment-wise matching: File.fnmatch?'s `**` does not cross `/`
+      # without FNM_PATHNAME's cooperation at the tail, so `.git/**` only
+      # ever protected one level. `**` here means zero or more whole path
+      # segments, and every pattern matches at any depth (the old `**/`
+      # prefix behaviour). A de-globbed candidate closes `.en?v`-style
+      # metacharacter evasions without trying to predict shell expansion.
       def critical_path?(path)
-        norm_path = path.to_s.tr("\\", "/").gsub(%r{^\./}, "")
-        @critical_patterns.any? do |pattern|
-          File.fnmatch?(pattern, norm_path, File::FNM_PATHNAME | File::FNM_DOTMATCH) ||
-            File.fnmatch?("**/#{pattern}", norm_path, File::FNM_PATHNAME | File::FNM_DOTMATCH)
+        norm = path.to_s.tr("\\", "/").gsub(%r{\A\./}, "").sub(%r{/+\z}, "").strip
+        return false if norm.empty?
+
+        [norm, norm.gsub(/[*?\[\]\\]/, "")].uniq.any? do |candidate|
+          segments = candidate.split("/").reject(&:empty?)
+          @critical_patterns.any? { |pattern| pattern_matches?(pattern.to_s.tr("\\", "/"), segments) }
         end
+      end
+
+      def pattern_matches?(pattern, segments)
+        pattern_segments = pattern.split("/").reject(&:empty?)
+        return false if pattern_segments.empty? || segments.empty?
+
+        (0...segments.size).any? { |start| match_segments?(pattern_segments, segments[start..]) }
+      end
+
+      def match_segments?(pattern_segments, path_segments)
+        return path_segments.empty? if pattern_segments.empty?
+
+        head = pattern_segments.first
+        tail = pattern_segments[1..]
+        if head == "**"
+          return match_segments?(tail, path_segments) ||
+                 (!path_segments.empty? && match_segments?(pattern_segments, path_segments[1..]))
+        end
+        return false if path_segments.empty?
+        return false unless File.fnmatch?(head, path_segments.first, File::FNM_DOTMATCH)
+
+        match_segments?(tail, path_segments[1..])
+      end
+
+      # Values of write-target options in either `--opt=value`, `--opt value`
+      # or joined short `-ovalue` form.
+      def option_write_targets(cmd_name, argv)
+        names = WRITE_TARGET_OPTIONS[cmd_name] || []
+        return [] if names.empty?
+
+        targets = []
+        argv.each_with_index do |token, i|
+          names.each do |name|
+            if token == name
+              value = argv[i + 1]
+              targets << value if value && !value.start_with?("-")
+            elsif token.start_with?("#{name}=")
+              targets << token.split("=", 2).last
+            elsif !name.start_with?("--") && token.start_with?(name) && token.length > name.length
+              targets << token[name.length..]
+            end
+          end
+        end
+        targets
       end
 
       def check_critical_path_writes!(ast, cmd_str)
@@ -94,9 +162,15 @@ module Rubik
         write_targets = ast_commands.flat_map do |c|
           targets = Array(c.respond_to?(:write_paths) ? c.write_paths : nil)
           cmd_name = c.respond_to?(:command) ? c.command.to_a.first.to_s : ""
-          targets.concat(c.positionals.to_a) if ["cp", "mv", "tee", "touch", "ln", "install"].include?(cmd_name) && c.respond_to?(:positionals)
+          if WRITE_COMMANDS.include?(cmd_name) || WRITE_TARGET_OPTIONS.key?(cmd_name)
+            targets.concat(c.positionals.to_a) if WRITE_COMMANDS.include?(cmd_name) && c.respond_to?(:positionals)
+            targets.concat(Array(c.directories)) if c.respond_to?(:directories)
+            argv = c.respond_to?(:argv) ? c.argv.to_a : []
+            targets.concat(option_write_targets(cmd_name, argv))
+          end
           targets
-        end.compact.reject(&:empty?)
+        end
+        write_targets = write_targets.compact.reject { |t| t.to_s.empty? }
 
         write_targets.concat(ast.write_paths.to_a) if ast.respond_to?(:write_paths)
 
