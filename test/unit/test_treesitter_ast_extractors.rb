@@ -161,6 +161,23 @@ class TestTreeSitterASTExtractors < Minitest::Test
     refute_includes proc_sym.calls, "foo"
   end
 
+  def test_python_function_docstrings_survive_grammar_orchard_nodes
+    skip "tree-sitter unavailable" unless Rubik::AST::TreeSitterExtractor.available?
+
+    code = <<~PY
+      def greet(name):
+          '''Single quoted docstring.'''
+          return name
+
+      class Plain:
+          "One line docstring."
+    PY
+
+    symbols = Rubik::AST::Extractor.extract("docs.py", code)
+    assert_equal "Single quoted docstring.", symbols.find { |s| s.name == "greet" }.docstring
+    assert_equal "One line docstring.", symbols.find { |s| s.name == "Plain" }.docstring
+  end
+
   def test_python_nested_classes_are_qualified_by_enclosing_scope
     skip "tree-sitter unavailable" unless Rubik::AST::TreeSitterExtractor.available?
 

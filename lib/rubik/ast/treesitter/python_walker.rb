@@ -6,6 +6,8 @@ module Rubik
   module AST
     module TreeSitter
       class PythonWalker < BaseWalker
+        DOCSTRING_KINDS = ["docstring", "string"].freeze
+
         def walk(root_node)
           symbols = []
           return symbols unless root_node
@@ -93,14 +95,26 @@ module Rubik
           first_stmt = body_node.named_child(0)
           return nil unless first_stmt
 
-          str_node = if first_stmt.kind == "string"
+          str_node = if DOCSTRING_KINDS.include?(first_stmt.kind)
                        first_stmt
-                     elsif first_stmt.kind == "expression_statement" && first_stmt.named_child(0)&.kind == "string"
-                       first_stmt.named_child(0)
+                     elsif first_stmt.kind == "expression_statement"
+                       child = first_stmt.named_child(0)
+                       child if child && DOCSTRING_KINDS.include?(child.kind)
                      end
           return nil unless str_node
 
-          text_for(str_node).gsub(/^["']{3}|["']{3}$/, "").strip
+          # tree_sitter_language_pack >= 1.27 (Grammar Orchard Python) emits a
+          # dedicated `docstring` node wrapping string_start/content/end; older
+          # grammars emit a bare `string`. Prefer the content child so quote
+          # delimiters are never mistaken for part of the docstring.
+          content = nil
+          (0...str_node.named_child_count).each do |i|
+            child = str_node.named_child(i)
+            content = child if child.kind == "string_content"
+          end
+          return text_for(content).strip if content
+
+          text_for(str_node).gsub(/\A["']{3}|["']{3}\z/, "").strip
         end
       end
     end
